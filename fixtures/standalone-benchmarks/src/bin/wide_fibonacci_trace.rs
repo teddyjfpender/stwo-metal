@@ -1,15 +1,15 @@
 use serde::Serialize;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use std::time::Instant;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::fields::m31::BaseField;
-#[cfg(feature = "cuda-runtime")]
-use stwo_metal::{generate_wide_fibonacci_trace, BaseFieldVec, WideFibonacciTraceRequest};
+#[cfg(feature = "metal-runtime")]
+use stwo_metal::{generate_metal_wide_fibonacci_trace, MetalWideFibonacciTraceRequest};
 use stwo_metal_standalone_benchmarks::support::{
     env_flag, env_or, env_u32, env_usize, epoch_ms, required_env_path, runner_metadata,
     write_json, RunnerMetadata, SummaryStats,
 };
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo_metal_standalone_benchmarks::support::summarize;
 
 const BENCHMARK_ID: &str = "wide_fibonacci_trace_generation_v1";
@@ -112,15 +112,15 @@ fn main() {
             sentinel: None,
         }
     } else {
-        #[cfg(not(feature = "cuda-runtime"))]
+        #[cfg(not(feature = "metal-runtime"))]
         panic!(
-            "wide_fibonacci_trace benchmark requires the cuda-runtime feature for non-plan execution"
+            "wide_fibonacci_trace benchmark requires the metal-runtime feature for non-plan execution"
         );
 
-        #[cfg(feature = "cuda-runtime")]
+        #[cfg(feature = "metal-runtime")]
         {
-        if runner.stwo_cuda_mode == "no-cuda" {
-            panic!("wide_fibonacci_trace benchmark cannot run with STWO_CUDA_MODE=no-cuda");
+        if runner.stwo_metal_mode == "no-metal" {
+            panic!("wide_fibonacci_trace benchmark cannot run with STWO_METAL_MODE=no-metal");
         }
 
         let input_len = instances as usize;
@@ -187,45 +187,34 @@ fn main() {
     println!("{}", output_path.display());
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 #[derive(Clone)]
 struct SampleResult {
     elapsed_ms: f64,
     sentinel: WideFibonacciSentinel,
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 fn run_one_sample(
     input_a_host: &[BaseField],
     input_b_host: &[BaseField],
     input_len: usize,
     n_columns: usize,
 ) -> SampleResult {
-    let input_a = BaseFieldVec::from_vec(input_a_host.to_vec());
-    let input_b = BaseFieldVec::from_vec(input_b_host.to_vec());
-    let trace_columns = (0..n_columns)
-        .map(|_| BaseFieldVec::new_zeroes(input_len))
-        .collect::<Vec<_>>();
-    let trace_column_ptrs = trace_columns
-        .iter()
-        .map(|col| col.device_ptr)
-        .collect::<Vec<_>>();
-
     let start = Instant::now();
-    generate_wide_fibonacci_trace(WideFibonacciTraceRequest {
-        input_a: &input_a,
-        input_b: &input_b,
-        input_len: input_len as u32,
-        trace_columns: &trace_column_ptrs,
+    let trace = generate_metal_wide_fibonacci_trace(MetalWideFibonacciTraceRequest {
+        input_a: input_a_host,
+        input_b: input_b_host,
         n_columns: n_columns as u32,
     });
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    let trace = trace.expect("wide-fibonacci Metal trace generation should succeed");
 
     let sentinel = WideFibonacciSentinel {
-        first_column_first_value: trace_columns[0].get_data(0).0,
-        second_column_first_value: trace_columns[1].get_data(0).0,
-        last_column_first_value: trace_columns[n_columns - 1].get_data(0).0,
-        last_column_last_value: trace_columns[n_columns - 1].get_data(input_len - 1).0,
+        first_column_first_value: trace.value(0, 0).0,
+        second_column_first_value: trace.value(1, 0).0,
+        last_column_first_value: trace.value(n_columns - 1, 0).0,
+        last_column_last_value: trace.value(n_columns - 1, input_len - 1).0,
     };
 
     SampleResult {

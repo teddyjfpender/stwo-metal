@@ -17,6 +17,7 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
     for surface in [
         MetalBackendSurface::WideFibonacciBenchmarkTargetDeclared,
         MetalBackendSurface::WideFibonacciWitnessInputBoundaryDeclared,
+        MetalBackendSurface::WideFibonacciTraceGenerationNative,
         MetalBackendSurface::BaseFieldColumnSet,
         MetalBackendSurface::BaseFieldColumnFromIterator,
         MetalBackendSurface::BaseFieldColumnBitReverse,

@@ -5,6 +5,7 @@ use stwo_metal_sys::metal;
 pub enum MetalBackendSurface {
     WideFibonacciBenchmarkTargetDeclared,
     WideFibonacciWitnessInputBoundaryDeclared,
+    WideFibonacciTraceGenerationNative,
     BaseFieldColumnSet,
     BaseFieldColumnFromIterator,
     BaseFieldColumnBitReverse,
@@ -44,6 +45,7 @@ pub use metal::MetalRuntimeSupport;
 pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::WideFibonacciBenchmarkTargetDeclared,
     MetalBackendSurface::WideFibonacciWitnessInputBoundaryDeclared,
+    MetalBackendSurface::WideFibonacciTraceGenerationNative,
     MetalBackendSurface::BaseFieldColumnSet,
     MetalBackendSurface::BaseFieldColumnFromIterator,
     MetalBackendSurface::BaseFieldColumnBitReverse,
@@ -76,6 +78,7 @@ pub const fn metal_backend_surface_status(
     match surface {
         MetalBackendSurface::WideFibonacciBenchmarkTargetDeclared
         | MetalBackendSurface::WideFibonacciWitnessInputBoundaryDeclared
+        | MetalBackendSurface::WideFibonacciTraceGenerationNative
         | MetalBackendSurface::BaseFieldColumnSet
         | MetalBackendSurface::BaseFieldColumnFromIterator
         | MetalBackendSurface::BaseFieldColumnBitReverse
@@ -114,6 +117,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::WideFibonacciWitnessInputBoundaryDeclared => {
             "A witness-input boundary is supported for the declared wide-fibonacci benchmark target."
+        }
+        MetalBackendSurface::WideFibonacciTraceGenerationNative => {
+            "Wide-fibonacci trace generation is implemented through a native `.metal` kernel that writes a contiguous column-major trace buffer."
         }
         MetalBackendSurface::BaseFieldColumnSet => "Base-field Metal column mutation is supported.",
         MetalBackendSurface::BaseFieldColumnFromIterator => {

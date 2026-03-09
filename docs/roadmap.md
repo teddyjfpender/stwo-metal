@@ -251,11 +251,16 @@ Current next slices inside T5:
 - the `wide_fibonacci` benchmark target is now declared formally at
   `log_n_instances = 20` and `n_columns = 100`, with a project-supplied
   `90 ms` RTX 4090 reference goal
+- a bounded native `.metal` wide-fibonacci trace-generation path now exists
+  with deterministic CPU-recurrence parity
+- the standalone `wide_fibonacci_trace` benchmark fixture now enters through
+  the native Metal trace path rather than the inherited CUDA witness path
 - the explicit CPU bridge remains available only as a bounded validation and
   comparison surface
 - the next T5 work is to move the executable workload boundary earlier than the
   CPU-owned quotient evaluation input, starting with one selected
-  `fibonacci_example` witness-owned artifact
+  `fibonacci_example` witness-owned artifact and the remaining prove-benchmark
+  seam
 
 ### T6: Restore one truthful end-to-end supported workload
 

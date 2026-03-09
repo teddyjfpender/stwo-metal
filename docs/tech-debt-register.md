@@ -399,7 +399,7 @@ Target retirement point:
 
 - `T5`
 
-### TD-0012: The wide-fibonacci benchmark north star is declared, but its witness/trace stage is still CUDA-era
+### TD-0012: The wide-fibonacci prove benchmark still enters through the inherited CUDA-era proving lane
 
 - Status: `active`
 - Category: `benchmark execution boundary`
@@ -409,27 +409,28 @@ Target retirement point:
 Why it exists now:
 
 `stwo-metal` now declares the log-size-20 wide-fibonacci benchmark target with
-an explicit `90 ms` RTX 4090 reference goal, but the executable benchmark
-fixtures still enter through the inherited CUDA witness and trace-generation
-path.
+an explicit `90 ms` RTX 4090 reference goal, and the standalone
+`wide_fibonacci_trace` benchmark now enters through a native `.metal`
+trace-generation path. The remaining benchmark gap is that
+`wide_fibonacci_prove` still enters through the inherited CUDA witness and
+proving path after that trace boundary.
 
 Current containment:
 
 - `crates/stwo-metal/src/backend/metal/benchmark.rs`
-- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_trace.rs`
 - `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
 
 Risk if left in place:
 
-The project could optimize the Metal FRI/proof lane while still having no
-native route into the wide-fibonacci trace-generation stages that dominate the
-benchmark objective.
+The project could optimize the Metal FRI/proof lane while still overstating
+benchmark progress if the executable prove row keeps inheriting its early
+stages from the CUDA path.
 
 Exit condition:
 
-The wide-fibonacci benchmark path has a truthful native Metal witness or trace
-boundary, with benchmark execution no longer depending on the inherited CUDA
-witness path.
+The executable `wide_fibonacci_prove` row enters through the native Metal trace
+boundary and any remaining CPU-owned stages are explicitly named rather than
+implicitly inherited from CUDA.
 
 Target retirement point:
 

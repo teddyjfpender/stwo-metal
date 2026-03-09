@@ -286,6 +286,43 @@ impl U32Buffer {
         }
         Ok(dst)
     }
+
+    pub fn generate_wide_fibonacci_trace(
+        input_a: &Self,
+        input_b: &Self,
+        n_columns: u32,
+    ) -> Result<Self, MetalError> {
+        assert!(
+            input_a.len.is_power_of_two(),
+            "wide-fibonacci trace generation requires a power-of-two input length"
+        );
+        assert_eq!(
+            input_a.len, input_b.len,
+            "wide-fibonacci trace generation requires equal input lengths"
+        );
+        assert!(
+            n_columns >= 2,
+            "wide-fibonacci trace generation requires at least two columns"
+        );
+        let output_len = input_a
+            .len
+            .checked_mul(n_columns as usize)
+            .expect("wide-fibonacci trace output length should fit in usize");
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            ffi::generate_wide_fibonacci_trace_u32(
+                runtime.raw.as_ptr(),
+                input_a.raw.as_ptr(),
+                input_b.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                input_a.len.ilog2(),
+                n_columns,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
 }
 
 impl Clone for U32Buffer {
@@ -457,6 +494,16 @@ mod ffi {
             inverse_x_factors: *mut c_void,
             src_log_len: u32,
             alpha_limbs: *const u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_generate_wide_fibonacci_trace_u32(
+            runtime: *mut c_void,
+            input_a: *mut c_void,
+            input_b: *mut c_void,
+            trace: *mut c_void,
+            input_log_len: u32,
+            n_columns: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -688,6 +735,32 @@ mod ffi {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
     }
+
+    pub unsafe fn generate_wide_fibonacci_trace_u32(
+        runtime: *mut c_void,
+        input_a: *mut c_void,
+        input_b: *mut c_void,
+        trace: *mut c_void,
+        input_log_len: u32,
+        n_columns: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_generate_wide_fibonacci_trace_u32(
+            runtime,
+            input_a,
+            input_b,
+            trace,
+            input_log_len,
+            n_columns,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
 }
 
 #[cfg(not(stwo_metal_link))]
@@ -826,6 +899,20 @@ mod ffi {
         _inverse_x_factors: *mut c_void,
         _src_log_len: u32,
         _alpha_limbs: [u32; 4],
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn generate_wide_fibonacci_trace_u32(
+        _runtime: *mut c_void,
+        _input_a: *mut c_void,
+        _input_b: *mut c_void,
+        _trace: *mut c_void,
+        _input_log_len: u32,
+        _n_columns: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

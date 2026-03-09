@@ -53,26 +53,28 @@ static id<MTLComputePipelineState> stwo_metal_pipeline(
     char *error_message,
     size_t error_message_len
 ) {
-    id<MTLComputePipelineState> pipeline = runtime.pipelines[name];
-    if (pipeline != nil) {
+    @synchronized(runtime) {
+        id<MTLComputePipelineState> pipeline = runtime.pipelines[name];
+        if (pipeline != nil) {
+            return pipeline;
+        }
+
+        id<MTLFunction> function = [runtime.library newFunctionWithName:name];
+        if (function == nil) {
+            stwo_metal_write_error(error_message, error_message_len, [NSString stringWithFormat:@"Missing Metal kernel '%@'.", name]);
+            return nil;
+        }
+
+        NSError *error = nil;
+        pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&error];
+        if (pipeline == nil) {
+            stwo_metal_write_error(error_message, error_message_len, error.localizedDescription ?: @"Failed to compile Metal pipeline state.");
+            return nil;
+        }
+
+        runtime.pipelines[name] = pipeline;
         return pipeline;
     }
-
-    id<MTLFunction> function = [runtime.library newFunctionWithName:name];
-    if (function == nil) {
-        stwo_metal_write_error(error_message, error_message_len, [NSString stringWithFormat:@"Missing Metal kernel '%@'.", name]);
-        return nil;
-    }
-
-    NSError *error = nil;
-    pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&error];
-    if (pipeline == nil) {
-        stwo_metal_write_error(error_message, error_message_len, error.localizedDescription ?: @"Failed to compile Metal pipeline state.");
-        return nil;
-    }
-
-    runtime.pipelines[name] = pipeline;
-    return pipeline;
 }
 
 static NSUInteger stwo_metal_threads_per_group(id<MTLComputePipelineState> pipeline) {
@@ -539,6 +541,79 @@ bool stwo_metal_fri_fold_line_step_u32x4(
         [encoder setBytes:alpha_limbs length:sizeof(uint32_t) * 4 atIndex:3];
 
         MTLSize grid_size = MTLSizeMake(dst_len, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_generate_wide_fibonacci_trace_u32(
+    void *runtime_ptr,
+    void *input_a_ptr,
+    void *input_b_ptr,
+    void *trace_ptr,
+    uint32_t input_log_len,
+    uint32_t n_columns,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *input_a = stwo_metal_buffer_box(input_a_ptr);
+        StwoMetalBufferBox *input_b = stwo_metal_buffer_box(input_b_ptr);
+        StwoMetalBufferBox *trace = stwo_metal_buffer_box(trace_ptr);
+        uint32_t input_len_u32 = ((uint32_t)1) << input_log_len;
+        NSUInteger input_len = (NSUInteger)input_len_u32;
+        NSUInteger trace_len = input_len * (NSUInteger)n_columns;
+        if (n_columns < 2u) {
+            stwo_metal_write_error(error_message, error_message_len, @"Wide-fibonacci trace generation requires at least two columns.");
+            return false;
+        }
+        if (input_a.len != input_len || input_b.len != input_len || trace.len != trace_len) {
+            stwo_metal_write_error(error_message, error_message_len, @"Wide-fibonacci trace generation expects equal power-of-two inputs and a contiguous column-major output buffer.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(
+            runtime,
+            @"generate_wide_fibonacci_trace_u32",
+            error_message,
+            error_message_len
+        );
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:input_a.buffer offset:0 atIndex:0];
+        [encoder setBuffer:input_b.buffer offset:0 atIndex:1];
+        [encoder setBuffer:trace.buffer offset:0 atIndex:2];
+        [encoder setBytes:&input_len_u32 length:sizeof(input_len_u32) atIndex:3];
+        [encoder setBytes:&n_columns length:sizeof(n_columns) atIndex:4];
+
+        MTLSize grid_size = MTLSizeMake(input_len, 1, 1);
         MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
         [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
         [encoder endEncoding];

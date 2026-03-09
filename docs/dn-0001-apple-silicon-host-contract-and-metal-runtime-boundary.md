@@ -65,6 +65,10 @@ Implemented against this note:
   workload boundary with deterministic CPU-oracle parity
 - declared `wide_fibonacci` benchmark target for `log_n_instances = 20`,
   `n_columns = 100`, with a project-supplied `90 ms` RTX 4090 reference goal
+- bounded native `.metal` wide-fibonacci trace generation with deterministic
+  CPU-recurrence parity
+- standalone `wide_fibonacci_trace` benchmark retargeted to the native Metal
+  trace path with explicit `STWO_METAL_MODE` reporting
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
@@ -72,6 +76,8 @@ Still outside the implemented surface:
 
 - one earlier workload handoff from a witness-owned artifact into the
   executable hybrid workload boundary
+- the `wide_fibonacci_prove` benchmark’s trace-generation and earlier proving
+  seams
 - interpolation, evaluation, and trace-support primitives beyond the bounded
   FRI arithmetic surface
 - any truthful end-to-end proving claim

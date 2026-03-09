@@ -18,6 +18,7 @@ pub struct RunnerMetadata {
     pub gpu_driver: String,
     pub cuda_toolkit: String,
     pub stwo_cuda_mode: String,
+    pub stwo_metal_mode: String,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -81,6 +82,7 @@ pub fn runner_metadata() -> RunnerMetadata {
         gpu_driver: env_or("STWO_BENCH_GPU_DRIVER", "unknown"),
         cuda_toolkit: env_or("STWO_BENCH_CUDA_TOOLKIT", "unknown"),
         stwo_cuda_mode: env_or("STWO_CUDA_MODE", "no-cuda"),
+        stwo_metal_mode: env_or("STWO_METAL_MODE", "no-metal"),
     }
 }
 

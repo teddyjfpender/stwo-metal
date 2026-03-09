@@ -11,7 +11,8 @@ use stwo_metal::{
     MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice,
     MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver, MetalFriReadyEvaluationInput,
     MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation, MetalSecureFieldVec,
-    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs, MetalWorkloadBoundary,
+    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
+    MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs, MetalWorkloadBoundary,
     MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
     STWO_CUDA_BACKEND_SURFACES_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
@@ -32,6 +33,9 @@ fn companion_surface_exports_backend_core_types() {
     >();
     let _ = std::mem::size_of::<MetalBenchmarkTarget>();
     let _ = std::mem::size_of::<MetalWideFibonacciBenchmarkBoundary>();
+    let _ = std::mem::size_of::<MetalWideFibonacciTrace>();
+    let _ = std::mem::size_of::<MetalWideFibonacciTraceRequest<'static>>();
+    let _ = std::mem::size_of::<MetalWideFibonacciTraceError>();
     let _ = std::mem::size_of::<MetalWideFibonacciWitnessInputs>();
     let _ = std::mem::size_of::<MetalBenchmarkInputError>();
     let _ = std::mem::size_of::<MetalFriBlake2sSubpath>();

@@ -16,6 +16,7 @@ mod prover;
 mod row;
 mod sequence;
 mod subpath;
+mod witness;
 mod workload;
 
 pub use backend::MetalBackend;
@@ -53,6 +54,10 @@ pub use prover::MetalFriProver;
 pub use row::MetalFriInnerLayerRow;
 pub use sequence::MetalFriInnerLayerSequence;
 pub use subpath::MetalFriBlake2sSubpath;
+pub use witness::{
+    generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
+    MetalWideFibonacciTraceRequest,
+};
 pub use workload::{
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
     MetalCpuQuotientEvaluationInput, MetalFriReadyEvaluationInput, MetalHybridFriWorkload,

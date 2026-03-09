@@ -1,0 +1,144 @@
+use stwo::core::fields::m31::BaseField;
+use stwo_metal_sys::metal::{MetalError, U32Buffer};
+
+#[derive(Clone, Copy, Debug)]
+pub struct MetalWideFibonacciTraceRequest<'a> {
+    pub input_a: &'a [BaseField],
+    pub input_b: &'a [BaseField],
+    pub n_columns: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MetalWideFibonacciTraceError {
+    InputLengthMismatch {
+        input_a_len: usize,
+        input_b_len: usize,
+    },
+    InputLengthNotPowerOfTwo {
+        input_len: usize,
+    },
+    InvalidColumnCount {
+        n_columns: u32,
+    },
+    Runtime {
+        message: String,
+    },
+}
+
+impl core::fmt::Display for MetalWideFibonacciTraceError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InputLengthMismatch {
+                input_a_len,
+                input_b_len,
+            } => write!(
+                f,
+                "wide-fibonacci trace generation requires equal input lengths, got {input_a_len} and {input_b_len}"
+            ),
+            Self::InputLengthNotPowerOfTwo { input_len } => write!(
+                f,
+                "wide-fibonacci trace generation requires a power-of-two input length, got {input_len}"
+            ),
+            Self::InvalidColumnCount { n_columns } => write!(
+                f,
+                "wide-fibonacci trace generation requires at least two columns, got {n_columns}"
+            ),
+            Self::Runtime { message } => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for MetalWideFibonacciTraceError {}
+
+impl From<MetalError> for MetalWideFibonacciTraceError {
+    fn from(value: MetalError) -> Self {
+        Self::Runtime {
+            message: value.message().to_string(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct MetalWideFibonacciTrace {
+    values: U32Buffer,
+    input_len: usize,
+    n_columns: u32,
+}
+
+impl MetalWideFibonacciTrace {
+    pub fn input_len(&self) -> usize {
+        self.input_len
+    }
+
+    pub fn n_columns(&self) -> u32 {
+        self.n_columns
+    }
+
+    pub fn value(&self, column_index: usize, row_index: usize) -> BaseField {
+        assert!(
+            column_index < self.n_columns as usize,
+            "column index {column_index} out of bounds for {} columns",
+            self.n_columns
+        );
+        assert!(
+            row_index < self.input_len,
+            "row index {row_index} out of bounds for input_len {}",
+            self.input_len
+        );
+        BaseField::from_u32_unchecked(self.values.get(column_index * self.input_len + row_index))
+    }
+
+    pub fn column_values(&self, column_index: usize) -> Vec<BaseField> {
+        assert!(
+            column_index < self.n_columns as usize,
+            "column index {column_index} out of bounds for {} columns",
+            self.n_columns
+        );
+        let start = column_index * self.input_len;
+        let end = start + self.input_len;
+        (start..end)
+            .map(|index| BaseField::from_u32_unchecked(self.values.get(index)))
+            .collect()
+    }
+}
+
+pub fn generate_metal_wide_fibonacci_trace(
+    request: MetalWideFibonacciTraceRequest<'_>,
+) -> Result<MetalWideFibonacciTrace, MetalWideFibonacciTraceError> {
+    if request.input_a.len() != request.input_b.len() {
+        return Err(MetalWideFibonacciTraceError::InputLengthMismatch {
+            input_a_len: request.input_a.len(),
+            input_b_len: request.input_b.len(),
+        });
+    }
+    if !request.input_a.len().is_power_of_two() {
+        return Err(MetalWideFibonacciTraceError::InputLengthNotPowerOfTwo {
+            input_len: request.input_a.len(),
+        });
+    }
+    if request.n_columns < 2 {
+        return Err(MetalWideFibonacciTraceError::InvalidColumnCount {
+            n_columns: request.n_columns,
+        });
+    }
+
+    let input_a = request
+        .input_a
+        .iter()
+        .map(|value| value.0)
+        .collect::<Vec<_>>();
+    let input_b = request
+        .input_b
+        .iter()
+        .map(|value| value.0)
+        .collect::<Vec<_>>();
+    let input_a = U32Buffer::from_slice(&input_a)?;
+    let input_b = U32Buffer::from_slice(&input_b)?;
+    let values = U32Buffer::generate_wide_fibonacci_trace(&input_a, &input_b, request.n_columns)?;
+
+    Ok(MetalWideFibonacciTrace {
+        values,
+        input_len: request.input_a.len(),
+        n_columns: request.n_columns,
+    })
+}

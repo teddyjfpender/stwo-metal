@@ -1,6 +1,10 @@
 use stwo::core::fields::m31::BaseField;
 
 use super::planner::{MetalExecutionIntent, MetalPlannerError};
+use super::witness::{
+    generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
+    MetalWideFibonacciTraceRequest,
+};
 use super::workload::{
     declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary, MetalWorkloadOwnership,
     MetalWorkloadStage,
@@ -52,6 +56,14 @@ impl MetalWideFibonacciWitnessInputs {
 
     pub fn input_b(&self) -> &[BaseField] {
         &self.input_b
+    }
+
+    pub fn generate_trace(&self) -> Result<MetalWideFibonacciTrace, MetalWideFibonacciTraceError> {
+        generate_metal_wide_fibonacci_trace(MetalWideFibonacciTraceRequest {
+            input_a: &self.input_a,
+            input_b: &self.input_b,
+            n_columns: self.n_columns,
+        })
     }
 }
 

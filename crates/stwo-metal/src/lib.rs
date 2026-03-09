@@ -82,6 +82,10 @@ pub mod witness {
         generate_wide_fibonacci_trace, PoseidonInteractionTraceRequest, PoseidonTraceRequest,
         WideFibonacciTraceRequest,
     };
+    pub use crate::backend::metal::{
+        generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
+        MetalWideFibonacciTraceRequest,
+    };
 }
 
 #[cfg(feature = "prover")]
@@ -116,8 +120,10 @@ pub use quotient::{
 };
 #[cfg(feature = "prover")]
 pub use witness::{
-    generate_poseidon_interaction_traces, generate_poseidon_traces, generate_wide_fibonacci_trace,
-    PoseidonInteractionTraceRequest, PoseidonTraceRequest, WideFibonacciTraceRequest,
+    generate_metal_wide_fibonacci_trace, generate_poseidon_interaction_traces,
+    generate_poseidon_traces, generate_wide_fibonacci_trace, MetalWideFibonacciTrace,
+    MetalWideFibonacciTraceError, MetalWideFibonacciTraceRequest, PoseidonInteractionTraceRequest,
+    PoseidonTraceRequest, WideFibonacciTraceRequest,
 };
 #[cfg(feature = "prover")]
 pub use workload::{

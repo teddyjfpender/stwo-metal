@@ -93,6 +93,10 @@ Current completed T5 supporting slices are:
 - executable CPU-owned quotient evaluation handoff into the declared hybrid
   workload boundary
 - declared `wide_fibonacci` benchmark target for the log-size-20 proving row
+- bounded native `.metal` wide-fibonacci trace generation with deterministic
+  CPU-recurrence parity
+- standalone `wide_fibonacci_trace` benchmark retargeted to the native Metal
+  trace path
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
@@ -104,4 +108,5 @@ The first declared T5 proving sub-path candidate is:
 The next required T5 boundary is:
 
 - one earlier witness-owned workload handoff for `fibonacci_example` before
-  the current CPU quotient evaluation boundary
+  the current CPU quotient evaluation boundary, followed by the
+  `wide_fibonacci_prove` trace-generation seam

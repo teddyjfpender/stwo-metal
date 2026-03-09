@@ -1099,8 +1099,52 @@ Impact:
 - the benchmark-facing objective is now explicit in code and docs
 - workload planning can prioritize the wide-fibonacci witness and prove path
   intentionally
-- the remaining benchmark gap is explicit: the witness/trace stage is still
+- the remaining benchmark gap is explicit: the prove benchmark still remains
   outside the native Metal lane
+
+Superseded by:
+
+- none
+
+### DEC-0028: Wide-fibonacci trace generation enters the Metal lane through a native `.metal` kernel and retargeted trace fixture
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The bounded wide-fibonacci witness and trace-generation boundary now enters the
+Metal lane through a native `.metal` kernel that writes a contiguous
+column-major trace buffer. The standalone `wide_fibonacci_trace` benchmark
+fixture is retargeted to that Metal path and now reports `STWO_METAL_MODE`
+explicitly in its runner metadata.
+
+Context:
+
+The declared benchmark north star was still entering through the inherited CUDA
+witness and trace-generation path, which made the trace benchmark misleading as
+an indicator of Metal bring-up progress. The narrowest truthful cut was to move
+trace generation first, keep the output layout explicit, and validate the
+native result against a deterministic CPU recurrence.
+
+Alternatives rejected:
+
+- leave the trace benchmark on the CUDA path until the full prove benchmark is
+  native
+- emulate the old per-column CUDA pointer shape instead of declaring one
+  contiguous Metal trace layout
+- claim a full Metal prove benchmark before the earlier proving seams are
+  actually replaced
+
+Impact:
+
+- the bounded Metal surface now includes native wide-fibonacci trace generation
+- the standalone trace benchmark measures a real Metal `.metal` trace path
+- the remaining benchmark and workload gap narrows to the earlier prove-path
+  seams, starting with `wide_fibonacci_prove`
 
 Superseded by:
 
