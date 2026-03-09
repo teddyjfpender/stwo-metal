@@ -12,6 +12,7 @@ pub enum MetalBackendSurface {
     SecureFieldColumnBitReverse,
     FriFirstLayerFoldCircleIntoLine,
     FriLineFold,
+    FriFirstInnerLayerCommitmentCpuBridge,
     QuotientAccumulate,
 }
 
@@ -19,6 +20,7 @@ pub enum MetalBackendSurface {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalBackendSurfaceStatus {
     Supported,
+    SupportedExplicitCpuBridge,
     UnsupportedPlanned,
 }
 
@@ -34,6 +36,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::SecureFieldColumnBitReverse,
     MetalBackendSurface::FriFirstLayerFoldCircleIntoLine,
     MetalBackendSurface::FriLineFold,
+    MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge,
     MetalBackendSurface::QuotientAccumulate,
 ];
 
@@ -50,6 +53,9 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::SecureFieldColumnBitReverse
         | MetalBackendSurface::FriFirstLayerFoldCircleIntoLine
         | MetalBackendSurface::FriLineFold => MetalBackendSurfaceStatus::Supported,
+        MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
+            MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+        }
         MetalBackendSurface::QuotientAccumulate => MetalBackendSurfaceStatus::UnsupportedPlanned,
     }
 }
@@ -80,6 +86,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::FriLineFold => {
             "The bounded FRI line-fold path is implemented through native Metal kernels with host-orchestrated repeated folding."
+        }
+        MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
+            "The first inner FRI-layer line-evaluation and commitment handoff is available only through an explicit CPU bridge."
         }
         MetalBackendSurface::QuotientAccumulate => {
             "Constraint quotient accumulation remains in the planned Metal migration set."

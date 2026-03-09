@@ -70,6 +70,8 @@ Current completed T5 supporting slices are:
   first line layer
 - native Metal FRI line fold with repeated host-orchestrated fold steps and
   deterministic vendored CPU parity
+- explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
+  and first inner-layer Merkle commitment parity
 
 The first declared T5 proving sub-path candidate is:
 
@@ -78,4 +80,4 @@ The first declared T5 proving sub-path candidate is:
 
 The next required T5 boundary is:
 
-- explicit line-evaluation handoff for the first inner FRI-layer commitment
+- native replacement for the first inner-layer CPU commitment bridge

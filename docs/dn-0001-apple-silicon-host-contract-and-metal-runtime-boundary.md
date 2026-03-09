@@ -46,10 +46,12 @@ Implemented against this note:
 - bounded FRI first-layer `fold_circle_into_line` from secure circle
   evaluation into the first line layer
 - bounded FRI `fold_line` through repeated host-orchestrated Metal fold steps
+- explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
+  and the first inner-layer Merkle commitment
 
 Still outside the implemented surface:
 
-- explicit line-evaluation handoff into the first inner FRI-layer commitment
+- native replacement for the first inner-layer CPU commitment bridge
 - interpolation, evaluation, and trace-support primitives beyond the bounded
   FRI arithmetic surface
 - any truthful end-to-end proving claim

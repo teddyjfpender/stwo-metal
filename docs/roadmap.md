@@ -206,8 +206,10 @@ Current next slices inside T5:
   deterministic vendored CPU parity
 - the bounded `fold_line` primitive now exists with deterministic vendored CPU
   parity for repeated host-orchestrated folds
-- the next T5 work is to freeze and land the explicit line-evaluation handoff
-  needed for the first inner FRI-layer commitment
+- the first inner FRI-layer line-evaluation and Merkle commitment handoff now
+  exists through an explicit CPU bridge with deterministic vendored CPU parity
+- the next T5 work is to replace that explicit CPU bridge with a native Metal
+  proving-facing boundary
 
 ### T6: Restore one truthful end-to-end supported workload
 
@@ -229,8 +231,9 @@ Required outputs:
 
 ## Current next three planning deliverables
 
-1. Freeze and land the explicit line-evaluation handoff for the first inner
-   FRI-layer commitment.
-2. Decide whether the first bounded proving row uses an explicit CPU Merkle
-   commitment bridge or a new native Metal commitment boundary.
+1. Freeze and land the native replacement for the first inner-layer CPU
+   commitment bridge.
+2. Decide whether T5 can exit with the explicit CPU commitment bridge still in
+   place or requires native Metal commitment before any bounded proving row is
+   called truthful.
 3. Keep the unsupported matrix explicit while the candidate path grows.

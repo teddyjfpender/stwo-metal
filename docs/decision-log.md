@@ -474,3 +474,41 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0013: The first inner FRI-layer commitment handoff is implemented only as an explicit CPU bridge
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The current proving-facing boundary after bounded Metal FRI arithmetic is an
+explicit CPU bridge:
+
+- Metal line values are materialized into `LineEvaluation<CpuBackend>`
+- the first inner-layer Merkle commitment is computed on that CPU view
+
+Context:
+
+The bounded Metal lane now covers the arithmetic required to reach the first
+inner FRI layer, but it does not yet own a native `SecureColumnByCoords` or
+Merkle commitment surface. The project still needs a truthful handoff so work
+can keep moving without silently claiming native commitment support.
+
+Alternatives rejected:
+
+- hide the CPU readback and commitment path behind generic conversions
+- claim the first inner-layer commitment is already native Metal
+
+Impact:
+
+- the first inner-layer commitment boundary is now explicit, testable, and
+  support-honest
+- the next T5 boundary is the native replacement for this CPU bridge
+
+Superseded by:
+
+- none

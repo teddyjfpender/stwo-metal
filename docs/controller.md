@@ -42,19 +42,20 @@ Invariants:
 ## Current blockers
 
 - internal Rust vocabulary is still CUDA-first in many places
-- the bounded T5 arithmetic surface is ahead of the proving-facing type and
-  commitment surface
-- no explicit `LineEvaluation` or inner-layer commitment handoff exists on the
-  Metal lane yet
+- the first inner FRI-layer commitment now exists only through an explicit CPU
+  bridge
+- no native `SecureColumnByCoords<MetalBackend>` or native inner-layer Merkle
+  commitment boundary exists yet
 - interpolation, evaluation, and trace-generation primitives are still outside
   the Metal lane
 
 ## Next three deliverables
 
-1. Freeze and land the explicit line-evaluation handoff boundary needed to feed
-   the first inner FRI-layer commitment.
-2. Decide whether the first bounded proving row permits an explicit CPU Merkle
-   commitment bridge or requires a native Metal commitment boundary next.
+1. Freeze and land the native replacement for the first inner-layer CPU
+   commitment bridge.
+2. Decide whether T5 can exit with the explicit CPU commitment bridge still in
+   place or requires native Metal commitment before any bounded proving row is
+   called truthful.
 3. Keep the unsupported matrix and CPU-oracle parity coverage explicit as the
    path grows.
 

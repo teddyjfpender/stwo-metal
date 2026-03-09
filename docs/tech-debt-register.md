@@ -192,3 +192,36 @@ CPU-oracle parity guarantees.
 Target retirement point:
 
 - `T5`
+
+### TD-0006: The first inner FRI-layer commitment still leaves Metal through an explicit CPU bridge
+
+- Status: `active`
+- Category: `proving-facing bridge`
+- Introduced: `2026-03-09`
+- Owner area: `T5 bounded FRI bring-up`
+
+Why it exists now:
+
+The bounded Metal lane can now fold into the first line layer, but it does not
+yet own a native `SecureColumnByCoords<MetalBackend>` or native inner-layer
+Merkle commitment surface. The current boundary therefore materializes the line
+evaluation on CPU and commits there explicitly.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/handoff.rs`
+
+Risk if left in place:
+
+The T5 candidate path remains support-honest, but the proving surface still
+exits Metal before commitment, which limits both performance and how far the
+backend can truthfully claim native proving support.
+
+Exit condition:
+
+The first inner-layer commitment no longer depends on CPU materialization and
+has an approved native Metal proving-facing boundary with deterministic parity.
+
+Target retirement point:
+
+- `T5`

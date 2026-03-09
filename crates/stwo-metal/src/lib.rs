@@ -88,9 +88,10 @@ pub use witness::{
 pub use crate::backend::cuda::{BaseFieldVec, CudaBackend, SecureFieldVec};
 #[cfg(feature = "prover")]
 pub use crate::backend::metal::{
-    fold_circle_into_line_first_layer, fold_line, metal_backend_surface_detail,
+    commit_line_evaluation_via_cpu_bridge, fold_circle_into_line_first_layer, fold_line,
+    materialize_line_evaluation_via_cpu_bridge, metal_backend_surface_detail,
     metal_backend_surface_status, metal_runtime_error, metal_runtime_support,
-    permute_coset_to_circle_domain_bit_reversed, MetalBackend, MetalBackendSurface,
-    MetalBackendSurfaceStatus, MetalBaseFieldVec, MetalRuntimeSupport, MetalSecureFieldVec,
-    STWO_METAL_BACKEND_SURFACES_V1,
+    permute_coset_to_circle_domain_bit_reversed, CpuLineCommitmentBridge, MetalBackend,
+    MetalBackendSurface, MetalBackendSurfaceStatus, MetalBaseFieldVec, MetalRuntimeSupport,
+    MetalSecureFieldVec, STWO_METAL_BACKEND_SURFACES_V1,
 };
