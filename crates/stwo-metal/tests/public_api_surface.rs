@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
-use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
+use stwo::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleHasher};
+use stwo::prover::backend::{Backend, BackendForChannel};
 use stwo_metal::{
     accumulate_wide_fibonacci_quotients, cuda_backend_surface_status,
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
@@ -22,6 +23,11 @@ use stwo_metal::{
 
 #[test]
 fn companion_surface_exports_backend_core_types() {
+    fn assert_backend<B: Backend>() {}
+    fn assert_backend_for_channel<B: BackendForChannel<Blake2sM31MerkleChannel>>() {}
+
+    assert_backend::<MetalBackend>();
+    assert_backend_for_channel::<MetalBackend>();
     let _ = std::mem::size_of::<CudaBackend>();
     let _ = std::mem::size_of::<BaseFieldVec>();
     let _ = std::mem::size_of::<MetalBackend>();

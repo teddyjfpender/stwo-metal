@@ -5,6 +5,9 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 use stwo_metal_sys::metal::{MetalError, U32Buffer};
 
+use super::MetalBackend;
+use crate::stwo_metal::base_field_vec::BaseFieldVec;
+
 #[derive(Clone, Copy, Debug)]
 pub struct MetalWideFibonacciTraceRequest<'a> {
     pub input_a: &'a [BaseField],
@@ -130,6 +133,22 @@ impl MetalWideFibonacciTrace {
                 CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(
                     domain,
                     self.column_values(column_index),
+                )
+            })
+            .collect()
+    }
+
+    /// Materializes the native Metal trace as ordinary Metal-backed circle evaluations.
+    pub fn to_metal_evaluations(
+        &self,
+    ) -> Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>> {
+        let domain = CanonicCoset::new(self.input_len.ilog2()).circle_domain();
+
+        (0..self.n_columns as usize)
+            .map(|column_index| {
+                CircleEvaluation::<MetalBackend, BaseField, BitReversedOrder>::new(
+                    domain,
+                    BaseFieldVec::from_vec(self.column_values(column_index)),
                 )
             })
             .collect()

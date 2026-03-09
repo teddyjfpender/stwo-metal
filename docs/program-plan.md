@@ -154,15 +154,24 @@ The first completed T7 supporting slices are:
   keeps `decompose` on the vendored CPU backend
 - deterministic parity tests now lock the `FriOps` trait surface itself, not
   just the earlier bounded free-function FRI helpers
+- lookup bridge tranche landed:
+  `MetalBackend` now implements `MleOps` and `GkrOps` through explicit CPU
+  bridges over Metal-owned multilinear and lookup-layer storage
+- `MetalBackend` now explicitly implements the Stwo `Backend` trait
+- Blake2s channel tranche landed:
+  `MetalBackend` now implements the Blake2s `BackendForChannel` surface through
+  explicit CPU-bridge `ColumnOps<Blake2sHash>`, lifted Merkle, and proof-of-work
+  boundaries
+- compile assertions and parity tests now cover both `Backend` and Blake2s
+  `BackendForChannel` support
 
 The next required T7 boundary is:
 
-- land the next direct backend-completion slice at the lookup boundary,
-  starting with `MleOps` and `GkrOps`, because `MetalBackend` now reaches
-  `FriOps` but still cannot satisfy the Stwo `Backend` trait without the GKR
-  layer
-- keep the next trait-sequenced gap explicit after the lookup tranche,
-  starting with the `BackendForChannel` surfaces
-- use the reusable acceptance harness for the next vendored upstream example
-  only after those shared backend slices materially reduce the remaining prove
-  bridge
+- land the next acceptance-facing slice at the component-prover boundary for
+  framework-backed upstream examples, because `MetalBackend` now satisfies
+  `Backend` and the Blake2s `BackendForChannel` surface
+- keep the next blocker explicit:
+  vendored upstream `FrameworkComponent` still only implements
+  `ComponentProver` for `CpuBackend` and `SimdBackend`
+- use the reusable acceptance harness to retire the explicit CPU prove bridge
+  for `wide_fibonacci` before onboarding the next upstream example row

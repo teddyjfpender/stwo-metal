@@ -9,7 +9,9 @@ use stwo_metal::{
     declare_exemplar_metal_workload_boundary, metal_runtime_support, MetalExecutionIntent,
     MetalRuntimeSupport,
 };
-use stwo_metal_upstream_example_acceptance::prove_and_verify_single_trace_component_via_cpu_blake2s;
+use stwo_metal_upstream_example_acceptance::{
+    prove_and_verify_single_trace_component_via_cpu_blake2s,
+};
 
 const WIDE_FIBONACCI_COLUMNS: usize = 100;
 

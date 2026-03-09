@@ -96,6 +96,12 @@ Implemented against this note:
   that repacks Metal-owned secure columns into the bounded Metal fold kernels
   and keeps `decompose` on the vendored CPU backend
 - deterministic parity tests for the `FriOps` trait surface
+- explicit `MleOps` and `GkrOps` implementations for `MetalBackend` through
+  named CPU bridges over Metal-owned multilinear and lookup-layer storage
+- explicit Blake2s `BackendForChannel` support for `MetalBackend` through named
+  CPU-bridge hash-column, lifted-Merkle, and proof-of-work surfaces
+- compile assertions proving `MetalBackend` now satisfies the Stwo `Backend`
+  trait and the Blake2s `BackendForChannel` surface
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
@@ -103,9 +109,8 @@ Still outside the implemented surface:
 
 - direct `MetalBackend` substitution for the first unchanged vendored upstream
   example prove/verify path
-- `GkrOps` for `MetalBackend`
-- `BackendForChannel` support, including lifted Merkle and proof-of-work
-  surfaces
+- a truthful `ComponentProver<MetalBackend>` path for vendored
+  framework-backed upstream examples
 - one earlier workload handoff from a witness-owned artifact into the
   executable hybrid workload boundary beyond quotient accumulation
 - the remaining `wide_fibonacci_prove` Metal-to-CUDA bridge after native

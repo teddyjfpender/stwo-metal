@@ -11,6 +11,12 @@ pub enum MetalBackendSurface {
     AccumulationOpsCpuBridge,
     QuotientOpsCpuBridge,
     FriOpsCpuBridge,
+    MleOpsCpuBridge,
+    GkrOpsCpuBridge,
+    Blake2sHashColumnCpuBridge,
+    Blake2sMerkleOpsLiftedCpuBridge,
+    Blake2sGrindCpuBridge,
+    Blake2sBackendForChannelCpuBridge,
     BaseFieldColumnSet,
     BaseFieldColumnFromIterator,
     BaseFieldColumnBitReverse,
@@ -58,6 +64,12 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::AccumulationOpsCpuBridge,
     MetalBackendSurface::QuotientOpsCpuBridge,
     MetalBackendSurface::FriOpsCpuBridge,
+    MetalBackendSurface::MleOpsCpuBridge,
+    MetalBackendSurface::GkrOpsCpuBridge,
+    MetalBackendSurface::Blake2sHashColumnCpuBridge,
+    MetalBackendSurface::Blake2sMerkleOpsLiftedCpuBridge,
+    MetalBackendSurface::Blake2sGrindCpuBridge,
+    MetalBackendSurface::Blake2sBackendForChannelCpuBridge,
     MetalBackendSurface::BaseFieldColumnSet,
     MetalBackendSurface::BaseFieldColumnFromIterator,
     MetalBackendSurface::BaseFieldColumnBitReverse,
@@ -126,7 +138,13 @@ pub const fn metal_backend_surface_status(
         }
         MetalBackendSurface::AccumulationOpsCpuBridge
         | MetalBackendSurface::QuotientOpsCpuBridge
-        | MetalBackendSurface::FriOpsCpuBridge => {
+        | MetalBackendSurface::FriOpsCpuBridge
+        | MetalBackendSurface::MleOpsCpuBridge
+        | MetalBackendSurface::GkrOpsCpuBridge
+        | MetalBackendSurface::Blake2sHashColumnCpuBridge
+        | MetalBackendSurface::Blake2sMerkleOpsLiftedCpuBridge
+        | MetalBackendSurface::Blake2sGrindCpuBridge
+        | MetalBackendSurface::Blake2sBackendForChannelCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
         MetalBackendSurface::QuotientAccumulate => MetalBackendSurfaceStatus::UnsupportedPlanned,
@@ -158,6 +176,24 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::FriOpsCpuBridge => {
             "The `FriOps` boundary is supported through an explicit CPU bridge that repacks Metal-owned secure columns into the bounded Metal fold kernels and uses the vendored CPU backend for decomposition."
+        }
+        MetalBackendSurface::MleOpsCpuBridge => {
+            "The `MleOps` boundary is supported through an explicit CPU bridge over Metal-owned multilinear-evaluation storage."
+        }
+        MetalBackendSurface::GkrOpsCpuBridge => {
+            "The `GkrOps` boundary is supported through an explicit CPU bridge over Metal-owned lookup-layer storage and CPU-owned oracle evaluation."
+        }
+        MetalBackendSurface::Blake2sHashColumnCpuBridge => {
+            "The `ColumnOps<Blake2sHash>` boundary is supported through an explicit CPU bridge over host-owned Blake2s hash columns."
+        }
+        MetalBackendSurface::Blake2sMerkleOpsLiftedCpuBridge => {
+            "The lifted Blake2s Merkle boundary is supported through an explicit CPU bridge over Metal-owned base-field columns."
+        }
+        MetalBackendSurface::Blake2sGrindCpuBridge => {
+            "The Blake2s proof-of-work boundary is supported through an explicit CPU bridge."
+        }
+        MetalBackendSurface::Blake2sBackendForChannelCpuBridge => {
+            "The Blake2s `BackendForChannel` boundary is supported through an explicit CPU bridge over Merkle and proof-of-work surfaces."
         }
         MetalBackendSurface::BaseFieldColumnSet => "Base-field Metal column mutation is supported.",
         MetalBackendSurface::BaseFieldColumnFromIterator => {

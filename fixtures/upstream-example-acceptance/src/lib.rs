@@ -8,7 +8,7 @@ use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sM31MerkleHasher};
 use stwo::core::verifier::{verify, VerificationError};
-use stwo::prover::backend::CpuBackend;
+use stwo::prover::backend::{BackendForChannel, CpuBackend};
 use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver, ProvingError};
@@ -29,6 +29,23 @@ impl core::fmt::Display for SingleTraceCpuBridgeError {
 }
 
 impl std::error::Error for SingleTraceCpuBridgeError {}
+
+#[derive(Debug)]
+pub enum SingleTraceBackendError {
+    Prove(ProvingError),
+    Verify(VerificationError),
+}
+
+impl core::fmt::Display for SingleTraceBackendError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Prove(error) => write!(f, "backend prove step failed: {error}"),
+            Self::Verify(error) => write!(f, "backend verify step failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for SingleTraceBackendError {}
 
 /// Proves and verifies one single-trace upstream component through the stock
 /// Blake2s CPU path.
@@ -94,6 +111,50 @@ where
     commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
     verify(&[component], verifier_channel, commitment_scheme, proof.clone())
         .map_err(SingleTraceCpuBridgeError::Verify)?;
+
+    Ok(proof)
+}
+
+/// Proves and verifies one single-trace upstream component through the provided
+/// backend and the stock Blake2s verifier path.
+pub fn prove_and_verify_single_trace_component_via_backend_blake2s<B, C>(
+    trace: Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    component: &C,
+    max_trace_log_size: u32,
+) -> Result<StarkProof<Blake2sM31MerkleHasher>, SingleTraceBackendError>
+where
+    B: BackendForChannel<Blake2sM31MerkleChannel>,
+    C: ComponentProver<B> + Component,
+{
+    let config = PcsConfig::default();
+    let twiddles = B::precompute_twiddles(
+        CanonicCoset::new(max_trace_log_size + 1 + config.fri_config.log_blowup_factor)
+            .circle_domain()
+            .half_coset,
+    );
+
+    let prover_channel = &mut Blake2sM31Channel::default();
+    let mut commitment_scheme =
+        CommitmentSchemeProver::<B, Blake2sM31MerkleChannel>::new(config, &twiddles);
+
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(vec![]);
+    tree_builder.commit(prover_channel);
+
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(trace);
+    tree_builder.commit(prover_channel);
+
+    let proof = prove::<B, Blake2sM31MerkleChannel>(&[component], prover_channel, commitment_scheme)
+        .map_err(SingleTraceBackendError::Prove)?;
+
+    let verifier_channel = &mut Blake2sM31Channel::default();
+    let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
+    let sizes = component.trace_log_degree_bounds();
+    commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+    commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
+    verify(&[component], verifier_channel, commitment_scheme, proof.clone())
+        .map_err(SingleTraceBackendError::Verify)?;
 
     Ok(proof)
 }

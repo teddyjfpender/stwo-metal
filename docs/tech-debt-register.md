@@ -514,10 +514,12 @@ verifies through a real acceptance fixture, but the proving path still crosses
 an explicit CPU bridge after native Metal trace generation. `MetalBackend` now
 implements `PolyOps`, `AccumulationOps`, and `QuotientOps` through explicit CPU
 bridges, and it now implements `FriOps` through an explicit bridge-backed FRI
-trait slice. Direct backend substitution still lacks `GkrOps` and the
-`BackendForChannel` surfaces. The current bridge therefore remains broader than
-the eventual supported boundary even though most of the generic backend gap is
-now retired.
+trait slice. It now also implements `MleOps`, `GkrOps`, the generic Stwo
+`Backend` trait, and the Blake2s `BackendForChannel` surface. The remaining
+bridge exists because the vendored upstream `FrameworkComponent` still only
+implements `ComponentProver` for `CpuBackend` and `SimdBackend`, so unchanged
+framework-backed examples cannot yet enter the stock proving path through
+`MetalBackend`.
 
 Current containment:
 
@@ -526,6 +528,8 @@ Current containment:
 - `crates/stwo-metal/src/backend/metal/accumulation.rs`
 - `crates/stwo-metal/src/backend/metal/quotient.rs`
 - `crates/stwo-metal/src/backend/metal/fri.rs`
+- `crates/stwo-metal/src/backend/metal/lookups.rs`
+- `crates/stwo-metal/src/backend/metal/blake2s.rs`
 - `fixtures/upstream-example-acceptance/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
 
@@ -540,8 +544,46 @@ Exit condition:
 
 At least one accepted upstream example proves and verifies through a direct
 `MetalBackend` path, with no explicit CPU prover bridge required after native
-Metal trace generation and with the remaining shared backend traits satisfied
-directly enough to make backend substitution truthful.
+Metal trace generation and with the remaining upstream component-prover seam
+resolved cleanly enough to make backend substitution truthful.
+
+Target retirement point:
+
+- `T7`
+
+### TD-0016: Vendored framework-backed components still lack a truthful `ComponentProver<MetalBackend>` path
+
+- Status: `active`
+- Category: `upstream integration gap`
+- Introduced: `2026-03-09`
+- Owner area: `T7 example proving`
+
+Why it exists now:
+
+The vendored upstream framework component layer currently implements
+`ComponentProver` only for `CpuBackend` and `SimdBackend`. `MetalBackend` now
+implements the generic backend and Blake2s channel contracts, but unchanged
+framework-backed examples still cannot call the stock `prove` entrypoint with
+`MetalBackend` because the component-prover seam remains upstream-owned.
+
+Current containment:
+
+- `vendor/stwo-upstream-dev-62b228e/crates/constraint-framework/src/prover/component_prover.rs`
+- `fixtures/upstream-example-acceptance/src/lib.rs`
+- `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
+
+Risk if left in place:
+
+The project could keep widening backend infrastructure while the first direct
+example-backed proof still depends on an outer CPU bridge. That would blur the
+real completion blocker and overstate how close the acceptance milestone is to
+closure.
+
+Exit condition:
+
+One truthful `ComponentProver<MetalBackend>` path exists for framework-backed
+upstream examples, either by an approved vendored upstream refactor or by a
+clean local adapter boundary that does not fork workload semantics.
 
 Target retirement point:
 

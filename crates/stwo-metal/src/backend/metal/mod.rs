@@ -1,6 +1,7 @@
 mod accumulation;
 mod backend;
 mod benchmark;
+mod blake2s;
 mod capability;
 mod column;
 mod commitment_slice;
@@ -8,6 +9,7 @@ mod first_layer;
 mod fri;
 mod handoff;
 mod line;
+mod lookups;
 mod planner;
 mod planner_manifest_v1_generated;
 mod poly;

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use stwo::prover::backend::Backend;
 
 /// Marker type for the staged native-Metal port.
 ///
@@ -7,3 +8,5 @@ use serde::{Deserialize, Serialize};
 /// migrated and validated in this crate.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct MetalBackend;
+
+impl Backend for MetalBackend {}

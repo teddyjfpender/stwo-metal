@@ -376,10 +376,18 @@ Current next slice inside T7:
   `MetalBackend` implements `FriOps` through an explicit CPU bridge that
   repacks Metal-owned secure columns into the bounded Metal fold kernels and
   keeps `decompose` on the vendored CPU backend
+- the lookup bridge tranche is now landed:
+  `MetalBackend` implements `MleOps` and `GkrOps` through explicit CPU bridges
+  over Metal-owned multilinear and lookup-layer storage
+- the Blake2s channel bridge tranche is now landed:
+  `MetalBackend` implements the Blake2s `BackendForChannel` surface through
+  explicit CPU-bridge Merkle and proof-of-work boundaries
 - those slices are accepted because they shrink the generic backend gap
   without pretending the remaining prover traits are native Metal yet
-- the next honest shared trait gap is `GkrOps`, followed by the
-  `BackendForChannel` surfaces
+- `MetalBackend` now satisfies the generic Stwo `Backend` trait and the
+  Blake2s `BackendForChannel` surface
+- the next honest blocker is no longer a backend trait gap; it is the upstream
+  component-prover layer for framework-backed examples
 - only after those bridge-retirement slices meaningfully widen shared proving
   support should the next vendored upstream example be added through the
   reusable acceptance harness
@@ -398,9 +406,7 @@ Current next slice inside T7:
 
 1. Freeze the project definition around generic backend completion and
    unchanged upstream example proving.
-2. Advance `T7` from the first bridge-backed prove/verify boundary into the
-   next shared backend slice that retires the remaining explicit CPU prove
-   bridge trait by trait.
-3. Add more vendored upstream examples only when the reusable acceptance
-   harness can exercise newly shared backend support instead of another
-   one-off bridge.
+2. Define the smallest honest `ComponentProver<MetalBackend>` path for
+   framework-backed vendored upstream examples.
+3. Retire the first explicit CPU prove bridge for `wide_fibonacci` before
+   onboarding more vendored upstream example rows.

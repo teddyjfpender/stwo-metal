@@ -29,12 +29,12 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T7 fifth implementation slice: retire the remaining backend trait gaps after FriOps`
+- Active tranche: `T7 sixth implementation slice: expose the component-prover blocker after backend completion`
 - Objective:
-  close the remaining shared backend trait gaps after `FriOps` so the current
-  explicit CPU prove bridge shrinks from a generic backend gap into the
-  smaller set of lookup and channel-backed requirements that still block direct
-  `MetalBackend` substitution
+  move the remaining explicit CPU prove bridge from backend and channel
+  infrastructure into one named upstream component-prover blocker so the next
+  tranche can target the real acceptance seam instead of more backend
+  speculation
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - Current owner area:
@@ -44,18 +44,18 @@ Invariants:
 
 - the project goal had drifted toward benchmark-specific proving rows instead
   of a generic Stwo proving backend
-- `MetalBackend` now implements `ColumnOps`, `PolyOps`, `AccumulationOps`,
-  `QuotientOps`, and `FriOps`, but the backend contract still remains open at
-  the lookup layer because `GkrOps` is not implemented yet
+- `MetalBackend` now implements the full Stwo `Backend` trait
+- `MetalBackend` now implements the Blake2s `BackendForChannel` surface through
+  explicit CPU-bridge Merkle and proof-of-work boundaries
 - internal Rust vocabulary is still CUDA-first in many places
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
 - only the first upstream example prove/verify slice exists so far:
   `wide_fibonacci` now proves and verifies through an acceptance fixture, but
-  the proving path still crosses an explicit CPU bridge because direct
-  `MetalBackend` substitution still lacks `GkrOps` and `BackendForChannel`
-  support
+  the proving path still crosses an explicit CPU bridge because the vendored
+  upstream `FrameworkComponent` only implements `ComponentProver` for
+  `CpuBackend` and `SimdBackend`
 - the example-backed acceptance harness is now reusable for single-trace
   Blake2s-backed CPU bridge flows, but only `wide_fibonacci` uses it so far
 - the declared `wide_fibonacci` benchmark target remains useful for
@@ -63,17 +63,17 @@ Invariants:
   driving milestone sequencing
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
-- the remaining shared trait gap after the new bridge tranche starts at
-  `GkrOps`, not another workload-specific acceptance harness
+- the remaining acceptance blocker is no longer a generic backend trait gap;
+  it is the component-prover layer for framework-backed upstream examples
 
 ## Next three deliverables
 
-1. Land the next shared backend-completion slice at the lookup boundary,
-   starting with `MleOps` and `GkrOps` for `MetalBackend`.
-2. Follow the lookup tranche with the next honest channel-backed gap rather
-   than adding another example row too early.
-3. Add the next upstream example through the reusable acceptance harness only
-   after a shared backend slice meaningfully widens direct proving support.
+1. Define the smallest honest `ComponentProver<MetalBackend>` path for
+   framework-backed upstream examples without forking workload logic.
+2. Decide whether that component-prover slice belongs in an upstream-facing
+   vendored refactor or a local adapter boundary.
+3. Use that component-prover slice to retire the explicit CPU prove bridge for
+   the first unchanged upstream example before adding more example rows.
 
 ## Explicitly not doing now
 

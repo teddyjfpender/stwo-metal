@@ -28,6 +28,92 @@ Superseded by:
 
 ## Entries
 
+### DEC-0039: Blake2s `BackendForChannel` support is accepted through explicit CPU-bridge Merkle and proof-of-work boundaries
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`MetalBackend` now implements the Blake2s `BackendForChannel` surface through
+explicit CPU-bridge `ColumnOps<Blake2sHash>`, lifted Merkle, and proof-of-work
+boundaries. This is accepted because it completes the Blake2s proving channel
+contract without hiding the fact that the current hash and grind surfaces still
+execute on the host side.
+
+Context:
+
+After the lookup tranche, `MetalBackend` satisfied the generic Stwo `Backend`
+trait but still could not enter the standard proving API because
+`BackendForChannel` remained open. The acceptance harness uses the Blake2s M31
+channel, so the smallest useful next slice was the Blake2s-specific
+channel-backed surface rather than a broader or speculative hash migration.
+
+Alternatives rejected:
+
+- leave Blake2s channel support unresolved and keep the acceptance bridge
+  blocked at the generic `prove` entrypoint
+- describe the new channel surface as native Metal hashing while the Merkle and
+  grind boundaries are still explicit CPU bridges
+- widen channel support before proving the Blake2s acceptance route matters
+
+Impact:
+
+- `MetalBackend` now satisfies both the generic Stwo `Backend` trait and the
+  Blake2s `BackendForChannel` surface
+- the remaining explicit CPU prove bridge is now blocked by the upstream
+  component-prover layer, not by backend or channel infrastructure
+- `TD-0015` narrows again to the component-prover acceptance gap
+
+Superseded by:
+
+- none
+
+### DEC-0038: Lookup bridges complete the generic `MetalBackend` contract
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`MetalBackend` now implements `MleOps` and `GkrOps` through explicit CPU
+bridges over Metal-owned multilinear and lookup-layer storage, and it now
+declares `impl Backend for MetalBackend {}`. This tranche is accepted because
+it closes the remaining generic backend trait gap without changing prover
+semantics.
+
+Context:
+
+After `FriOps` landed, the remaining missing generic backend trait was the
+lookup layer. The smallest semantics-preserving step was to convert the
+multilinear and GKR surfaces into the vendored CPU backend and back, verify
+them against the CPU oracle, and then make the backend completion explicit
+through a compile-time `Backend` assertion.
+
+Alternatives rejected:
+
+- leave `MetalBackend` trait-complete everywhere except the lookup layer
+- skip the explicit `Backend` implementation even after the required trait
+  slices existed
+- delay the lookup tranche until a native Metal lookup representation exists
+
+Impact:
+
+- `MetalBackend` now satisfies the generic Stwo `Backend` trait
+- the next honest proving blocker moved from generic backend completion to the
+  Blake2s `BackendForChannel` surface
+- acceptance planning can now focus on channel and component-prover seams
+
+Superseded by:
+
+- none
+
 ### DEC-0037: `FriOps` is accepted as a bridge-backed `MetalBackend` slice when the fold kernels are Metal-owned and the remaining repacking and decomposition are explicit
 
 - Date: `2026-03-09`
