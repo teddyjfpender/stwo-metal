@@ -11,6 +11,11 @@ unsafe impl Send for SecureFieldVec {}
 unsafe impl Sync for SecureFieldVec {}
 
 impl SecureFieldVec {
+    pub(crate) fn from_buffer(buffer: U32Buffer) -> Self {
+        let size = buffer.len() / 4;
+        Self { buffer, size }
+    }
+
     pub fn from_vec(host_array: Vec<SecureField>) -> Self {
         let raw: Vec<u32> = host_array
             .into_iter()

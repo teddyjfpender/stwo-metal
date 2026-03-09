@@ -261,10 +261,14 @@ Current next slices inside T5:
 - one explicit CPU-owned wide-fibonacci witness handoff now exists for
   `fibonacci_example`, feeding the native Metal trace boundary before quotient
   accumulation
+- one bounded native `.metal` wide-fibonacci quotient-accumulation primitive
+  now exists with deterministic CPU-oracle parity
+- the `wide_fibonacci_prove` benchmark now uses that native Metal quotient
+  path before an explicit bridge back into the inherited CUDA proving lane
 - the explicit CPU bridge remains available only as a bounded validation and
   comparison surface
 - the next T5 work is to replace the remaining Metal-to-CUDA prove-benchmark
-  bridge by moving the native boundary to quotient accumulation
+  bridge by moving the native boundary to pre-FRI PCS commitment
 
 ### T6: Restore one truthful end-to-end supported workload
 
@@ -287,9 +291,9 @@ Required outputs:
 ## Current next three planning deliverables
 
 1. Replace the remaining `wide_fibonacci_prove` Metal-to-CUDA bridge by moving
-   the native boundary to quotient accumulation.
-2. Keep pre-FRI PCS commitment explicit as a later boundary, not the next
-   replacement target.
+   the native boundary to pre-FRI PCS commitment.
+2. Package the new native quotient path into one declared workload-facing row
+   without widening the claimed support surface beyond deterministic parity.
 3. Keep the `wide_fibonacci` log-size-20 benchmark objective honest while
    deciding whether T5 can exit with host-owned commitment hashing still in
    place or requires a GPU-side hash path before any bounded proving row is

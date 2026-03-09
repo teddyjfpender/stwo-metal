@@ -44,10 +44,9 @@ use stwo::prover::{
 };
 #[cfg(feature = "cuda-runtime")]
 use stwo_metal::{
-    declare_exemplar_metal_workload_boundary,
-    launch_constraint_quotients_on_domain, opaque_eval_ptr, BaseFieldVec, ConstraintQuotientEvalRequest,
-    CudaBackend, MetalExecutionIntent, MetalWideFibonacciTrace, SecureFieldVec,
-    StwoCudaWideFibonacciEvalAbiV1,
+    accumulate_wide_fibonacci_quotients, declare_exemplar_metal_workload_boundary, BaseFieldVec,
+    CudaBackend, MetalExecutionIntent, MetalWideFibonacciQuotientRequest,
+    MetalWideFibonacciTrace,
 };
 use stwo_metal_standalone_benchmarks::support::{
     env_flag, env_or, env_u32, env_usize, epoch_ms, required_env_path, runner_metadata,
@@ -62,8 +61,6 @@ const DEFAULT_LOG_N_INSTANCES: u32 = 20;
 const DEFAULT_N_COLUMNS: u32 = 100;
 const DEFAULT_WARMUPS: usize = 1;
 const DEFAULT_SAMPLES: usize = 5;
-#[cfg(feature = "cuda-runtime")]
-const FIBONACCI_EVAL_ID: u32 = 2_097_401_834;
 #[cfg(feature = "cuda-runtime")]
 const MAIN_TRACE_IDX: usize = 1;
 
@@ -403,7 +400,6 @@ fn main() {
 struct WideFibonacciBenchmarkComponent {
     log_n_rows: u32,
     n_columns: usize,
-    eval_abi: StwoCudaWideFibonacciEvalAbiV1,
 }
 
 #[cfg(feature = "cuda-runtime")]
@@ -413,7 +409,6 @@ impl WideFibonacciBenchmarkComponent {
         Self {
             log_n_rows,
             n_columns,
-            eval_abi: StwoCudaWideFibonacciEvalAbiV1::new(FIBONACCI_EVAL_ID, log_n_rows),
         }
     }
 
@@ -519,7 +514,11 @@ impl ComponentProver<CudaBackend> for WideFibonacciBenchmarkComponent {
             .collect::<Vec<_>>();
         let trace1_evaluations = trace_evaluations
             .iter()
-            .map(|column| column.values.device_ptr)
+            .map(|column| column.values.to_vec())
+            .collect::<Vec<_>>();
+        let trace1_evaluation_refs = trace1_evaluations
+            .iter()
+            .map(|column| column.as_slice())
             .collect::<Vec<_>>();
 
         let log_expand = eval_domain.log_size() - trace_domain.log_size();
@@ -527,28 +526,22 @@ impl ComponentProver<CudaBackend> for WideFibonacciBenchmarkComponent {
             .map(|index| coset_vanishing(trace_domain.coset(), eval_domain.at(index)).inverse())
             .collect::<Vec<_>>();
         stwo::core::utils::bit_reverse(&mut denominator_inverses);
-        let denominator_inverses = BaseFieldVec::from_vec(denominator_inverses);
 
         let [mut accum] =
             evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
         accum.random_coeff_powers.reverse();
-        let random_coeff_powers = SecureFieldVec::from_vec(accum.random_coeff_powers);
-
-        launch_constraint_quotients_on_domain(ConstraintQuotientEvalRequest {
-            quotient_columns: &accum.col.columns,
-            trace0_evaluations: &[],
-            trace1_evaluations: &trace1_evaluations,
-            trace2_evaluations: &[],
-            random_coeff_powers: &random_coeff_powers,
+        let quotients = accumulate_wide_fibonacci_quotients(MetalWideFibonacciQuotientRequest {
+            trace_evaluations: &trace1_evaluation_refs,
+            random_coeff_powers: &accum.random_coeff_powers,
             denominator_inverses: &denominator_inverses,
             domain_log_size: trace_domain.log_size(),
             eval_domain_log_size: eval_domain.log_size(),
-            number_of_columns: self.n_constraints() as u32,
-            logup_counts: 0,
-            eval: opaque_eval_ptr(&self.eval_abi),
-            claimed_sum_shift: SecureField::default(),
-            should_accumulate: true,
-        });
+        })
+        .expect("wide-fibonacci quotient accumulation should succeed through the native Metal path");
+        let quotient_columns = quotients.to_coordinate_columns();
+        for (dst, src) in accum.col.columns.iter_mut().zip(quotient_columns) {
+            *dst = BaseFieldVec::from_vec(src);
+        }
     }
 }
 

@@ -27,6 +27,7 @@ pub enum MetalBackendSurface {
     FriBlake2sSubpathDeclared,
     WorkloadBoundaryHybridDeclared,
     WorkloadWideFibonacciWitnessCpuHandoff,
+    WideFibonacciQuotientAccumulateNative,
     WorkloadFriReadyEvaluationCpuHandoff,
     WorkloadQuotientEvaluationCpuHandoff,
     FriFirstInnerLayerCommitmentCpuBridge,
@@ -68,6 +69,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::FriBlake2sSubpathDeclared,
     MetalBackendSurface::WorkloadBoundaryHybridDeclared,
     MetalBackendSurface::WorkloadWideFibonacciWitnessCpuHandoff,
+    MetalBackendSurface::WideFibonacciQuotientAccumulateNative,
     MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff,
     MetalBackendSurface::WorkloadQuotientEvaluationCpuHandoff,
     MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge,
@@ -102,6 +104,7 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::FriBlake2sSubpathDeclared
         | MetalBackendSurface::WorkloadBoundaryHybridDeclared
         | MetalBackendSurface::WorkloadWideFibonacciWitnessCpuHandoff
+        | MetalBackendSurface::WideFibonacciQuotientAccumulateNative
         | MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff
         | MetalBackendSurface::WorkloadQuotientEvaluationCpuHandoff => {
             MetalBackendSurfaceStatus::Supported
@@ -184,6 +187,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::WorkloadWideFibonacciWitnessCpuHandoff => {
             "A CPU-owned wide-fibonacci witness handoff is supported for feeding the native Metal trace boundary before quotient accumulation."
+        }
+        MetalBackendSurface::WideFibonacciQuotientAccumulateNative => {
+            "A bounded wide-fibonacci quotient accumulation primitive is implemented through a native `.metal` kernel with explicit host/CUDA output bridging in the current benchmark path."
         }
         MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff => {
             "A CPU-owned FRI-ready evaluation handoff is supported for the declared Metal hybrid workload boundary with explicit ownership."

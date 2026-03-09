@@ -39,6 +39,7 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
         MetalBackendSurface::FriBlake2sSubpathDeclared,
         MetalBackendSurface::WorkloadBoundaryHybridDeclared,
         MetalBackendSurface::WorkloadWideFibonacciWitnessCpuHandoff,
+        MetalBackendSurface::WideFibonacciQuotientAccumulateNative,
         MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff,
         MetalBackendSurface::WorkloadQuotientEvaluationCpuHandoff,
     ] {

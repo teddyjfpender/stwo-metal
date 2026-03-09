@@ -63,6 +63,55 @@ Superseded by:
 
 - none
 
+### DEC-0031: Wide-fibonacci quotient accumulation is now native Metal, and the remaining benchmark bridge moves to pre-FRI PCS commitment
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`stwo-metal` now treats bounded wide-fibonacci quotient accumulation as a
+native `.metal` proving primitive with deterministic CPU-oracle parity. The
+remaining `wide_fibonacci_prove` bridge is no longer at trace generation; it is
+now the explicit Metal-to-CUDA quotient-output handoff before pre-FRI PCS
+commitment and the rest of the inherited proving lane.
+
+Context:
+
+The benchmark north-star row was still starting in native Metal and then
+crossing back into CUDA before quotient work. That made quotient accumulation
+the most leverageful next replacement because it removes more of the remaining
+bridge while staying narrow enough to validate directly against the vendored CPU
+algebra. The new primitive is intentionally bounded to the wide-fibonacci row
+and does not yet claim a general quotient backend for every workload.
+
+Alternatives rejected:
+
+- keep quotient accumulation planned-only and move directly to pre-FRI PCS
+  commitment
+- declare generic quotient support before a benchmark-aligned bounded primitive
+  exists
+- hide the remaining output bridge inside the benchmark component without
+  logging that the seam moved
+
+Impact:
+
+- `wide_fibonacci_prove` now enters native Metal for both trace generation and
+  quotient accumulation
+- the next honest benchmark-aligned tranche is pre-FRI PCS commitment, not
+  another quotient placeholder
+- `TD-0012` narrows from a trace bridge to a quotient-output bridge
+- `TD-0011` remains active because the declared workload surface still begins
+  from a CPU-owned quotient evaluation even though one benchmark row no longer
+  does
+
+Superseded by:
+
+- none
+
 ### DEC-0002: Public repository identity moves to `stwo-metal` before backend replacement
 
 - Date: `2026-03-09`

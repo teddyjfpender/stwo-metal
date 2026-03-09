@@ -47,13 +47,13 @@ Invariants:
   `stwo-metal` interpolation boundary
 - one executable CPU-owned quotient evaluation handoff now exists, but the
   executable hybrid workload still starts after quotient accumulation rather
-  than owning a native replacement for that earlier proving seam
+  than owning the new native wide-fibonacci quotient replacement directly
 - the declared `wide_fibonacci` benchmark target is now pinned at
   `log_n_instances = 20`, `n_columns = 100`, with a project-supplied 4090
   reference goal of `90 ms`; the standalone trace benchmark and the prove
-  benchmark trace-generation phase now enter through a native `.metal` path,
-  but the prove benchmark still crosses an explicit Metal-to-CUDA trace bridge
-  before the inherited proving lane
+  benchmark now enter through native `.metal` trace and bounded quotient
+  paths, but the prove benchmark still crosses an explicit Metal-to-CUDA
+  quotient-output bridge before the inherited proving lane
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - interpolation, evaluation, and trace-support primitives beyond the bounded
@@ -61,13 +61,14 @@ Invariants:
 
 ## Next three deliverables
 
-1. Replace the explicit Metal-to-CUDA trace-evaluation bridge inside
-   `wide_fibonacci_prove` by moving the proving boundary to native quotient
-   accumulation.
-2. Define the bounded quotient-accumulation contract that consumes the
-   witness-owned handoff and feeds the existing quotient evaluation seam.
+1. Replace the explicit Metal-to-CUDA quotient-output bridge inside
+   `wide_fibonacci_prove` by moving the proving boundary to pre-FRI PCS
+   commitment.
+2. Define the bounded pre-FRI PCS commitment contract that consumes the native
+   Metal quotient output and feeds the existing proving seam.
 3. Keep the `wide_fibonacci` log-size-20 benchmark objective honest while the
-   quotient and PCS ownership boundary is being replaced tranche by tranche.
+   commitment and proof ownership boundary is being replaced tranche by
+   tranche.
 
 ## Explicitly not doing now
 

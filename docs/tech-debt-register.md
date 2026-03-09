@@ -373,9 +373,10 @@ Why it exists now:
 
 `stwo-metal` now has a declared hybrid workload boundary with explicit witness,
 quotient, PCS, and FRI ownership, plus an explicit CPU-owned
-wide-fibonacci witness handoff feeding the native Metal trace boundary. The
-remaining earlier-stage gap is quotient accumulation: the executable hybrid
-path still begins only once a CPU-owned quotient evaluation already exists.
+wide-fibonacci witness handoff feeding the native Metal trace boundary. A
+bounded native wide-fibonacci quotient primitive now exists for the benchmark
+row, but the declared executable hybrid workload still begins only once a
+CPU-owned quotient evaluation already exists.
 
 Current containment:
 
@@ -386,7 +387,7 @@ Current containment:
 Risk if left in place:
 
 The project could sound more workload-complete than it really is, even though
-the executable hybrid path still begins after quotient accumulation.
+the declared executable hybrid path still begins after quotient accumulation.
 
 Exit condition:
 
@@ -398,7 +399,7 @@ Target retirement point:
 
 - `T5`
 
-### TD-0012: The wide-fibonacci prove benchmark still bridges from native Metal trace generation into the inherited CUDA-era proving lane
+### TD-0012: The wide-fibonacci prove benchmark still bridges native Metal quotient output into the inherited CUDA-era proving lane
 
 - Status: `active`
 - Category: `benchmark execution boundary`
@@ -410,10 +411,10 @@ Why it exists now:
 `stwo-metal` now declares the log-size-20 wide-fibonacci benchmark target with
 an explicit `90 ms` RTX 4090 reference goal, and the standalone
 `wide_fibonacci_trace` benchmark now enters through a native `.metal`
-trace-generation path. The remaining benchmark gap is that
-`wide_fibonacci_prove` now generates its trace through the native Metal path,
-but it still bridges that trace back into the inherited CUDA proving lane for
-interpolation, commitment, quotient, and the rest of the proving flow.
+trace-generation path. `wide_fibonacci_prove` now generates its trace and
+accumulates its quotient through native Metal paths, but it still bridges the
+quotient output back into the inherited CUDA proving lane for pre-FRI PCS
+commitment and the rest of the proving flow.
 
 Current containment:
 
@@ -424,13 +425,13 @@ Risk if left in place:
 
 The project could overstate benchmark progress if the executable prove row
 starts in Metal but still quietly depends on the inherited CUDA proving lane
-after trace generation.
+after quotient accumulation.
 
 Exit condition:
 
 The executable `wide_fibonacci_prove` row no longer needs the Metal-to-CUDA
-trace bridge, and any remaining non-Metal stages are explicitly named rather
-than implicitly inherited from CUDA.
+quotient-output bridge, and any remaining non-Metal stages are explicitly
+named rather than implicitly inherited from CUDA.
 
 Target retirement point:
 

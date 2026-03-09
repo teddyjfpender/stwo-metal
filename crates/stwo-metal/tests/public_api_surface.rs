@@ -2,16 +2,18 @@ use std::collections::HashSet;
 
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
 use stwo_metal::{
-    cuda_backend_surface_status, declare_exemplar_hybrid_fri_workload,
-    declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
-    plan_exemplar_metal_prove_by_name, plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend,
-    CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan,
-    MetalBackend, MetalBaseFieldVec, MetalBenchmarkInputError, MetalBenchmarkTarget,
+    accumulate_wide_fibonacci_quotients, cuda_backend_surface_status,
+    declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
+    declare_wide_fibonacci_benchmark_boundary, plan_exemplar_metal_prove_by_name,
+    plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend, CudaBackendSurface,
+    CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan, MetalBackend,
+    MetalBaseFieldVec, MetalBenchmarkInputError, MetalBenchmarkTarget,
     MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput, MetalExecutionIntent,
     MetalExecutionPlan, MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow,
     MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver,
     MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation,
-    MetalSecureFieldVec, MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciTrace,
+    MetalSecureFieldVec, MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientError,
+    MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients, MetalWideFibonacciTrace,
     MetalWideFibonacciTraceError, MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs,
     MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
@@ -36,6 +38,13 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<MetalWideFibonacciTrace>();
     let _ = std::mem::size_of::<MetalWideFibonacciTraceRequest<'static>>();
     let _ = std::mem::size_of::<MetalWideFibonacciTraceError>();
+    let _ = accumulate_wide_fibonacci_quotients
+        as fn(
+            MetalWideFibonacciQuotientRequest<'_>,
+        ) -> Result<MetalWideFibonacciQuotients, MetalWideFibonacciQuotientError>;
+    let _ = std::mem::size_of::<MetalWideFibonacciQuotientRequest<'static>>();
+    let _ = std::mem::size_of::<MetalWideFibonacciQuotients>();
+    let _ = std::mem::size_of::<MetalWideFibonacciQuotientError>();
     let _ = std::mem::size_of::<MetalWideFibonacciWitnessInputs>();
     let _ = std::mem::size_of::<MetalBenchmarkInputError>();
     let _ = std::mem::size_of::<MetalFriBlake2sSubpath>();

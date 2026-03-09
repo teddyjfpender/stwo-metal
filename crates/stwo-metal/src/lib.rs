@@ -74,6 +74,10 @@ pub mod quotient {
     pub use crate::backend::cuda::{
         launch_constraint_quotients_on_domain, opaque_eval_ptr, ConstraintQuotientEvalRequest,
     };
+    pub use crate::backend::metal::{
+        accumulate_wide_fibonacci_quotients, MetalWideFibonacciQuotientError,
+        MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients,
+    };
 }
 
 #[cfg(feature = "prover")]
@@ -117,7 +121,9 @@ pub use planner::{
 };
 #[cfg(feature = "prover")]
 pub use quotient::{
-    launch_constraint_quotients_on_domain, opaque_eval_ptr, ConstraintQuotientEvalRequest,
+    accumulate_wide_fibonacci_quotients, launch_constraint_quotients_on_domain, opaque_eval_ptr,
+    ConstraintQuotientEvalRequest, MetalWideFibonacciQuotientError,
+    MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients,
 };
 #[cfg(feature = "prover")]
 pub use witness::{

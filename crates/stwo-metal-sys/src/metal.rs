@@ -323,6 +323,58 @@ impl U32Buffer {
         }
         Ok(dst)
     }
+
+    pub fn accumulate_wide_fibonacci_quotients(
+        trace_evaluations: &Self,
+        random_coeff_powers: &Self,
+        denominator_inverses: &Self,
+        domain_log_size: u32,
+        eval_domain_log_size: u32,
+        n_constraints: u32,
+    ) -> Result<Self, MetalError> {
+        assert!(
+            eval_domain_log_size >= domain_log_size,
+            "wide-fibonacci quotient accumulation requires eval_domain_log_size >= domain_log_size"
+        );
+        assert!(
+            n_constraints >= 1,
+            "wide-fibonacci quotient accumulation requires at least one constraint"
+        );
+        let eval_domain_size = 1usize << eval_domain_log_size;
+        let expected_trace_len = eval_domain_size
+            .checked_mul(n_constraints as usize + 2)
+            .expect("wide-fibonacci quotient trace length should fit in usize");
+        assert_eq!(
+            trace_evaluations.len, expected_trace_len,
+            "wide-fibonacci quotient accumulation expects a contiguous column-major trace buffer"
+        );
+        assert_eq!(
+            random_coeff_powers.len,
+            n_constraints as usize * 4,
+            "wide-fibonacci quotient accumulation expects one qm31 coefficient per constraint"
+        );
+        assert_eq!(
+            denominator_inverses.len,
+            1usize << (eval_domain_log_size - domain_log_size),
+            "wide-fibonacci quotient accumulation expects one denominator inverse per evaluation-domain coset"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(eval_domain_size * 4)?;
+        unsafe {
+            ffi::accumulate_wide_fibonacci_quotients_u32x4(
+                runtime.raw.as_ptr(),
+                trace_evaluations.raw.as_ptr(),
+                random_coeff_powers.raw.as_ptr(),
+                denominator_inverses.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                domain_log_size,
+                eval_domain_log_size,
+                n_constraints,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
 }
 
 impl Clone for U32Buffer {
@@ -504,6 +556,18 @@ mod ffi {
             trace: *mut c_void,
             input_log_len: u32,
             n_columns: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_accumulate_wide_fibonacci_quotients_u32x4(
+            runtime: *mut c_void,
+            trace_evaluations: *mut c_void,
+            random_coeff_powers: *mut c_void,
+            denominator_inverses: *mut c_void,
+            dst: *mut c_void,
+            domain_log_size: u32,
+            eval_domain_log_size: u32,
+            n_constraints: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -761,6 +825,36 @@ mod ffi {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
     }
+
+    pub unsafe fn accumulate_wide_fibonacci_quotients_u32x4(
+        runtime: *mut c_void,
+        trace_evaluations: *mut c_void,
+        random_coeff_powers: *mut c_void,
+        denominator_inverses: *mut c_void,
+        dst: *mut c_void,
+        domain_log_size: u32,
+        eval_domain_log_size: u32,
+        n_constraints: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_accumulate_wide_fibonacci_quotients_u32x4(
+            runtime,
+            trace_evaluations,
+            random_coeff_powers,
+            denominator_inverses,
+            dst,
+            domain_log_size,
+            eval_domain_log_size,
+            n_constraints,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
 }
 
 #[cfg(not(stwo_metal_link))]
@@ -913,6 +1007,22 @@ mod ffi {
         _trace: *mut c_void,
         _input_log_len: u32,
         _n_columns: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn accumulate_wide_fibonacci_quotients_u32x4(
+        _runtime: *mut c_void,
+        _trace_evaluations: *mut c_void,
+        _random_coeff_powers: *mut c_void,
+        _denominator_inverses: *mut c_void,
+        _dst: *mut c_void,
+        _domain_log_size: u32,
+        _eval_domain_log_size: u32,
+        _n_constraints: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

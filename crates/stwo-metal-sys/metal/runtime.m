@@ -557,6 +557,79 @@ bool stwo_metal_fri_fold_line_step_u32x4(
     }
 }
 
+bool stwo_metal_accumulate_wide_fibonacci_quotients_u32x4(
+    void *runtime_ptr,
+    void *trace_ptr,
+    void *random_coeff_ptr,
+    void *denominator_ptr,
+    void *dst_ptr,
+    uint32_t domain_log_size,
+    uint32_t eval_domain_log_size,
+    uint32_t n_constraints,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *trace = stwo_metal_buffer_box(trace_ptr);
+        StwoMetalBufferBox *random_coeff = stwo_metal_buffer_box(random_coeff_ptr);
+        StwoMetalBufferBox *denominator = stwo_metal_buffer_box(denominator_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        NSUInteger eval_domain_size = ((NSUInteger)1) << eval_domain_log_size;
+        uint32_t eval_domain_size_u32 = ((uint32_t)1) << eval_domain_log_size;
+        NSUInteger denominator_len = ((NSUInteger)1) << (eval_domain_log_size - domain_log_size);
+        NSUInteger trace_columns = (NSUInteger)n_constraints + 2;
+        if (trace.len != trace_columns * eval_domain_size ||
+            random_coeff.len != ((NSUInteger)n_constraints) * 4 ||
+            denominator.len != denominator_len ||
+            dst.len != eval_domain_size * 4) {
+            stwo_metal_write_error(error_message, error_message_len, @"Wide-fibonacci quotient accumulation expects column-major trace evaluations, one qm31 random coefficient per constraint, one denominator inverse per coset, and a u32x4 destination.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, @"accumulate_wide_fibonacci_quotients_u32x4", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:trace.buffer offset:0 atIndex:0];
+        [encoder setBuffer:random_coeff.buffer offset:0 atIndex:1];
+        [encoder setBuffer:denominator.buffer offset:0 atIndex:2];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:3];
+        [encoder setBytes:&eval_domain_size_u32 length:sizeof(eval_domain_size_u32) atIndex:4];
+        [encoder setBytes:&n_constraints length:sizeof(n_constraints) atIndex:5];
+        [encoder setBytes:&domain_log_size length:sizeof(domain_log_size) atIndex:6];
+
+        MTLSize grid_size = MTLSizeMake(eval_domain_size, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_generate_wide_fibonacci_trace_u32(
     void *runtime_ptr,
     void *input_a_ptr,

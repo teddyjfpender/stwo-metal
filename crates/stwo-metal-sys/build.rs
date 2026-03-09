@@ -4,7 +4,13 @@ use std::{env, fs};
 
 const CUDA_MODE_VAR: &str = "STWO_CUDA_MODE";
 const METAL_MODE_VAR: &str = "STWO_METAL_MODE";
-const METAL_SOURCES: &[&str] = &["bit_reverse", "poly_order", "fri", "wide_fibonacci"];
+const METAL_SOURCES: &[&str] = &[
+    "bit_reverse",
+    "poly_order",
+    "fri",
+    "wide_fibonacci",
+    "quotient",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CudaMode {
@@ -95,6 +101,7 @@ fn main() {
     println!("cargo:rerun-if-changed=metal/poly_order.metal");
     println!("cargo:rerun-if-changed=metal/fri.metal");
     println!("cargo:rerun-if-changed=metal/wide_fibonacci.metal");
+    println!("cargo:rerun-if-changed=metal/quotient.metal");
     for var in [
         CUDA_MODE_VAR,
         METAL_MODE_VAR,

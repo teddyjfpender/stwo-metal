@@ -13,6 +13,7 @@ mod poly;
 mod proof;
 mod proof_slice;
 mod prover;
+mod quotient;
 mod row;
 mod sequence;
 mod subpath;
@@ -51,6 +52,10 @@ pub use proof::{
 };
 pub use proof_slice::MetalFriProofSlice;
 pub use prover::MetalFriProver;
+pub use quotient::{
+    accumulate_wide_fibonacci_quotients, MetalWideFibonacciQuotientError,
+    MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients,
+};
 pub use row::MetalFriInnerLayerRow;
 pub use sequence::MetalFriInnerLayerSequence;
 pub use subpath::MetalFriBlake2sSubpath;
