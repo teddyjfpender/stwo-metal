@@ -28,6 +28,55 @@ Superseded by:
 
 ## Entries
 
+### DEC-0040: The first unchanged upstream example may prove directly through `MetalBackend` via an acceptance-local framework-component adapter
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The first unchanged vendored upstream `wide_fibonacci` example now proves and
+verifies through direct `MetalBackend` substitution in the acceptance harness.
+This is accepted through an explicit acceptance-local adapter around vendored
+`FrameworkComponent`, which preserves workload semantics and keeps the
+remaining CPU-domain constraint-quotient bridge named and local instead of
+restoring the earlier outer CPU prove helper.
+
+Context:
+
+After `MetalBackend` satisfied the generic `Backend` and Blake2s
+`BackendForChannel` contracts, the remaining blocker for unchanged
+framework-backed examples was the upstream `ComponentProver` implementation
+surface. Adding `stwo-constraint-framework` directly to the `stwo-metal`
+workspace created a nested-workspace conflict, so the smallest
+semantics-preserving step was to place the adapter in the acceptance crate
+where that dependency already exists cleanly, then prove the first example
+through the stock `prove`/`verify` path.
+
+Alternatives rejected:
+
+- keep the old outer CPU prove helper even though direct backend substitution
+  had become possible
+- claim a stable public `stwo-metal` adapter API before the framework bridge
+  proves reusable beyond the first example
+- block the first direct `MetalBackend` example until a native Metal
+  framework-component implementation exists
+
+Impact:
+
+- `wide_fibonacci` now has a truthful direct `MetalBackend` prove/verify row
+  in the acceptance matrix
+- `TD-0015` retires because the explicit outer CPU prove bridge is gone
+- the remaining blocker narrows to the acceptance-local framework adapter and
+  its explicit CPU-domain quotient-evaluation bridge
+
+Superseded by:
+
+- none
+
 ### DEC-0039: Blake2s `BackendForChannel` support is accepted through explicit CPU-bridge Merkle and proof-of-work boundaries
 
 - Date: `2026-03-09`

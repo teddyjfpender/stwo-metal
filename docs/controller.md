@@ -29,12 +29,11 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T7 sixth implementation slice: expose the component-prover blocker after backend completion`
+- Active tranche: `T7 seventh implementation slice: direct MetalBackend prove/verify for the first unchanged upstream example`
 - Objective:
-  move the remaining explicit CPU prove bridge from backend and channel
-  infrastructure into one named upstream component-prover blocker so the next
-  tranche can target the real acceptance seam instead of more backend
-  speculation
+  retire the outer CPU prove helper for the first unchanged upstream example
+  and replace it with a direct `MetalBackend` prove/verify path that keeps the
+  remaining framework-component bridge explicit and local
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - Current owner area:
@@ -51,29 +50,33 @@ Invariants:
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
-- only the first upstream example prove/verify slice exists so far:
-  `wide_fibonacci` now proves and verifies through an acceptance fixture, but
-  the proving path still crosses an explicit CPU bridge because the vendored
-  upstream `FrameworkComponent` only implements `ComponentProver` for
-  `CpuBackend` and `SimdBackend`
+- the first unchanged upstream example now proves and verifies through
+  `MetalBackend` in the acceptance harness:
+  `wide_fibonacci` uses a local framework-component adapter instead of the
+  earlier outer CPU prove helper
+- the remaining framework-component bridge is still CPU-domain based and still
+  lives only in the acceptance harness rather than a stable shared boundary
 - the example-backed acceptance harness is now reusable for single-trace
-  Blake2s-backed CPU bridge flows, but only `wide_fibonacci` uses it so far
+  Blake2s-backed backend substitution flows, but only `wide_fibonacci` uses it
+  so far
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
-- the remaining acceptance blocker is no longer a generic backend trait gap;
-  it is the component-prover layer for framework-backed upstream examples
+- the next acceptance blocker is no longer the first prove/verify seam;
+  it is generalizing beyond the single-trace framework-backed adapter without
+  hiding the remaining CPU-domain bridge
 
 ## Next three deliverables
 
-1. Define the smallest honest `ComponentProver<MetalBackend>` path for
-   framework-backed upstream examples without forking workload logic.
-2. Decide whether that component-prover slice belongs in an upstream-facing
-   vendored refactor or a local adapter boundary.
-3. Use that component-prover slice to retire the explicit CPU prove bridge for
-   the first unchanged upstream example before adding more example rows.
+1. Generalize the acceptance-backed `ComponentProver<MetalBackend>` adapter
+   beyond the first single-trace example without forking workload logic.
+2. Decide whether the current acceptance-local adapter should remain local,
+   move into a shared non-public helper boundary, or be superseded by an
+   upstream-facing refactor.
+3. Onboard the next upstream example row through direct `MetalBackend`
+   prove/verify instead of reintroducing an outer CPU prove bridge.
 
 ## Explicitly not doing now
 

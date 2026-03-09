@@ -10,6 +10,8 @@ use stwo_metal::{
     MetalRuntimeSupport,
 };
 use stwo_metal_upstream_example_acceptance::{
+    bridge_framework_component_to_metal,
+    prove_and_verify_single_trace_component_via_backend_blake2s,
     prove_and_verify_single_trace_component_via_cpu_blake2s,
 };
 
@@ -26,7 +28,7 @@ fn example_inputs(log_n_instances: u32) -> Vec<FibInput> {
 
 #[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-fn vendored_upstream_wide_fibonacci_example_proves_and_verifies_via_metal_trace_cpu_bridge() {
+fn vendored_upstream_wide_fibonacci_example_proves_and_verifies_via_metal_backend() {
     assert_eq!(
         metal_runtime_support(),
         MetalRuntimeSupport::Available,
@@ -56,12 +58,13 @@ fn vendored_upstream_wide_fibonacci_example_proves_and_verifies_via_metal_trace_
         },
         SecureField::from_u32_unchecked(0, 0, 0, 0),
     );
-    let hybrid_proof = prove_and_verify_single_trace_component_via_cpu_blake2s(
-        metal_trace.to_cpu_evaluations(),
-        &hybrid_component,
+    let metal_component = bridge_framework_component_to_metal(&hybrid_component);
+    let hybrid_proof = prove_and_verify_single_trace_component_via_backend_blake2s(
+        metal_trace.to_metal_evaluations(),
+        &metal_component,
         log_n_instances,
     )
-    .expect("wide fibonacci should prove and verify through the explicit CPU bridge");
+    .expect("wide fibonacci should prove and verify through MetalBackend");
 
     let cpu_trace = generate_upstream_trace::<WIDE_FIBONACCI_COLUMNS, CpuBackend>(&inputs);
     let cpu_component = WideFibonacciComponent::new(
@@ -79,8 +82,7 @@ fn vendored_upstream_wide_fibonacci_example_proves_and_verifies_via_metal_trace_
     .expect("upstream CPU trace should prove and verify through the stock CPU path");
 
     assert_eq!(
-        hybrid_proof.commitments.0,
-        cpu_proof.commitments.0,
-        "the explicit Metal-trace CPU-prover bridge should preserve the upstream proof commitments"
+        hybrid_proof.commitments.0, cpu_proof.commitments.0,
+        "the MetalBackend proving path should preserve the upstream proof commitments"
     );
 }

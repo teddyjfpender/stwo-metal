@@ -1,5 +1,4 @@
-use stwo::prover::backend::Column;
-use stwo::prover::backend::CpuBackend;
+use stwo::prover::backend::{Column, CpuBackend};
 use stwo_examples::wide_fibonacci::{generate_trace, FibInput};
 use stwo_metal::{
     declare_exemplar_metal_workload_boundary, metal_runtime_support, MetalExecutionIntent,

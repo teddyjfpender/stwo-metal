@@ -24,6 +24,10 @@ Work is done only when the code, contract, and process state agree.
 - [ ] If an upstream-example slice proves and verifies through an explicit CPU
       bridge, the bridge is named as such and not described as direct
       `MetalBackend` support.
+- [ ] If an upstream-example slice uses an acceptance-only adapter to reach
+      direct `MetalBackend` prove/verify, the adapter boundary and any
+      remaining CPU-domain work are named explicitly and kept out of the stable
+      public crate surface unless separately approved.
 - [ ] Proof-facing FRI slices validate their bounded last-layer polynomial
       semantics against the vendored CPU oracle, including the configured
       degree-bound truncation.

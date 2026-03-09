@@ -502,12 +502,12 @@ Target retirement point:
 
 ### TD-0015: The first upstream-example prove/verify boundary still depends on an explicit CPU prover bridge
 
-- Status: `active`
+- Status: `retired`
 - Category: `backend-completion gap`
 - Introduced: `2026-03-09`
 - Owner area: `T7 example proving`
 
-Why it exists now:
+Why it existed:
 
 The unchanged vendored upstream `wide_fibonacci` example now proves and
 verifies through a real acceptance fixture, but the proving path still crosses
@@ -551,6 +551,10 @@ Target retirement point:
 
 - `T7`
 
+Retired by:
+
+- `DEC-0040`
+
 ### TD-0016: Vendored framework-backed components still lack a truthful `ComponentProver<MetalBackend>` path
 
 - Status: `active`
@@ -561,10 +565,10 @@ Target retirement point:
 Why it exists now:
 
 The vendored upstream framework component layer currently implements
-`ComponentProver` only for `CpuBackend` and `SimdBackend`. `MetalBackend` now
-implements the generic backend and Blake2s channel contracts, but unchanged
-framework-backed examples still cannot call the stock `prove` entrypoint with
-`MetalBackend` because the component-prover seam remains upstream-owned.
+`ComponentProver` only for `CpuBackend` and `SimdBackend`. The first unchanged
+upstream example now proves through a local acceptance adapter, but there is
+still no shared or upstream-owned truthful `ComponentProver<MetalBackend>`
+surface for framework-backed examples.
 
 Current containment:
 
@@ -574,16 +578,52 @@ Current containment:
 
 Risk if left in place:
 
-The project could keep widening backend infrastructure while the first direct
-example-backed proof still depends on an outer CPU bridge. That would blur the
-real completion blocker and overstate how close the acceptance milestone is to
-closure.
+The project could treat the first acceptance-local adapter as full closure and
+stop short of a reusable path for other framework-backed examples. That would
+leave the remaining CPU-domain bridge hidden in test-local code instead of
+driving the next honest backend-completion tranche.
 
 Exit condition:
 
 One truthful `ComponentProver<MetalBackend>` path exists for framework-backed
 upstream examples, either by an approved vendored upstream refactor or by a
 clean local adapter boundary that does not fork workload semantics.
+
+Target retirement point:
+
+- `T7`
+
+### TD-0017: The current framework-component Metal adapter is acceptance-local and still CPU-domain backed
+
+- Status: `active`
+- Category: `acceptance bridge`
+- Introduced: `2026-03-09`
+- Owner area: `T7 example proving`
+
+Why it exists now:
+
+The first direct `MetalBackend` upstream-example proof now uses an
+acceptance-local adapter around vendored `FrameworkComponent`. This is the
+smallest safe step because it avoids a nested-workspace dependency conflict in
+the main `stwo-metal` crate and keeps the remaining CPU-domain quotient path
+explicit, but it is not yet a reusable shared boundary for additional example
+rows.
+
+Current containment:
+
+- `fixtures/upstream-example-acceptance/src/lib.rs`
+- `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
+
+Risk if left in place:
+
+The project could stall after the first direct backend-substitution example and
+accidentally treat acceptance-local glue as the long-term proving boundary.
+
+Exit condition:
+
+The adapter is either generalized cleanly for the next example shapes,
+replaced by an upstream-facing implementation, or retired in favor of a native
+Metal framework-component proving boundary.
 
 Target retirement point:
 

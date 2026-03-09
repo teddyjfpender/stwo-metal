@@ -366,6 +366,11 @@ Current first implementation slice:
 - the single-trace Blake2s acceptance harness is now factored so future
   example-backed CPU-bridge prove/verify rows do not require bespoke test-local
   proving code
+- a follow-on acceptance slice now proves and verifies the unchanged vendored
+  `wide_fibonacci` component through direct `MetalBackend` substitution with
+  the stock prover and verifier
+- the remaining framework-component bridge is localized to an acceptance-only
+  adapter rather than the earlier outer CPU prove helper
 
 Current next slice inside T7:
 
@@ -386,8 +391,9 @@ Current next slice inside T7:
   without pretending the remaining prover traits are native Metal yet
 - `MetalBackend` now satisfies the generic Stwo `Backend` trait and the
   Blake2s `BackendForChannel` surface
-- the next honest blocker is no longer a backend trait gap; it is the upstream
-  component-prover layer for framework-backed examples
+- the next honest blocker is no longer the first direct backend-substitution
+  seam; it is generalizing the acceptance-local framework-component adapter to
+  more example shapes without turning it into hidden support
 - only after those bridge-retirement slices meaningfully widen shared proving
   support should the next vendored upstream example be added through the
   reusable acceptance harness

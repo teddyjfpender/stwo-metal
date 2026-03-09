@@ -64,9 +64,10 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T7 first implementation slice: vendored examples and
-wide-fibonacci trace wiring`, as tracked in [`controller.md`](./controller.md)
-and sequenced by [`roadmap.md`](./roadmap.md).
+The active tranche is `T7 seventh implementation slice: direct MetalBackend
+prove/verify for the first unchanged upstream example`, as tracked in
+[`controller.md`](./controller.md) and sequenced by
+[`roadmap.md`](./roadmap.md).
 
 The active formal basis for T2 and T3 is:
 
@@ -164,14 +165,21 @@ The first completed T7 supporting slices are:
   boundaries
 - compile assertions and parity tests now cover both `Backend` and Blake2s
   `BackendForChannel` support
+- the first unchanged upstream `wide_fibonacci` example now proves and verifies
+  through `MetalBackend` with the stock prover and verifier
+- the explicit outer CPU prove bridge has been retired from that acceptance
+  row
+- the remaining framework-component bridge is now localized to an
+  acceptance-only adapter that keeps workload logic unchanged and names the
+  CPU-domain bridge explicitly
 
 The next required T7 boundary is:
 
-- land the next acceptance-facing slice at the component-prover boundary for
-  framework-backed upstream examples, because `MetalBackend` now satisfies
-  `Backend` and the Blake2s `BackendForChannel` surface
+- generalize the direct-backend acceptance harness beyond the first
+  single-trace framework-backed row
 - keep the next blocker explicit:
   vendored upstream `FrameworkComponent` still only implements
-  `ComponentProver` for `CpuBackend` and `SimdBackend`
-- use the reusable acceptance harness to retire the explicit CPU prove bridge
-  for `wide_fibonacci` before onboarding the next upstream example row
+  `ComponentProver` for `CpuBackend` and `SimdBackend`, so the current
+  adapter remains a named CPU-domain bridge
+- use the updated harness to onboard the next upstream example row without
+  restoring an outer CPU prove helper
