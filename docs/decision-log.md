@@ -1149,3 +1149,47 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0029: The wide-fibonacci prove benchmark now starts from native Metal trace generation and an explicit Metal-to-CUDA bridge
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`wide_fibonacci_prove` now generates its main trace through the native Metal
+wide-fibonacci trace boundary and then crosses an explicit bridge into the
+existing `CudaBackend` trace-evaluation row. The benchmark no longer uses the
+inherited CUDA trace-generation path, but it also does not pretend the rest of
+the proving lane is native Metal yet.
+
+Context:
+
+After retargeting the standalone trace benchmark, the next honest benchmark
+slice was to move the prove runner’s trace-generation phase onto the same Metal
+boundary. The rest of the prove runner still depends on inherited
+CUDA-prover-owned interpolation, commitment, quotient, and proof generation, so
+the bridge needed to be explicit and narrow.
+
+Alternatives rejected:
+
+- leave `wide_fibonacci_prove` fully on the inherited CUDA trace path
+- claim the full prove benchmark is native Metal after only replacing trace
+  generation
+- widen the bridge implicitly by hiding the Metal-to-CUDA handoff inside an
+  unnamed helper
+
+Impact:
+
+- the prove benchmark now measures a real native Metal trace-generation phase
+- the remaining benchmark gap is narrower and explicitly named:
+  the Metal-to-CUDA trace-evaluation bridge and the earlier proving seams
+- the next honest tranche is to move the workload boundary earlier than that
+  bridge, before quotient accumulation
+
+Superseded by:
+
+- none

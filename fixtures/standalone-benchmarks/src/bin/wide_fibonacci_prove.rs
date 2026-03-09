@@ -44,9 +44,11 @@ use stwo::prover::{
 };
 #[cfg(feature = "cuda-runtime")]
 use stwo_metal::{
+    declare_wide_fibonacci_benchmark_boundary,
     launch_constraint_quotients_on_domain, opaque_eval_ptr, BaseFieldVec, ConstraintQuotientEvalRequest,
-    CudaBackend, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1, WideFibonacciTraceRequest,
-    generate_wide_fibonacci_trace,
+    CudaBackend, MetalBenchmarkTarget, MetalExecutionIntent, MetalWideFibonacciTrace,
+    SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
+    WIDE_FIBONACCI_PROVE_LOG20_TARGET,
 };
 use stwo_metal_standalone_benchmarks::support::{
     env_flag, env_or, env_u32, env_usize, epoch_ms, required_env_path, runner_metadata,
@@ -238,6 +240,9 @@ fn main() {
         {
             if runner.stwo_cuda_mode == "no-cuda" {
                 panic!("wide_fibonacci_prove benchmark cannot run with STWO_CUDA_MODE=no-cuda");
+            }
+            if runner.stwo_metal_mode == "no-metal" {
+                panic!("wide_fibonacci_prove benchmark cannot run with STWO_METAL_MODE=no-metal because trace generation now enters through the native Metal path");
             }
 
             let input_len = instances as usize;
@@ -906,38 +911,47 @@ fn generate_wide_fibonacci_trace_evaluations(
     WideFibonacciSentinel,
 ) {
     let input_len = 1usize << log_n_instances;
-    let input_a = BaseFieldVec::from_vec(input_a_host.to_vec());
-    let input_b = BaseFieldVec::from_vec(input_b_host.to_vec());
-    let trace_columns = (0..n_columns)
-        .map(|_| BaseFieldVec::new_zeroes(input_len))
-        .collect::<Vec<_>>();
-    let trace_column_ptrs = trace_columns
-        .iter()
-        .map(|column| column.device_ptr)
-        .collect::<Vec<_>>();
-
-    generate_wide_fibonacci_trace(WideFibonacciTraceRequest {
-        input_a: &input_a,
-        input_b: &input_b,
-        input_len: input_len as u32,
-        trace_columns: &trace_column_ptrs,
+    let target = MetalBenchmarkTarget {
+        log_n_instances,
         n_columns: n_columns as u32,
-    });
-
-    let sentinel = WideFibonacciSentinel {
-        first_column_first_value: trace_columns[0].get_data(0).0,
-        second_column_first_value: trace_columns[1].get_data(0).0,
-        last_column_first_value: trace_columns[n_columns - 1].get_data(0).0,
-        last_column_last_value: trace_columns[n_columns - 1].get_data(input_len - 1).0,
+        ..WIDE_FIBONACCI_PROVE_LOG20_TARGET
     };
+    let boundary =
+        declare_wide_fibonacci_benchmark_boundary(MetalExecutionIntent::PreferMetal, target)
+            .expect("wide-fibonacci prove benchmark boundary should be declared");
+    let witness_inputs = boundary
+        .ingest_cpu_witness_inputs(input_a_host, input_b_host)
+        .expect("wide-fibonacci prove benchmark witness inputs should be accepted");
+    let trace = witness_inputs
+        .generate_trace()
+        .expect("wide-fibonacci prove benchmark should generate the trace through Metal");
+    let sentinel = sentinel_from_metal_trace(&trace, input_len, n_columns);
 
     let domain = CanonicCoset::new(log_n_instances).circle_domain();
-    let trace = trace_columns
-        .into_iter()
-        .map(|values| CircleEvaluation::new(domain, values))
+    let trace = (0..n_columns)
+        .map(|column_index| {
+            CircleEvaluation::new(
+                domain,
+                BaseFieldVec::from_vec(trace.column_values(column_index)),
+            )
+        })
         .collect();
 
     (trace, sentinel)
+}
+
+#[cfg(feature = "cuda-runtime")]
+fn sentinel_from_metal_trace(
+    trace: &MetalWideFibonacciTrace,
+    input_len: usize,
+    n_columns: usize,
+) -> WideFibonacciSentinel {
+    WideFibonacciSentinel {
+        first_column_first_value: trace.value(0, 0).0,
+        second_column_first_value: trace.value(1, 0).0,
+        last_column_first_value: trace.value(n_columns - 1, 0).0,
+        last_column_last_value: trace.value(n_columns - 1, input_len - 1).0,
+    }
 }
 
 #[cfg(feature = "cuda-runtime")]

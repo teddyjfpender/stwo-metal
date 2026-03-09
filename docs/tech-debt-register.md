@@ -399,7 +399,7 @@ Target retirement point:
 
 - `T5`
 
-### TD-0012: The wide-fibonacci prove benchmark still enters through the inherited CUDA-era proving lane
+### TD-0012: The wide-fibonacci prove benchmark still bridges from native Metal trace generation into the inherited CUDA-era proving lane
 
 - Status: `active`
 - Category: `benchmark execution boundary`
@@ -412,8 +412,9 @@ Why it exists now:
 an explicit `90 ms` RTX 4090 reference goal, and the standalone
 `wide_fibonacci_trace` benchmark now enters through a native `.metal`
 trace-generation path. The remaining benchmark gap is that
-`wide_fibonacci_prove` still enters through the inherited CUDA witness and
-proving path after that trace boundary.
+`wide_fibonacci_prove` now generates its trace through the native Metal path,
+but it still bridges that trace back into the inherited CUDA proving lane for
+interpolation, commitment, quotient, and the rest of the proving flow.
 
 Current containment:
 
@@ -422,15 +423,15 @@ Current containment:
 
 Risk if left in place:
 
-The project could optimize the Metal FRI/proof lane while still overstating
-benchmark progress if the executable prove row keeps inheriting its early
-stages from the CUDA path.
+The project could overstate benchmark progress if the executable prove row
+starts in Metal but still quietly depends on the inherited CUDA proving lane
+after trace generation.
 
 Exit condition:
 
-The executable `wide_fibonacci_prove` row enters through the native Metal trace
-boundary and any remaining CPU-owned stages are explicitly named rather than
-implicitly inherited from CUDA.
+The executable `wide_fibonacci_prove` row no longer needs the Metal-to-CUDA
+trace bridge, and any remaining non-Metal stages are explicitly named rather
+than implicitly inherited from CUDA.
 
 Target retirement point:
 

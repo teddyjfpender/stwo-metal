@@ -50,9 +50,10 @@ Invariants:
   accumulation rather than owning an earlier workload artifact boundary
 - the declared `wide_fibonacci` benchmark target is now pinned at
   `log_n_instances = 20`, `n_columns = 100`, with a project-supplied 4090
-  reference goal of `90 ms`; the standalone trace benchmark now enters through
-  a native `.metal` trace-generation path, but the prove benchmark still
-  starts from the inherited CUDA-era proving lane
+  reference goal of `90 ms`; the standalone trace benchmark and the prove
+  benchmark trace-generation phase now enter through a native `.metal` path,
+  but the prove benchmark still crosses an explicit Metal-to-CUDA trace bridge
+  before the inherited proving lane
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - interpolation, evaluation, and trace-support primitives beyond the bounded
@@ -63,9 +64,8 @@ Invariants:
 1. Freeze one earlier witness-owned workload handoff for `fibonacci_example`
    that feeds the native Metal trace boundary before the CPU quotient
    evaluation boundary.
-2. Retarget the `wide_fibonacci_prove` benchmark’s trace-generation phase to
-   the native Metal trace boundary without overstating the rest of the proving
-   path.
+2. Replace the explicit Metal-to-CUDA trace-evaluation bridge inside
+   `wide_fibonacci_prove` with an earlier proving-stage boundary.
 3. Decide whether quotient accumulation or pre-FRI PCS commitment is the next
    native proving-stage replacement after that earlier handoff is selected.
 

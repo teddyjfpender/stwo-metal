@@ -255,12 +255,15 @@ Current next slices inside T5:
   with deterministic CPU-recurrence parity
 - the standalone `wide_fibonacci_trace` benchmark fixture now enters through
   the native Metal trace path rather than the inherited CUDA witness path
+- the `wide_fibonacci_prove` benchmark now uses that native Metal trace path
+  for its trace-generation phase before an explicit bridge back into the
+  inherited CUDA proving lane
 - the explicit CPU bridge remains available only as a bounded validation and
   comparison surface
 - the next T5 work is to move the executable workload boundary earlier than the
   CPU-owned quotient evaluation input, starting with one selected
-  `fibonacci_example` witness-owned artifact and the remaining prove-benchmark
-  seam
+  `fibonacci_example` witness-owned artifact and the remaining Metal-to-CUDA
+  prove-benchmark bridge
 
 ### T6: Restore one truthful end-to-end supported workload
 

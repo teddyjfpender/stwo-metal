@@ -97,6 +97,8 @@ Current completed T5 supporting slices are:
   CPU-recurrence parity
 - standalone `wide_fibonacci_trace` benchmark retargeted to the native Metal
   trace path
+- `wide_fibonacci_prove` trace generation retargeted to the native Metal trace
+  path with an explicit bridge back into the inherited CUDA proving lane
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
@@ -108,5 +110,5 @@ The first declared T5 proving sub-path candidate is:
 The next required T5 boundary is:
 
 - one earlier witness-owned workload handoff for `fibonacci_example` before
-  the current CPU quotient evaluation boundary, followed by the
-  `wide_fibonacci_prove` trace-generation seam
+  the current CPU quotient evaluation boundary, followed by the remaining
+  `wide_fibonacci_prove` Metal-to-CUDA trace bridge

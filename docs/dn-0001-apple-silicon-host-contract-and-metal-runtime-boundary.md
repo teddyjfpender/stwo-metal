@@ -69,6 +69,8 @@ Implemented against this note:
   CPU-recurrence parity
 - standalone `wide_fibonacci_trace` benchmark retargeted to the native Metal
   trace path with explicit `STWO_METAL_MODE` reporting
+- `wide_fibonacci_prove` trace generation retargeted to the native Metal trace
+  path with an explicit bridge into the inherited CUDA proving lane
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
@@ -76,8 +78,8 @@ Still outside the implemented surface:
 
 - one earlier workload handoff from a witness-owned artifact into the
   executable hybrid workload boundary
-- the `wide_fibonacci_prove` benchmark’s trace-generation and earlier proving
-  seams
+- the remaining `wide_fibonacci_prove` Metal-to-CUDA trace bridge and earlier
+  proving seams
 - interpolation, evaluation, and trace-support primitives beyond the bounded
   FRI arithmetic surface
 - any truthful end-to-end proving claim
