@@ -224,6 +224,68 @@ impl U32Buffer {
         }
         Ok(dst)
     }
+
+    pub fn fri_fold_circle_into_line_first_layer_u32x4(
+        &self,
+        inverse_y_factors: &Self,
+        alpha_limbs: [u32; 4],
+    ) -> Result<Self, MetalError> {
+        assert!(
+            self.len.is_multiple_of(8),
+            "fri first-layer fold requires an even number of secure-field elements"
+        );
+        let element_len = self.len / 4;
+        let output_len = element_len / 2;
+        assert_eq!(
+            inverse_y_factors.len, output_len,
+            "fri first-layer fold requires one inverse-y factor per output element"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len * 4)?;
+        unsafe {
+            ffi::fri_fold_circle_into_line_first_layer_u32x4(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                inverse_y_factors.raw.as_ptr(),
+                element_len.ilog2(),
+                alpha_limbs,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    pub fn fri_fold_line_step_u32x4(
+        &self,
+        inverse_x_factors: &Self,
+        alpha_limbs: [u32; 4],
+    ) -> Result<Self, MetalError> {
+        assert!(
+            self.len.is_multiple_of(8),
+            "fri line-fold step requires an even number of secure-field elements"
+        );
+        let element_len = self.len / 4;
+        let output_len = element_len / 2;
+        assert_eq!(
+            inverse_x_factors.len, output_len,
+            "fri line-fold step requires one inverse-x factor per output element"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len * 4)?;
+        unsafe {
+            ffi::fri_fold_line_step_u32x4(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                inverse_x_factors.raw.as_ptr(),
+                element_len.ilog2(),
+                alpha_limbs,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
 }
 
 impl Clone for U32Buffer {
@@ -375,6 +437,26 @@ mod ffi {
             src: *mut c_void,
             dst: *mut c_void,
             log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_fri_fold_circle_into_line_first_layer_u32x4(
+            runtime: *mut c_void,
+            src: *mut c_void,
+            dst: *mut c_void,
+            inverse_y_factors: *mut c_void,
+            src_log_len: u32,
+            alpha_limbs: *const u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_fri_fold_line_step_u32x4(
+            runtime: *mut c_void,
+            src: *mut c_void,
+            dst: *mut c_void,
+            inverse_x_factors: *mut c_void,
+            src_log_len: u32,
+            alpha_limbs: *const u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -554,6 +636,58 @@ mod ffi {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
     }
+
+    pub unsafe fn fri_fold_circle_into_line_first_layer_u32x4(
+        runtime: *mut c_void,
+        src: *mut c_void,
+        dst: *mut c_void,
+        inverse_y_factors: *mut c_void,
+        src_log_len: u32,
+        alpha_limbs: [u32; 4],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fri_fold_circle_into_line_first_layer_u32x4(
+            runtime,
+            src,
+            dst,
+            inverse_y_factors,
+            src_log_len,
+            alpha_limbs.as_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn fri_fold_line_step_u32x4(
+        runtime: *mut c_void,
+        src: *mut c_void,
+        dst: *mut c_void,
+        inverse_x_factors: *mut c_void,
+        src_log_len: u32,
+        alpha_limbs: [u32; 4],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fri_fold_line_step_u32x4(
+            runtime,
+            src,
+            dst,
+            inverse_x_factors,
+            src_log_len,
+            alpha_limbs.as_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
 }
 
 #[cfg(not(stwo_metal_link))]
@@ -664,6 +798,34 @@ mod ffi {
         _src: *mut c_void,
         _dst: *mut c_void,
         _log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn fri_fold_circle_into_line_first_layer_u32x4(
+        _runtime: *mut c_void,
+        _src: *mut c_void,
+        _dst: *mut c_void,
+        _inverse_y_factors: *mut c_void,
+        _src_log_len: u32,
+        _alpha_limbs: [u32; 4],
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn fri_fold_line_step_u32x4(
+        _runtime: *mut c_void,
+        _src: *mut c_void,
+        _dst: *mut c_void,
+        _inverse_x_factors: *mut c_void,
+        _src_log_len: u32,
+        _alpha_limbs: [u32; 4],
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

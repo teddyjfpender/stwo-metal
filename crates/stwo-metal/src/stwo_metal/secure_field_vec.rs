@@ -92,6 +92,38 @@ impl SecureFieldVec {
             .bit_reverse_u32x4(self.size)
             .expect("Metal SecureFieldVec bit reverse should succeed");
     }
+
+    pub fn fold_circle_into_line_first_layer(
+        &self,
+        inverse_y_factors: &[u32],
+        alpha: SecureField,
+    ) -> Self {
+        let factors = U32Buffer::from_slice(inverse_y_factors)
+            .expect("Metal inverse-y factor upload should initialize");
+        let alpha_limbs = alpha.to_m31_array().map(|limb| limb.0);
+        let buffer = self
+            .buffer
+            .fri_fold_circle_into_line_first_layer_u32x4(&factors, alpha_limbs)
+            .expect("Metal FRI first-layer fold should succeed");
+        Self {
+            buffer,
+            size: self.size / 2,
+        }
+    }
+
+    pub fn fold_line_step(&self, inverse_x_factors: &[u32], alpha: SecureField) -> Self {
+        let factors = U32Buffer::from_slice(inverse_x_factors)
+            .expect("Metal inverse-x factor upload should initialize");
+        let alpha_limbs = alpha.to_m31_array().map(|limb| limb.0);
+        let buffer = self
+            .buffer
+            .fri_fold_line_step_u32x4(&factors, alpha_limbs)
+            .expect("Metal FRI line-fold step should succeed");
+        Self {
+            buffer,
+            size: self.size / 2,
+        }
+    }
 }
 
 impl Clone for SecureFieldVec {

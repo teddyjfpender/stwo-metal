@@ -362,3 +362,115 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0010: The first declared T5 proving sub-path candidate is the FRI first-layer fold
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The first declared T5 proving sub-path candidate is the FRI first-layer fold
+from a bit-reversed secure circle evaluation into the first line layer.
+
+Context:
+
+The project needed a proving-path target that is part of the current Stwo flow,
+smaller than full interpolation or trace generation, and directly useful for
+growing toward a truthful bounded Metal row.
+
+Alternatives rejected:
+
+- use deprecated FRI decomposition as the first declared proving sub-path
+- jump directly to a wider trace-generation or quotient path
+
+Impact:
+
+- the next bounded Metal primitive is fixed:
+  first-layer `fold_circle_into_line`
+- future T5 work can be evaluated against one explicit proving-path target
+
+Superseded by:
+
+- none
+
+### DEC-0011: The bounded FRI arithmetic surface now includes first-layer fold and line fold
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The supported bounded Metal FRI surface now includes:
+
+- first-layer `fold_circle_into_line` from secure circle evaluation into line
+  evaluation
+- repeated `fold_line` over line evaluations through native Metal kernels with
+  deterministic vendored CPU parity
+
+Context:
+
+The first declared T5 proving sub-path could not move beyond planning until the
+two arithmetic folds used by `FriProver::commit_inner_layers` existed on the
+Metal lane with explicit CPU-oracle validation.
+
+Alternatives rejected:
+
+- stop after the first circle-to-line fold and treat the remaining line folds
+  as future trivia
+- widen the claim to a full FRI prover path before the repeated line fold was
+  parity-tested
+
+Impact:
+
+- the bounded Metal lane now covers the core FRI arithmetic transitions for the
+  first declared T5 candidate
+- the next honest gap is no longer arithmetic; it is the proving-facing
+  materialization and commitment boundary after the folds
+
+Superseded by:
+
+- none
+
+### DEC-0012: The next T5 boundary after bounded FRI arithmetic is explicit line-evaluation handoff
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The next required T5 boundary is an explicit handoff from the bounded Metal FRI
+arithmetic surface into the first inner FRI-layer commitment. That handoff must
+name whether the first proving row uses an explicit CPU Merkle commitment
+bridge or a native Metal commitment boundary.
+
+Context:
+
+After first-layer fold and line fold landed, the remaining blocker in the first
+declared T5 path is not another arithmetic kernel. It is how the folded line
+values become a proving-facing `LineEvaluation` and commitment input without
+hiding CPU fallback behavior.
+
+Alternatives rejected:
+
+- keep adding arithmetic kernels without freezing the proving-facing handoff
+- blur CPU readback or commitment fallback into the supported Metal story
+
+Impact:
+
+- T5 sequencing now points at the next real contract boundary
+- any future CPU bridge in this area must be explicit, bounded, and logged as
+  debt rather than implicit support
+
+Superseded by:
+
+- none

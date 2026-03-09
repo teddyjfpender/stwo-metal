@@ -22,6 +22,8 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
         MetalBackendSurface::SecureFieldColumnSet,
         MetalBackendSurface::SecureFieldColumnFromIterator,
         MetalBackendSurface::SecureFieldColumnBitReverse,
+        MetalBackendSurface::FriFirstLayerFoldCircleIntoLine,
+        MetalBackendSurface::FriLineFold,
     ] {
         assert_eq!(
             metal_backend_surface_status(surface),

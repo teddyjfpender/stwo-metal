@@ -10,6 +10,8 @@ pub enum MetalBackendSurface {
     SecureFieldColumnSet,
     SecureFieldColumnFromIterator,
     SecureFieldColumnBitReverse,
+    FriFirstLayerFoldCircleIntoLine,
+    FriLineFold,
     QuotientAccumulate,
 }
 
@@ -30,6 +32,8 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::SecureFieldColumnSet,
     MetalBackendSurface::SecureFieldColumnFromIterator,
     MetalBackendSurface::SecureFieldColumnBitReverse,
+    MetalBackendSurface::FriFirstLayerFoldCircleIntoLine,
+    MetalBackendSurface::FriLineFold,
     MetalBackendSurface::QuotientAccumulate,
 ];
 
@@ -43,7 +47,9 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::BaseFieldCosetToCircleDomainBitReverse
         | MetalBackendSurface::SecureFieldColumnSet
         | MetalBackendSurface::SecureFieldColumnFromIterator
-        | MetalBackendSurface::SecureFieldColumnBitReverse => MetalBackendSurfaceStatus::Supported,
+        | MetalBackendSurface::SecureFieldColumnBitReverse
+        | MetalBackendSurface::FriFirstLayerFoldCircleIntoLine
+        | MetalBackendSurface::FriLineFold => MetalBackendSurfaceStatus::Supported,
         MetalBackendSurface::QuotientAccumulate => MetalBackendSurfaceStatus::UnsupportedPlanned,
     }
 }
@@ -68,6 +74,12 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::SecureFieldColumnBitReverse => {
             "Secure-field bit reversal is implemented through a native Metal kernel."
+        }
+        MetalBackendSurface::FriFirstLayerFoldCircleIntoLine => {
+            "The bounded FRI first-layer fold from circle evaluation into line evaluation is implemented through a native Metal kernel."
+        }
+        MetalBackendSurface::FriLineFold => {
+            "The bounded FRI line-fold path is implemented through native Metal kernels with host-orchestrated repeated folding."
         }
         MetalBackendSurface::QuotientAccumulate => {
             "Constraint quotient accumulation remains in the planned Metal migration set."

@@ -15,6 +15,8 @@ Work is done only when the code, contract, and process state agree.
       [`decision-log.md`](./decision-log.md).
 - [ ] Metal-backed slices state exactly which surfaces are native Metal, which
       remain planned, and which hosts are expected to pass parity tests.
+- [ ] Any explicit host-prepared bridge used by a Metal slice is named in the
+      docs and tracked as debt instead of being treated as implicit support.
 
 ## Milestone done
 

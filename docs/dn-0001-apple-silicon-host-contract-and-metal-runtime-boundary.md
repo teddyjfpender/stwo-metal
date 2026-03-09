@@ -43,11 +43,27 @@ Implemented against this note:
 - one bounded poly-support primitive:
   `BaseField` coset-order to circle-domain bit-reversed permutation through a
   native Metal kernel
+- bounded FRI first-layer `fold_circle_into_line` from secure circle
+  evaluation into the first line layer
+- bounded FRI `fold_line` through repeated host-orchestrated Metal fold steps
 
 Still outside the implemented surface:
 
-- bounded FRI fold, interpolation, evaluation, and trace-support primitives
+- explicit line-evaluation handoff into the first inner FRI-layer commitment
+- interpolation, evaluation, and trace-support primitives beyond the bounded
+  FRI arithmetic surface
 - any truthful end-to-end proving claim
+
+The first declared T5 candidate path is:
+
+- FRI first-layer fold from a bit-reversed secure circle evaluation into the
+  first line layer
+
+For the first implementation of that path, host orchestration may derive the
+domain-specific inverse-`y` and inverse-`x` factor buffers explicitly from
+vendored Stwo domain semantics and pass them into the bounded Metal kernels.
+This is an explicit boundary choice, not a hidden CPU fallback for the fold
+computation itself.
 
 ## Problem
 

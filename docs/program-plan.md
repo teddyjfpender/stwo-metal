@@ -66,3 +66,16 @@ Current completed T5 supporting slices are:
 - native Metal `SecureField` column round-trip and bit reversal
 - native Metal `BaseField` coset-order to circle-domain bit-reversed
   permutation
+- native Metal FRI first-layer fold from secure circle evaluation into the
+  first line layer
+- native Metal FRI line fold with repeated host-orchestrated fold steps and
+  deterministic vendored CPU parity
+
+The first declared T5 proving sub-path candidate is:
+
+- FRI first-layer fold from a bit-reversed secure circle evaluation into the
+  first line layer
+
+The next required T5 boundary is:
+
+- explicit line-evaluation handoff for the first inner FRI-layer commitment

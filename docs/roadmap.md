@@ -199,8 +199,15 @@ Current next slices inside T5:
 - `SecureField` column operations now exist beside the `BaseField` Metal lane
 - one bounded poly support primitive now exists:
   coset-order to circle-domain bit-reversed `BaseField` permutation
-- the next T5 work is to connect these bounded primitives into one declared
-  proving sub-path candidate
+- the first declared T5 proving sub-path candidate is:
+  FRI first-layer fold from a bit-reversed secure circle evaluation into the
+  first line layer
+- the bounded `fold_circle_into_line` first-layer primitive now exists with
+  deterministic vendored CPU parity
+- the bounded `fold_line` primitive now exists with deterministic vendored CPU
+  parity for repeated host-orchestrated folds
+- the next T5 work is to freeze and land the explicit line-evaluation handoff
+  needed for the first inner FRI-layer commitment
 
 ### T6: Restore one truthful end-to-end supported workload
 
@@ -222,7 +229,8 @@ Required outputs:
 
 ## Current next three planning deliverables
 
-1. Freeze the first declared T5 proving sub-path candidate.
-2. Land the next bounded FRI or trace-support primitive needed by that
-   candidate.
+1. Freeze and land the explicit line-evaluation handoff for the first inner
+   FRI-layer commitment.
+2. Decide whether the first bounded proving row uses an explicit CPU Merkle
+   commitment bridge or a new native Metal commitment boundary.
 3. Keep the unsupported matrix explicit while the candidate path grows.

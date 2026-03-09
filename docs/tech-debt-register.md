@@ -158,3 +158,37 @@ and more durable Metal ABI surface without losing deterministic parity tests.
 Target retirement point:
 
 - `T5`
+
+### TD-0005: FRI domain factor generation is still host-derived rather than owned by the Metal runtime
+
+- Status: `active`
+- Category: `host orchestration bridge`
+- Introduced: `2026-03-09`
+- Owner area: `T5 bounded FRI bring-up`
+
+Why it exists now:
+
+The bounded Metal FRI slices currently derive inverse-`y` and inverse-`x`
+factor buffers on the Rust host from vendored Stwo domain semantics and pass
+them into native Metal kernels. This keeps the first proving-path cuts narrow
+and explicit while the proving-facing runtime boundary is still being shaped.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/fri.rs`
+
+Risk if left in place:
+
+The arithmetic remains correct, but the supported Metal story could stall at a
+host-prepared twiddle bridge instead of converging on a more durable runtime
+boundary for domain-derived factors.
+
+Exit condition:
+
+The declared proving path owns its domain-factor generation or equivalent
+twiddle materialization at a stable runtime boundary without changing bounded
+CPU-oracle parity guarantees.
+
+Target retirement point:
+
+- `T5`

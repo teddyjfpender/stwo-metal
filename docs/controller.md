@@ -42,17 +42,19 @@ Invariants:
 ## Current blockers
 
 - internal Rust vocabulary is still CUDA-first in many places
-- no declared proving sub-path is frozen yet
-- only bounded column and poly-support surfaces are implemented so far
-- no FRI fold, interpolation, evaluation, or trace-generation primitive is on
-  the Metal lane yet
-- the first declared proving sub-path for T5 is not yet frozen
+- the bounded T5 arithmetic surface is ahead of the proving-facing type and
+  commitment surface
+- no explicit `LineEvaluation` or inner-layer commitment handoff exists on the
+  Metal lane yet
+- interpolation, evaluation, and trace-generation primitives are still outside
+  the Metal lane
 
 ## Next three deliverables
 
-1. Freeze the first declared proving sub-path candidate for T5.
-2. Land the next bounded FRI or trace-support primitive required by that
-   candidate.
+1. Freeze and land the explicit line-evaluation handoff boundary needed to feed
+   the first inner FRI-layer commitment.
+2. Decide whether the first bounded proving row permits an explicit CPU Merkle
+   commitment bridge or requires a native Metal commitment boundary next.
 3. Keep the unsupported matrix and CPU-oracle parity coverage explicit as the
    path grows.
 
