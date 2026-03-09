@@ -179,6 +179,8 @@ The next required T7 boundary is:
 
 - onboard the next example shape that adds lookup-table or non-framework prover
   structure beyond the current framework-backed adapter
+- keep `poseidon` explicitly classified as an upstream protocol blocker in the
+  current vendored snapshot rather than a pending Metal-backend slice
 - keep the next blocker explicit:
   vendored upstream `FrameworkComponent` still only implements
   `ComponentProver` for `CpuBackend` and `SimdBackend`, so the current

@@ -62,19 +62,22 @@ Invariants:
   driving milestone sequencing
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
-- the next acceptance blocker is no longer the first multi-tree seam;
-  it is onboarding rows with lookup-heavy or non-framework prover surfaces
+- `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
+  limitation, so it is not the immediate next backend row
+- the next acceptance blocker is onboarding rows with lookup-heavy or
+  non-framework prover surfaces, starting with `blake` and then `xor`,
   without hiding the remaining CPU-domain bridge
 
 ## Next three deliverables
 
-1. Onboard the next upstream example row that mixes framework-backed and
-   non-framework components without reintroducing an outer CPU prove helper.
+1. Unblock the `blake` acceptance row with the smallest truthful vendored or
+   acceptance-layer surface needed for direct `MetalBackend` substitution.
 2. Decide whether the current acceptance-local adapter should remain local,
    move into a shared non-public helper boundary, or be superseded by an
    upstream-facing refactor.
-3. Record any vendored example rows that are blocked by upstream protocol
-   limits instead of silently treating them as pending backend work.
+3. Land the next non-framework or lookup-heavy acceptance row, with `xor` as
+   the next likely candidate after `blake`, and keep upstream protocol limits
+   separated from Metal-backend gaps.
 
 ## Explicitly not doing now
 

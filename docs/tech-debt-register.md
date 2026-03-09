@@ -630,3 +630,38 @@ Metal framework-component proving boundary.
 Target retirement point:
 
 - `T7`
+
+### TD-0018: Poseidon acceptance is blocked by a vendored lifted-protocol AIR-degree limit
+
+- Status: `active`
+- Category: `upstream protocol limit`
+- Introduced: `2026-03-09`
+- Owner area: `T7 acceptance planning`
+
+Why it exists now:
+
+The vendored upstream `poseidon` example already marks its lifted proving path
+unsupported because the current lifted protocol does not support the example's
+AIR degree shape. That means the current stop on `poseidon` is not a pure
+Metal-backend gap.
+
+Current containment:
+
+- `vendor/stwo-upstream-dev-62b228e/crates/examples/src/poseidon/mod.rs`
+- `docs/roadmap.md`
+
+Risk if left in place:
+
+The project could waste time trying to force `poseidon` into the next Metal
+acceptance tranche and misclassify an upstream protocol limitation as a Metal
+port failure.
+
+Exit condition:
+
+The vendored upstream snapshot supports the required lifted protocol path for
+the `poseidon` example, or the project explicitly chooses a different accepted
+Poseidon proving route.
+
+Target retirement point:
+
+- `T7`
