@@ -83,13 +83,18 @@ Implemented against this note:
 - isolated acceptance fixture proving that the unchanged upstream
   `wide_fibonacci` example feeds the native Metal trace boundary without a
   bespoke benchmark harness
+- isolated acceptance fixture proving that the unchanged upstream
+  `wide_fibonacci` component can prove and verify through native Metal trace
+  generation plus an explicit CPU prover/verifier bridge
+- reusable single-trace Blake2s acceptance harness extracted for future
+  upstream examples that still require the explicit CPU prove bridge
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
 Still outside the implemented surface:
 
-- the first honest prove/verify boundary for one unchanged vendored upstream
-  example component
+- direct `MetalBackend` substitution for the first unchanged vendored upstream
+  example prove/verify path
 - one earlier workload handoff from a witness-owned artifact into the
   executable hybrid workload boundary beyond quotient accumulation
 - the remaining `wide_fibonacci_prove` Metal-to-CUDA bridge after native

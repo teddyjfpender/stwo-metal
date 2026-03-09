@@ -6,6 +6,7 @@ pub enum MetalBackendSurface {
     WideFibonacciBenchmarkTargetDeclared,
     WideFibonacciWitnessInputBoundaryDeclared,
     WideFibonacciTraceGenerationNative,
+    WideFibonacciTraceCpuBridge,
     BaseFieldColumnSet,
     BaseFieldColumnFromIterator,
     BaseFieldColumnBitReverse,
@@ -48,6 +49,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::WideFibonacciBenchmarkTargetDeclared,
     MetalBackendSurface::WideFibonacciWitnessInputBoundaryDeclared,
     MetalBackendSurface::WideFibonacciTraceGenerationNative,
+    MetalBackendSurface::WideFibonacciTraceCpuBridge,
     MetalBackendSurface::BaseFieldColumnSet,
     MetalBackendSurface::BaseFieldColumnFromIterator,
     MetalBackendSurface::BaseFieldColumnBitReverse,
@@ -83,6 +85,7 @@ pub const fn metal_backend_surface_status(
         MetalBackendSurface::WideFibonacciBenchmarkTargetDeclared
         | MetalBackendSurface::WideFibonacciWitnessInputBoundaryDeclared
         | MetalBackendSurface::WideFibonacciTraceGenerationNative
+        | MetalBackendSurface::WideFibonacciTraceCpuBridge
         | MetalBackendSurface::BaseFieldColumnSet
         | MetalBackendSurface::BaseFieldColumnFromIterator
         | MetalBackendSurface::BaseFieldColumnBitReverse
@@ -126,6 +129,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::WideFibonacciTraceGenerationNative => {
             "Wide-fibonacci trace generation is implemented through a native `.metal` kernel that writes a contiguous column-major trace buffer."
+        }
+        MetalBackendSurface::WideFibonacciTraceCpuBridge => {
+            "The native Metal wide-fibonacci trace CPU bridge is supported and materializes ordinary CPU circle evaluations for unchanged upstream example prove/verify wiring."
         }
         MetalBackendSurface::BaseFieldColumnSet => "Base-field Metal column mutation is supported.",
         MetalBackendSurface::BaseFieldColumnFromIterator => {

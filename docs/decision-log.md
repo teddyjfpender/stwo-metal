@@ -107,6 +107,96 @@ Superseded by:
 
 - none
 
+### DEC-0034: The first T7 prove/verify boundary uses native Metal trace generation with an explicit CPU prover bridge
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The first honest prove/verify boundary for `T7` is now the unchanged vendored
+upstream `wide_fibonacci` component driven by native Metal trace generation and
+then bridged explicitly into the stock CPU prover and verifier. This is
+accepted as real progress because the workload logic stays upstream-owned and
+the bridge is named as a temporary backend-completion gap rather than hidden as
+direct `MetalBackend` support.
+
+Context:
+
+After vendoring the upstream example set and validating trace parity, the next
+missing seam was the first prove/verify boundary from unchanged example code.
+`MetalBackend` still does not satisfy the full Stwo `BackendForChannel`
+contract, so direct backend substitution was not yet truthful. The smallest
+semantics-preserving step was to reuse the native Metal trace path, materialize
+that trace into ordinary CPU circle evaluations, and run the stock prover and
+verifier unchanged.
+
+Alternatives rejected:
+
+- keep T7 at trace-only acceptance without any prove/verify execution evidence
+- add another benchmark-specific proving harness instead of using the vendored
+  upstream example component
+- describe the new hybrid boundary as direct `MetalBackend` support before the
+  backend trait contract exists
+
+Impact:
+
+- `wide_fibonacci` moves to in-progress in the acceptance matrix with a real
+  prove/verify boundary
+- the current example-backed proving path is explicitly hybrid and bridge-backed
+- `TD-0015` is introduced to track retirement of the CPU prover bridge
+- the next honest tranche is to generalize the acceptance harness and begin the
+  backend-completion slice that can retire that bridge
+
+Superseded by:
+
+- none
+
+### DEC-0035: Single-trace Blake2s upstream acceptance rows use one shared CPU-bridge harness
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The acceptance crate now exposes one shared single-trace Blake2s CPU-bridge
+prove/verify helper. Upstream-example acceptance rows that still need the CPU
+prover bridge should use that helper instead of embedding bespoke proving code
+inside each test file.
+
+Context:
+
+Once the first `wide_fibonacci` prove/verify boundary existed, the next risk
+was accidental proliferation of near-duplicate hybrid harnesses. That would
+slow future example onboarding and make it harder to tell whether a new row was
+exercising shared backend support or just adding another test-local bridge.
+
+Alternatives rejected:
+
+- keep the first prove/verify wiring entirely local to one test file
+- add a wide-fibonacci-specific helper instead of a reusable single-trace
+  bridge harness
+- move on to a second example before extracting the shared acceptance pattern
+
+Impact:
+
+- acceptance harness logic is now reusable for future single-trace Blake2s
+  upstream examples
+- the next honest tranche is no longer harness cleanup; it is the first direct
+  backend-completion slice at the `PolyOps` boundary that can retire the CPU
+  prove bridge
+- `wide_fibonacci` remains the only example using the shared helper so far
+
+Superseded by:
+
+- none
+
 ### DEC-0032: The primary deliverable is generic Stwo proving with `MetalBackend`, and upstream examples are the acceptance workloads
 
 - Date: `2026-03-09`

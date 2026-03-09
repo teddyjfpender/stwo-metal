@@ -79,7 +79,7 @@ Acceptance matrix:
 | `blake` | acceptance workload | `planned` | proves and verifies through `MetalBackend` with unchanged workload logic |
 | `poseidon` | acceptance workload | `planned` | proves and verifies through `MetalBackend` with unchanged workload logic |
 | `state_machine` | acceptance workload | `planned` | proves and verifies through `MetalBackend` with unchanged workload logic |
-| `wide_fibonacci` | acceptance workload and perf reference | `planned` | proves and verifies through `MetalBackend`; benchmark remains secondary evidence |
+| `wide_fibonacci` | acceptance workload and perf reference | `in_progress` | proves and verifies through `MetalBackend`; benchmark remains secondary evidence |
 | `xor` | acceptance workload | `planned` | proves and verifies through `MetalBackend` with unchanged workload logic |
 
 ## Planning assumptions
@@ -358,12 +358,22 @@ Current first implementation slice:
   `wide_fibonacci` example unchanged except for backend wiring
 - that first acceptance fixture proves the example can feed the current native
   Metal trace boundary without passing through a bespoke benchmark harness
+- a second acceptance fixture now proves and verifies the unchanged vendored
+  `wide_fibonacci` component by bridging the native Metal trace into the stock
+  CPU prover and verifier
+  this is explicit bridge-backed execution, not yet direct `MetalBackend`
+  substitution
+- the single-trace Blake2s acceptance harness is now factored so future
+  example-backed CPU-bridge prove/verify rows do not require bespoke test-local
+  proving code
 
 Current next slice inside T7:
 
-- define the first honest prove/verify boundary for a vendored upstream example
-  component so progress resumes on backend completion instead of trace-only
-  acceptance
+- start the first backend-completion slice at the `PolyOps` boundary for
+  `MetalBackend`, because only `ColumnOps` is implemented today and direct
+  example proving cannot become truthful before that changes
+- only after that bridge-retirement work should the next vendored upstream
+  example be added through the reusable acceptance harness
 
 ## Sequencing rules
 
@@ -379,7 +389,8 @@ Current next slice inside T7:
 
 1. Freeze the project definition around generic backend completion and
    unchanged upstream example proving.
-2. Advance `T7` from trace wiring to the first prove/verify boundary for one
-   vendored upstream example.
-3. Resume backend porting only through example-backed completion gaps while
-   benchmark rows remain secondary to the acceptance path.
+2. Advance `T7` from the first bridge-backed prove/verify boundary into the
+   first direct backend slice that retires an explicit CPU prove bridge.
+3. Add more vendored upstream examples only when the reusable acceptance
+   harness can exercise newly shared backend support instead of another
+   one-off bridge.

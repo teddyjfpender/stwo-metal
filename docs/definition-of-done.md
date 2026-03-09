@@ -21,6 +21,9 @@ Work is done only when the code, contract, and process state agree.
       ownership explicitly instead of hiding hybrid execution behind one label.
 - [ ] If the slice claims progress toward upstream-example support, it states
       whether workload code stayed unchanged except for backend wiring.
+- [ ] If an upstream-example slice proves and verifies through an explicit CPU
+      bridge, the bridge is named as such and not described as direct
+      `MetalBackend` support.
 - [ ] Proof-facing FRI slices validate their bounded last-layer polynomial
       semantics against the vendored CPU oracle, including the configured
       degree-bound truncation.

@@ -29,11 +29,10 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T7 first implementation slice: vendored examples and wide-fibonacci trace wiring`
+- Active tranche: `T7 third implementation slice: retire the explicit CPU prove bridge`
 - Objective:
-  execute the first example-backed backend-completion slice by pinning the
-  upstream example set locally and wiring one unchanged example into the
-  native Metal path without another bespoke benchmark seam
+  start the first direct backend-completion slice that can replace the current
+  explicit CPU prove bridge in the example-backed acceptance path
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - Current owner area:
@@ -50,9 +49,12 @@ Invariants:
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
-- only the first upstream example wiring slice exists so far:
-  `wide_fibonacci` now feeds the native Metal trace boundary through an
-  acceptance fixture, but the prove/verify path is not yet backend-complete
+- only the first upstream example prove/verify slice exists so far:
+  `wide_fibonacci` now proves and verifies through an acceptance fixture, but
+  the proving path still crosses an explicit CPU bridge instead of direct
+  `MetalBackend` substitution
+- the example-backed acceptance harness is now reusable for single-trace
+  Blake2s-backed CPU bridge flows, but only `wide_fibonacci` uses it so far
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
@@ -63,11 +65,10 @@ Invariants:
 
 ## Next three deliverables
 
-1. Define the first honest prove/verify boundary for one vendored upstream
-   example, starting from the unchanged example component rather than a custom
-   benchmark harness.
-2. Generalize the acceptance harness pattern so the next upstream examples can
-   be added by backend wiring instead of workload rewrites.
+1. Start the first direct backend-completion slice at the `PolyOps`
+   boundary for `MetalBackend`, since only `ColumnOps` is implemented today.
+2. Add the next upstream example through the reusable acceptance harness only
+   once a direct backend slice meaningfully widens shared proving support.
 3. Keep benchmark-specific proving rows secondary while generic backend gaps
    are closed tranche by tranche.
 

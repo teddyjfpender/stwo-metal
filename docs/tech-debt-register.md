@@ -499,3 +499,42 @@ adapted vendoring model as stable process.
 Target retirement point:
 
 - `T7`
+
+### TD-0015: The first upstream-example prove/verify boundary still depends on an explicit CPU prover bridge
+
+- Status: `active`
+- Category: `backend-completion gap`
+- Introduced: `2026-03-09`
+- Owner area: `T7 example proving`
+
+Why it exists now:
+
+The unchanged vendored upstream `wide_fibonacci` example now proves and
+verifies through a real acceptance fixture, but the proving path still crosses
+an explicit CPU bridge after native Metal trace generation. The bridge
+materializes the Metal trace as `CircleEvaluation<CpuBackend, ...>` values and
+then runs the stock CPU prover and verifier because `MetalBackend` does not yet
+implement the full Stwo `BackendForChannel` contract.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/witness.rs`
+- `fixtures/upstream-example-acceptance/src/lib.rs`
+- `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
+
+Risk if left in place:
+
+The project could overclaim example-backed proving support while the critical
+prove path still depends on CPU backend substitution. It also limits how much
+performance signal the acceptance harness can provide for the eventual
+log-size-20 wide-fibonacci target.
+
+Exit condition:
+
+At least one accepted upstream example proves and verifies through a direct
+`MetalBackend` path, with no explicit CPU prover bridge required after native
+Metal trace generation.
+
+Target retirement point:
+
+- `T7`

@@ -137,9 +137,16 @@ The first completed T7 supporting slices are:
 - isolated acceptance fixture crate for upstream-example backend wiring
 - first unchanged upstream `wide_fibonacci` example wired into the native Metal
   trace boundary with deterministic parity against the vendored example trace
+- first unchanged upstream `wide_fibonacci` prove/verify boundary established
+  through native Metal trace generation plus an explicit CPU prover/verifier
+  bridge
+- reusable single-trace Blake2s acceptance helper extracted so future example
+  rows do not need bespoke test-local CPU-bridge proving code
 
 The next required T7 boundary is:
 
-- the first honest prove/verify boundary for one vendored upstream example
-  component, starting from unchanged example code instead of a benchmark-only
-  harness
+- start the first direct backend-completion slice at the `PolyOps` boundary
+  for `MetalBackend`, because direct example proving cannot become truthful
+  while only `ColumnOps` is implemented
+- use the reusable acceptance harness for the next vendored upstream example
+  only after that shared backend slice exists

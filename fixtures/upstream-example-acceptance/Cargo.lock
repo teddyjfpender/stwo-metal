@@ -856,6 +856,7 @@ name = "stwo-metal-upstream-example-acceptance"
 version = "0.1.0"
 dependencies = [
  "stwo",
+ "stwo-constraint-framework",
  "stwo-examples",
  "stwo-metal",
 ]
