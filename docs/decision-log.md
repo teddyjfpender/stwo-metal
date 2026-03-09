@@ -478,7 +478,7 @@ Superseded by:
 ### DEC-0013: The first inner FRI-layer commitment handoff is implemented only as an explicit CPU bridge
 
 - Date: `2026-03-09`
-- Status: `accepted`
+- Status: `superseded`
 - Owners: `project team`
 - Related design note:
   - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
@@ -508,6 +508,50 @@ Impact:
 - the first inner-layer commitment boundary is now explicit, testable, and
   support-honest
 - the next T5 boundary is the native replacement for this CPU bridge
+
+Superseded by:
+
+- `DEC-0014`
+
+### DEC-0014: The first inner FRI-layer commitment now has a native `stwo-metal` boundary
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The first inner FRI-layer commitment is no longer defined only by a CPU bridge.
+`stwo-metal` now owns a native proving-facing boundary consisting of:
+
+- `MetalLineEvaluation` for folded line-domain values
+- a native `stwo-metal` commitment object built directly from that line
+  evaluation
+
+This boundary must continue to match the vendored CPU Merkle root for the same
+folded values.
+
+Context:
+
+The explicit CPU bridge was sufficient to keep the first commitment step honest,
+but it was not a stable or truthful long-term boundary for the Metal proving
+path. The project needed a direct `stwo-metal` commitment surface before
+growing into decommitment or wider proving support.
+
+Alternatives rejected:
+
+- keep the CPU bridge as the only proving-facing commitment path
+- claim a GPU-side Merkle pipeline before a stable native host boundary exists
+
+Impact:
+
+- the first inner-layer commitment root can now be produced without crossing
+  into `CpuBackend`
+- the explicit CPU bridge is retained only as a bounded validation surface
+- the next T5 boundary is native query and decommit support on top of this
+  commitment object
 
 Superseded by:
 

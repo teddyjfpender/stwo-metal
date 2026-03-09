@@ -42,20 +42,20 @@ Invariants:
 ## Current blockers
 
 - internal Rust vocabulary is still CUDA-first in many places
-- the first inner FRI-layer commitment now exists only through an explicit CPU
-  bridge
-- no native `SecureColumnByCoords<MetalBackend>` or native inner-layer Merkle
-  commitment boundary exists yet
+- the first inner FRI-layer commitment is native to `stwo-metal`, but query and
+  decommit support on that boundary do not exist yet
+- the native commitment boundary is still host-owned and readback-based rather
+  than a GPU-side hash pipeline
 - interpolation, evaluation, and trace-generation primitives are still outside
   the Metal lane
 
 ## Next three deliverables
 
-1. Freeze and land the native replacement for the first inner-layer CPU
-   commitment bridge.
-2. Decide whether T5 can exit with the explicit CPU commitment bridge still in
-   place or requires native Metal commitment before any bounded proving row is
-   called truthful.
+1. Freeze and land the native first inner-layer query and decommit boundary on
+   top of the new commitment surface.
+2. Decide whether T5 can exit with host-owned commitment hashing still in place
+   or requires a GPU-side hash path before any bounded proving row is called
+   truthful.
 3. Keep the unsupported matrix and CPU-oracle parity coverage explicit as the
    path grows.
 

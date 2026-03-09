@@ -12,6 +12,7 @@ pub enum MetalBackendSurface {
     SecureFieldColumnBitReverse,
     FriFirstLayerFoldCircleIntoLine,
     FriLineFold,
+    FriFirstInnerLayerCommitmentNative,
     FriFirstInnerLayerCommitmentCpuBridge,
     QuotientAccumulate,
 }
@@ -36,6 +37,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::SecureFieldColumnBitReverse,
     MetalBackendSurface::FriFirstLayerFoldCircleIntoLine,
     MetalBackendSurface::FriLineFold,
+    MetalBackendSurface::FriFirstInnerLayerCommitmentNative,
     MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge,
     MetalBackendSurface::QuotientAccumulate,
 ];
@@ -52,7 +54,10 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::SecureFieldColumnFromIterator
         | MetalBackendSurface::SecureFieldColumnBitReverse
         | MetalBackendSurface::FriFirstLayerFoldCircleIntoLine
-        | MetalBackendSurface::FriLineFold => MetalBackendSurfaceStatus::Supported,
+        | MetalBackendSurface::FriLineFold
+        | MetalBackendSurface::FriFirstInnerLayerCommitmentNative => {
+            MetalBackendSurfaceStatus::Supported
+        }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
@@ -86,6 +91,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::FriLineFold => {
             "The bounded FRI line-fold path is implemented through native Metal kernels with host-orchestrated repeated folding."
+        }
+        MetalBackendSurface::FriFirstInnerLayerCommitmentNative => {
+            "The first inner FRI-layer commitment is implemented through a stwo-metal-owned native line-evaluation and commitment boundary."
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             "The first inner FRI-layer line-evaluation and commitment handoff is available only through an explicit CPU bridge."

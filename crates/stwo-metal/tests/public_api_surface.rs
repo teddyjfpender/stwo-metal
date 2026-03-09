@@ -1,10 +1,12 @@
 use std::collections::HashSet;
 
+use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
 use stwo_metal::{
     cuda_backend_surface_status, plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend,
     CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan,
-    MetalBackend, MetalBaseFieldVec, MetalSecureFieldVec, OwnedConstraintEvalAbiV1, SecureFieldVec,
-    StwoCudaWideFibonacciEvalAbiV1, STWO_CUDA_BACKEND_SURFACES_V1,
+    MetalBackend, MetalBaseFieldVec, MetalLineCommitment, MetalLineEvaluation, MetalSecureFieldVec,
+    OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
+    STWO_CUDA_BACKEND_SURFACES_V1,
 };
 
 #[test]
@@ -13,6 +15,8 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<BaseFieldVec>();
     let _ = std::mem::size_of::<MetalBackend>();
     let _ = std::mem::size_of::<MetalBaseFieldVec>();
+    let _ = std::mem::size_of::<MetalLineEvaluation>();
+    let _ = std::mem::size_of::<MetalLineCommitment<Blake2sMerkleHasher>>();
     let _ = std::mem::size_of::<MetalSecureFieldVec>();
     let _ = std::mem::size_of::<SecureFieldVec>();
 }

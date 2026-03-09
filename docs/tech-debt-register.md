@@ -202,10 +202,10 @@ Target retirement point:
 
 Why it exists now:
 
-The bounded Metal lane can now fold into the first line layer, but it does not
-yet own a native `SecureColumnByCoords<MetalBackend>` or native inner-layer
-Merkle commitment surface. The current boundary therefore materializes the line
-evaluation on CPU and commits there explicitly.
+The bounded Metal lane originally needed an explicit CPU bridge to keep the
+first inner-layer commitment honest before a native `stwo-metal` commitment
+surface existed. The bridge remains available as a validation path even though
+the native commitment boundary now exists.
 
 Current containment:
 
@@ -213,14 +213,47 @@ Current containment:
 
 Risk if left in place:
 
-The T5 candidate path remains support-honest, but the proving surface still
-exits Metal before commitment, which limits both performance and how far the
-backend can truthfully claim native proving support.
+The bridge is now contained and explicit, but keeping it around too long risks
+leaving two proving-facing paths alive when only one should remain primary.
 
 Exit condition:
 
-The first inner-layer commitment no longer depends on CPU materialization and
-has an approved native Metal proving-facing boundary with deterministic parity.
+The native first inner-layer query and decommit path is stable enough that the
+CPU bridge is no longer needed even as a validation surface.
+
+Target retirement point:
+
+- `T5`
+
+### TD-0007: Native first inner-layer commitment is still host-owned and root-focused
+
+- Status: `active`
+- Category: `native commitment boundary`
+- Introduced: `2026-03-09`
+- Owner area: `T5 bounded FRI bring-up`
+
+Why it exists now:
+
+The native `stwo-metal` commitment boundary currently reads folded line values
+back to the host and builds the lifted Merkle tree there. It proves root parity
+with the vendored CPU path, but it does not yet provide native query and
+decommit support.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/line.rs`
+
+Risk if left in place:
+
+The proving path can commit honestly, but it cannot yet decommit natively on
+top of that commitment object, and host-owned hashing may become an accidental
+long-term ceiling.
+
+Exit condition:
+
+The first inner-layer commitment object supports native query and decommit
+operations, and the team has explicitly decided whether host-owned hashing is an
+acceptable T5 endpoint or needs a GPU-side replacement.
 
 Target retirement point:
 
