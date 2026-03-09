@@ -235,9 +235,9 @@ Target retirement point:
 Why it exists now:
 
 The native `stwo-metal` commitment boundary currently reads folded line values
-back to the host and builds the lifted Merkle tree there. It proves root parity
-with the vendored CPU path, but it does not yet provide native query and
-decommit support.
+back to the host and builds the lifted Merkle tree there. It now supports
+native decommit semantics on top of that host-owned tree, but the hashing path
+itself is still not GPU-side.
 
 Current containment:
 
@@ -245,15 +245,14 @@ Current containment:
 
 Risk if left in place:
 
-The proving path can commit honestly, but it cannot yet decommit natively on
-top of that commitment object, and host-owned hashing may become an accidental
-long-term ceiling.
+The proving path can now commit and decommit honestly for the first inner
+layer, but host-owned hashing may become an accidental long-term ceiling if the
+team never explicitly decides whether that is acceptable for T5.
 
 Exit condition:
 
-The first inner-layer commitment object supports native query and decommit
-operations, and the team has explicitly decided whether host-owned hashing is an
-acceptable T5 endpoint or needs a GPU-side replacement.
+The team has explicitly decided whether host-owned hashing is an acceptable T5
+endpoint or has replaced it with a GPU-side hash path.
 
 Target retirement point:
 

@@ -208,10 +208,12 @@ Current next slices inside T5:
   parity for repeated host-orchestrated folds
 - the first inner FRI-layer native line-evaluation and Merkle commitment
   boundary now exists with deterministic vendored CPU parity
+- the first inner FRI-layer native query and decommit boundary now exists with
+  deterministic vendored CPU parity
 - the explicit CPU bridge remains available only as a bounded validation and
   comparison surface
-- the next T5 work is to land the native first inner-layer query and decommit
-  boundary on top of that commitment surface
+- the next T5 work is to package that native first inner-layer surface into a
+  bounded proof-facing row
 
 ### T6: Restore one truthful end-to-end supported workload
 
@@ -233,7 +235,7 @@ Required outputs:
 
 ## Current next three planning deliverables
 
-1. Freeze and land the native first inner-layer query and decommit boundary.
+1. Freeze and land the first bounded native FRI inner-layer proof row.
 2. Decide whether T5 can exit with host-owned commitment hashing still in place
    or requires a GPU-side hash path before any bounded proving row is called
    truthful.

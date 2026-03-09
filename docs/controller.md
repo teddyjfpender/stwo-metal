@@ -42,17 +42,17 @@ Invariants:
 ## Current blockers
 
 - internal Rust vocabulary is still CUDA-first in many places
-- the first inner FRI-layer commitment is native to `stwo-metal`, but query and
-  decommit support on that boundary do not exist yet
-- the native commitment boundary is still host-owned and readback-based rather
-  than a GPU-side hash pipeline
+- the first inner FRI-layer now has native commit and decommit support, but
+  that surface is not yet packaged as a bounded proof-facing row
+- the native commitment and decommit boundary is still host-owned and
+  readback-based rather than a GPU-side hash pipeline
 - interpolation, evaluation, and trace-generation primitives are still outside
   the Metal lane
 
 ## Next three deliverables
 
-1. Freeze and land the native first inner-layer query and decommit boundary on
-   top of the new commitment surface.
+1. Freeze and land the first bounded native FRI inner-layer proof row on top of
+   the commit and decommit surface.
 2. Decide whether T5 can exit with host-owned commitment hashing still in place
    or requires a GPU-side hash path before any bounded proving row is called
    truthful.

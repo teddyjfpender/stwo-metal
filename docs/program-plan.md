@@ -71,6 +71,7 @@ Current completed T5 supporting slices are:
 - native Metal FRI line fold with repeated host-orchestrated fold steps and
   deterministic vendored CPU parity
 - native `MetalLineEvaluation` and first inner-layer commitment root parity
+- native first inner-layer query and decommit parity
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
@@ -81,4 +82,4 @@ The first declared T5 proving sub-path candidate is:
 
 The next required T5 boundary is:
 
-- native first inner-layer query and decommit boundary
+- first bounded native FRI inner-layer proof row

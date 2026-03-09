@@ -13,6 +13,7 @@ pub enum MetalBackendSurface {
     FriFirstLayerFoldCircleIntoLine,
     FriLineFold,
     FriFirstInnerLayerCommitmentNative,
+    FriFirstInnerLayerDecommitNative,
     FriFirstInnerLayerCommitmentCpuBridge,
     QuotientAccumulate,
 }
@@ -38,6 +39,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::FriFirstLayerFoldCircleIntoLine,
     MetalBackendSurface::FriLineFold,
     MetalBackendSurface::FriFirstInnerLayerCommitmentNative,
+    MetalBackendSurface::FriFirstInnerLayerDecommitNative,
     MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge,
     MetalBackendSurface::QuotientAccumulate,
 ];
@@ -55,7 +57,8 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::SecureFieldColumnBitReverse
         | MetalBackendSurface::FriFirstLayerFoldCircleIntoLine
         | MetalBackendSurface::FriLineFold
-        | MetalBackendSurface::FriFirstInnerLayerCommitmentNative => {
+        | MetalBackendSurface::FriFirstInnerLayerCommitmentNative
+        | MetalBackendSurface::FriFirstInnerLayerDecommitNative => {
             MetalBackendSurfaceStatus::Supported
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
@@ -94,6 +97,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentNative => {
             "The first inner FRI-layer commitment is implemented through a stwo-metal-owned native line-evaluation and commitment boundary."
+        }
+        MetalBackendSurface::FriFirstInnerLayerDecommitNative => {
+            "The first inner FRI-layer query and decommit boundary is implemented through the native stwo-metal line-commitment surface."
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             "The first inner FRI-layer line-evaluation and commitment handoff is available only through an explicit CPU bridge."

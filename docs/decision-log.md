@@ -556,3 +556,42 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0015: The first inner FRI layer now has a native decommit boundary
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The native `stwo-metal` line-commitment surface now supports first inner-layer
+query and decommit operations that mirror the vendored CPU FRI semantics for:
+
+- grouped decommitment positions
+- omitted-value `fri_witness` ordering
+- Merkle hash witness ordering
+
+Context:
+
+After the native first inner-layer commitment boundary landed, the remaining
+gap in that layer was the ability to answer FRI queries and produce a truthful
+decommitment without crossing back through the CPU bridge.
+
+Alternatives rejected:
+
+- keep the CPU bridge as the only decommitment path
+- expose a custom witness format that diverges from the existing FRI proof
+  model
+
+Impact:
+
+- the first inner FRI layer now has native commit and decommit support
+- the next T5 boundary is to package that surface into a bounded proof-facing
+  row
+
+Superseded by:
+
+- none

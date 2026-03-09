@@ -16,6 +16,7 @@ upstream-dev-probe = ["vendored-upstream-bridge"]
 
 [dependencies]
 ark-std = { version = "0.3.0", features = ["print-trace"] }
+hashbrown = { version = ">=0.15.2", features = ["serde"] }
 itertools = { version = "0.12", default-features = false, features = ["use_alloc"] }
 rand = { version = "0.8.5", default-features = false, features = ["small_rng"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
