@@ -920,3 +920,49 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0024: The first declared Stwo workload boundary is an explicit hybrid FRI boundary
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`stwo-metal` now exposes a manifest-driven workload planning and boundary layer
+for exemplar Stwo workloads. The first declared workload boundary is explicitly
+hybrid:
+
+- the bounded Blake2s FRI sub-path is Metal-owned
+- witness, quotient, and PCS stages remain explicitly CPU-owned or
+  not-applicable per workload
+- the supported plans are named as `CpuOnly`, `MetalFriHybrid`, or
+  `MetalFull`
+
+Context:
+
+The bounded Metal FRI lane now had a truthful proving sub-path, but the
+project still lacked a stable workload contract describing where that sub-path
+fits into a real Stwo workload. The next safe step was to make stage ownership
+explicit instead of silently widening the support claim.
+
+Alternatives rejected:
+
+- keep the declared FRI sub-path disconnected from workload planning
+- declare a full workload path before witness, quotient, and PCS ownership had
+  been written down
+- blur hybrid execution into a generic "Metal-supported" label
+
+Impact:
+
+- exemplar workloads now have explicit planning and stage-ownership contracts
+- `TD-0010` is retired because the declared FRI sub-path now sits inside one
+  declared Stwo workload boundary
+- the next T5 boundary is an executable handoff from a CPU-owned workload
+  artifact into that declared hybrid boundary
+
+Superseded by:
+
+- none

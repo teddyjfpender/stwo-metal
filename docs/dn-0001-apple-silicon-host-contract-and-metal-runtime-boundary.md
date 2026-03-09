@@ -56,13 +56,16 @@ Implemented against this note:
 - bounded full FRI proof candidate
 - bounded transcript-owned FRI prover
 - declared bounded Blake2s FRI proving sub-path
+- manifest-driven workload planner for exemplar Stwo workloads
+- declared hybrid workload boundary with explicit witness, quotient, PCS, and
+  Metal FRI ownership
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
 Still outside the implemented surface:
 
-- one declared Stwo workload boundary that consumes the declared bounded
-  Blake2s FRI proving sub-path
+- one executable handoff from a CPU-owned workload artifact into the declared
+  hybrid workload boundary
 - interpolation, evaluation, and trace-support primitives beyond the bounded
   FRI arithmetic surface
 - any truthful end-to-end proving claim

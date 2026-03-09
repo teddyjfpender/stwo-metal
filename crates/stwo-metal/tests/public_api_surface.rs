@@ -2,12 +2,15 @@ use std::collections::HashSet;
 
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
 use stwo_metal::{
-    cuda_backend_surface_status, plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend,
-    CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan,
-    MetalBackend, MetalBaseFieldVec, MetalFriBlake2sSubpath, MetalFriFirstLayer,
-    MetalFriInnerLayerRow, MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice,
-    MetalFriProver, MetalLineCommitment, MetalLineEvaluation, MetalSecureFieldVec,
-    OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
+    cuda_backend_surface_status, declare_exemplar_hybrid_fri_workload,
+    declare_exemplar_metal_workload_boundary, plan_exemplar_metal_prove_by_name,
+    plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend, CudaBackendSurface,
+    CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan, MetalBackend,
+    MetalBaseFieldVec, MetalExecutionIntent, MetalExecutionPlan, MetalFriBlake2sSubpath,
+    MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice, MetalFriLayerDecommitment,
+    MetalFriProofSlice, MetalFriProver, MetalHybridFriWorkload, MetalLineCommitment,
+    MetalLineEvaluation, MetalSecureFieldVec, MetalWorkloadBoundary, MetalWorkloadOwnership,
+    MetalWorkloadStage, OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
     STWO_CUDA_BACKEND_SURFACES_V1,
 };
 
@@ -26,6 +29,8 @@ fn companion_surface_exports_backend_core_types() {
     >();
     let _ = std::mem::size_of::<MetalFriBlake2sSubpath>();
     let _ = std::mem::size_of::<MetalFriLayerDecommitment<Blake2sMerkleHasher>>();
+    let _ = std::mem::size_of::<MetalWorkloadBoundary>();
+    let _ = std::mem::size_of::<MetalHybridFriWorkload>();
     let _ = std::mem::size_of::<MetalLineEvaluation>();
     let _ = std::mem::size_of::<MetalLineCommitment<Blake2sMerkleHasher>>();
     let _ = std::mem::size_of::<MetalSecureFieldVec>();
@@ -36,8 +41,14 @@ fn companion_surface_exports_backend_core_types() {
 fn companion_surface_exports_planner_api() {
     let plan = plan_exemplar_prove_by_name(CudaExecutionIntent::RequireCuda, &["poseidon_example"])
         .unwrap();
+    let metal_plan = plan_exemplar_metal_prove_by_name(
+        MetalExecutionIntent::PreferMetal,
+        &["fibonacci_example"],
+    )
+    .unwrap();
 
     assert_eq!(plan, CudaExecutionPlan::CudaFull);
+    assert_eq!(metal_plan, MetalExecutionPlan::MetalFriHybrid);
 }
 
 #[test]
@@ -48,6 +59,31 @@ fn companion_surface_exports_capability_diagnostics() {
     assert_eq!(
         cuda_backend_surface_status(CudaBackendSurface::GkrSumAsPolyInFirstVariable),
         CudaBackendSurfaceStatus::Supported
+    );
+}
+
+#[test]
+fn companion_surface_exports_workload_boundary_api() {
+    let boundary = declare_exemplar_metal_workload_boundary(
+        MetalExecutionIntent::PreferMetal,
+        "fibonacci_example",
+    )
+    .unwrap();
+    let workload = declare_exemplar_hybrid_fri_workload(
+        MetalExecutionIntent::PreferMetal,
+        "fibonacci_example",
+        stwo::core::fri::FriConfig::new(3, 2, 3, 2),
+    )
+    .unwrap();
+
+    assert_eq!(boundary.plan(), MetalExecutionPlan::MetalFriHybrid);
+    assert_eq!(
+        workload.boundary().plan(),
+        MetalExecutionPlan::MetalFriHybrid
+    );
+    assert_eq!(
+        boundary.stage_ownership(MetalWorkloadStage::FriBlake2s),
+        Some(MetalWorkloadOwnership::MetalNative)
     );
 }
 

@@ -226,11 +226,17 @@ Current next slices inside T5:
   ordering and deterministic CPU parity
 - one declared bounded Blake2s FRI proving sub-path now exists on top of that
   transcript-owned prover
+- a manifest-driven workload planner now classifies exemplar Stwo workloads as
+  `CpuOnly`, `MetalFriHybrid`, or `MetalFull`
+- one declared hybrid workload boundary now exists for the exemplar workload
+  set, with explicit ownership for witness, quotient, PCS, and Metal FRI
+  stages
 - the explicit CPU bridge remains available only as a bounded validation and
   comparison surface
-- the next T5 work is to bind that declared FRI sub-path into one declared Stwo
-  workload boundary with explicit unsupported-edge accounting across quotient,
-  trace, and PCS ownership
+- the next T5 work is to freeze one executable handoff from a CPU-owned
+  workload artifact into that declared hybrid workload boundary, starting with
+  a FRI-ready evaluation input rather than pretending trace or quotient
+  ownership already moved
 
 ### T6: Restore one truthful end-to-end supported workload
 
@@ -252,10 +258,10 @@ Required outputs:
 
 ## Current next three planning deliverables
 
-1. Bind the declared bounded Blake2s FRI sub-path into one declared Stwo
-   workload boundary with explicit unsupported-edge accounting.
-2. Decide whether T5 can exit with host-owned commitment hashing still in place
-   or requires a GPU-side hash path before any bounded proving row is called
-   truthful.
-3. Keep the unsupported matrix and explicit CPU bridges explicit while the
-   candidate path grows.
+1. Freeze one executable workload handoff from a CPU-owned artifact into the
+   declared hybrid workload boundary.
+2. Decide whether quotient accumulation or PCS commitment is the next native
+   proving-stage replacement after that handoff lands.
+3. Decide whether T5 can exit with host-owned commitment hashing still in
+   place or requires a GPU-side hash path before any bounded proving row is
+   called truthful.

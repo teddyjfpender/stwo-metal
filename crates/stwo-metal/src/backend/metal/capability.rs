@@ -22,6 +22,7 @@ pub enum MetalBackendSurface {
     FriProofSliceBounded,
     FriProverTranscriptOwnedBounded,
     FriBlake2sSubpathDeclared,
+    WorkloadBoundaryHybridDeclared,
     FriFirstInnerLayerCommitmentCpuBridge,
     QuotientAccumulate,
 }
@@ -56,6 +57,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::FriProofSliceBounded,
     MetalBackendSurface::FriProverTranscriptOwnedBounded,
     MetalBackendSurface::FriBlake2sSubpathDeclared,
+    MetalBackendSurface::WorkloadBoundaryHybridDeclared,
     MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge,
     MetalBackendSurface::QuotientAccumulate,
 ];
@@ -82,7 +84,10 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::FriInnerProofSliceBounded
         | MetalBackendSurface::FriProofSliceBounded
         | MetalBackendSurface::FriProverTranscriptOwnedBounded
-        | MetalBackendSurface::FriBlake2sSubpathDeclared => MetalBackendSurfaceStatus::Supported,
+        | MetalBackendSurface::FriBlake2sSubpathDeclared
+        | MetalBackendSurface::WorkloadBoundaryHybridDeclared => {
+            MetalBackendSurfaceStatus::Supported
+        }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
@@ -146,6 +151,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::FriBlake2sSubpathDeclared => {
             "A declared bounded Blake2s FRI proving sub-path is implemented on top of the transcript-owned Metal prover."
+        }
+        MetalBackendSurface::WorkloadBoundaryHybridDeclared => {
+            "A declared Stwo workload boundary is supported for routing one workload through the Metal FRI sub-path while keeping witness, quotient, and PCS ownership explicit."
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             "The first inner FRI-layer line-evaluation and commitment handoff is available only through an explicit CPU bridge."

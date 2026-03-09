@@ -40,6 +40,21 @@ pub mod planner {
         CudaExecutionPlan, CudaOperationKind, CudaPlannerError, CudaSupportTier,
         UnknownCudaComponent, UnsupportedCudaPlan,
     };
+    pub use crate::backend::metal::{
+        plan_exemplar_metal_prove_by_name, plan_metal_operation, MetalComponentCapability,
+        MetalComponentPlanInput, MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind,
+        MetalPlannerError, MetalSupportTier, UnknownMetalComponent, UnsupportedMetalPlan,
+        STWO_METAL_PLANNER_COMPONENTS_V1,
+    };
+}
+
+#[cfg(feature = "prover")]
+pub mod workload {
+    pub use crate::backend::metal::{
+        declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
+        MetalHybridFriWorkload, MetalWorkloadBoundary, MetalWorkloadOwnership, MetalWorkloadStage,
+        MetalWorkloadStageAssignment,
+    };
 }
 
 #[cfg(feature = "prover")]
@@ -70,9 +85,12 @@ pub use capability::{
 };
 #[cfg(feature = "prover")]
 pub use planner::{
-    plan_exemplar_prove_by_name, CudaComponentCapability, CudaExecutionIntent, CudaExecutionPlan,
-    CudaOperationKind, CudaPlannerError, CudaSupportTier, UnknownCudaComponent,
-    UnsupportedCudaPlan,
+    plan_exemplar_metal_prove_by_name, plan_exemplar_prove_by_name, plan_metal_operation,
+    CudaComponentCapability, CudaExecutionIntent, CudaExecutionPlan, CudaOperationKind,
+    CudaPlannerError, CudaSupportTier, MetalComponentCapability, MetalComponentPlanInput,
+    MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind, MetalPlannerError,
+    MetalSupportTier, UnknownCudaComponent, UnknownMetalComponent, UnsupportedCudaPlan,
+    UnsupportedMetalPlan, STWO_METAL_PLANNER_COMPONENTS_V1,
 };
 #[cfg(feature = "prover")]
 pub use quotient::{
@@ -82,6 +100,12 @@ pub use quotient::{
 pub use witness::{
     generate_poseidon_interaction_traces, generate_poseidon_traces, generate_wide_fibonacci_trace,
     PoseidonInteractionTraceRequest, PoseidonTraceRequest, WideFibonacciTraceRequest,
+};
+#[cfg(feature = "prover")]
+pub use workload::{
+    declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
+    MetalHybridFriWorkload, MetalWorkloadBoundary, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalWorkloadStageAssignment,
 };
 
 #[cfg(feature = "prover")]

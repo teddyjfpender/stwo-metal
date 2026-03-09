@@ -80,6 +80,9 @@ Current completed T5 supporting slices are:
 - bounded full FRI proof candidate
 - bounded transcript-owned FRI prover
 - declared bounded Blake2s FRI proving sub-path
+- manifest-driven workload planner for exemplar Stwo workloads
+- declared hybrid workload boundary with explicit witness, quotient, PCS, and
+  Metal FRI ownership
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
@@ -90,5 +93,5 @@ The first declared T5 proving sub-path candidate is:
 
 The next required T5 boundary is:
 
-- one declared Stwo workload boundary that consumes the declared bounded
-  Blake2s FRI proving sub-path
+- one executable handoff from a CPU-owned workload artifact into the declared
+  hybrid workload boundary

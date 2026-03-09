@@ -330,12 +330,12 @@ Target retirement point:
 
 ### TD-0010: The declared bounded FRI sub-path is still FRI-only and not yet workload-complete
 
-- Status: `active`
+- Status: `retired`
 - Category: `workload integration`
 - Introduced: `2026-03-09`
 - Owner area: `T5 bounded proving-path bring-up`
 
-Why it exists now:
+Why it existed:
 
 `stwo-metal` now has a declared bounded Blake2s FRI proving sub-path, but that
 declared path still stops at the FRI boundary. It does not yet own quotient,
@@ -357,6 +357,41 @@ Exit condition:
 One declared Stwo workload boundary consumes the declared bounded FRI sub-path
 with explicit quotient, trace, and PCS ownership and deterministic CPU-oracle
 parity.
+
+Target retirement point:
+
+- `T5`
+
+### TD-0011: The declared hybrid workload boundary still begins at a FRI-ready evaluation input
+
+- Status: `active`
+- Category: `workload handoff`
+- Introduced: `2026-03-09`
+- Owner area: `T5 workload handoff`
+
+Why it exists now:
+
+`stwo-metal` now has a declared hybrid workload boundary with explicit witness,
+quotient, PCS, and FRI ownership, but the executable path still begins at a
+precomputed `SecureFieldVec` that is already FRI-ready. The CPU-owned stages
+are named, but they do not yet feed the boundary through one stable handoff.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/workload.rs`
+- `crates/stwo-metal/src/backend/metal/subpath.rs`
+
+Risk if left in place:
+
+The project could sound more workload-complete than it really is, even though
+the executable hybrid path still relies on callers to prepare the FRI input
+artifact outside the declared workload boundary.
+
+Exit condition:
+
+One declared workload owns a stable handoff from a CPU-owned witness,
+quotient, or PCS artifact into the executable Metal workload boundary with
+deterministic CPU-oracle parity.
 
 Target retirement point:
 

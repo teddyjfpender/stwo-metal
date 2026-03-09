@@ -45,9 +45,9 @@ Invariants:
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
-- one declared bounded Blake2s FRI proving sub-path now exists, but it is not
-  yet integrated with quotient, trace, or PCS ownership for a declared Stwo
-  workload
+- one declared hybrid workload boundary now exists, but it still begins at a
+  precomputed FRI-ready `SecureFieldVec` instead of a stable handoff from a
+  CPU-owned witness, quotient, or PCS artifact
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - interpolation, evaluation, and trace-generation primitives are still outside
@@ -55,11 +55,11 @@ Invariants:
 
 ## Next three deliverables
 
-1. Bind the declared bounded Blake2s FRI sub-path into one declared Stwo
-   workload boundary with explicit quotient, trace, and PCS ownership.
-2. Decide whether T5 can exit with host-owned commitment hashing still in place
-   or requires a GPU-side hash path before any bounded proving row is called
-   truthful.
+1. Freeze one executable workload handoff that moves a CPU-owned FRI-ready
+   evaluation into the declared Metal hybrid workload boundary without hiding
+   ownership.
+2. Decide whether quotient accumulation or PCS commitment is the next native
+   proving-stage replacement after that handoff lands.
 3. Keep the unsupported matrix, explicit CPU bridges, and CPU-oracle parity
    coverage explicit as the path grows.
 

@@ -6,6 +6,8 @@ mod first_layer;
 mod fri;
 mod handoff;
 mod line;
+mod planner;
+mod planner_manifest_v1_generated;
 mod poly;
 mod proof;
 mod proof_slice;
@@ -13,6 +15,7 @@ mod prover;
 mod row;
 mod sequence;
 mod subpath;
+mod workload;
 
 pub use backend::MetalBackend;
 pub use capability::{
@@ -28,6 +31,12 @@ pub use handoff::{
     CpuLineCommitmentBridge,
 };
 pub use line::{MetalFriLayerDecommitment, MetalLineCommitment, MetalLineEvaluation};
+pub use planner::{
+    plan_exemplar_metal_prove_by_name, plan_metal_operation, MetalComponentCapability,
+    MetalComponentPlanInput, MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind,
+    MetalPlannerError, MetalSupportTier, UnknownMetalComponent, UnsupportedMetalPlan,
+};
+pub use planner_manifest_v1_generated::STWO_METAL_PLANNER_COMPONENTS_V1;
 pub use poly::permute_coset_to_circle_domain_bit_reversed;
 pub use proof::{
     MetalExtendedInnerFriProof, MetalFriInnerProofSlice, MetalInnerFriProof, MetalInnerFriProofAux,
@@ -37,6 +46,11 @@ pub use prover::MetalFriProver;
 pub use row::MetalFriInnerLayerRow;
 pub use sequence::MetalFriInnerLayerSequence;
 pub use subpath::MetalFriBlake2sSubpath;
+pub use workload::{
+    declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
+    MetalHybridFriWorkload, MetalWorkloadBoundary, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalWorkloadStageAssignment,
+};
 
 pub use crate::stwo_metal::{
     BaseFieldVec as MetalBaseFieldVec, SecureFieldVec as MetalSecureFieldVec,
