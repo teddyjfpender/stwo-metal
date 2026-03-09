@@ -1,0 +1,33 @@
+[package]
+name = "stwo-metal"
+version = "0.1.1"
+edition = "2021"
+build = "build.rs"
+
+[features]
+default = ["std"]
+std = ["stwo/std"]
+prover = ["stwo/prover", "std", "vendored-upstream-bridge"]
+parallel = ["stwo/parallel"]
+slow-tests = ["stwo/slow-tests"]
+tracing = ["stwo/tracing"]
+vendored-upstream-bridge = []
+upstream-dev-probe = ["vendored-upstream-bridge"]
+
+[dependencies]
+ark-std = { version = "0.3.0", features = ["print-trace"] }
+itertools = { version = "0.12", default-features = false, features = ["use_alloc"] }
+rand = { version = "0.8.5", default-features = false, features = ["small_rng"] }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+starknet-ff = { version = "0.3.7", default-features = false, features = [
+    "alloc",
+    "serde",
+] }
+stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo", package = "stwo", default-features = false }
+stwo-metal-sys = { version = "=0.1.1", path = "../stwo-metal-sys", default-features = false }
+
+[dev-dependencies]
+test-log = { version = "0.2.15", features = ["trace"] }
+
+[lib]
+bench = false

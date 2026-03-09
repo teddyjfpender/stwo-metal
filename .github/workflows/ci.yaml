@@ -1,0 +1,386 @@
+name: CI
+
+env:
+  NIGHTLY_VERSION: "nightly-2025-07-14"
+  STABLE_VERSION: "1.88.0"
+  STWO_CUDA_MODE: "no-cuda"
+
+on:
+  push:
+    branches:
+      - dev
+
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - auto_merge_enabled
+      - edited
+
+  merge_group:
+    types:
+      - checks_requested
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          components: rustfmt
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/rust_fmt.sh --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          components: clippy
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/clippy.sh
+
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc
+
+  run-wasm32-wasip1-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+          targets: wasm32-wasip1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasmtime
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --target wasm32-wasip1
+        env:
+          CARGO_TARGET_WASM32_WASIP1_RUNNER: "wasmtime run --"
+          RUSTFLAGS: -C target-feature=+simd128
+
+  run-wasm32-unknown-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: "latest"
+      - run: cd crates/stwo && wasm-pack test --node
+        env:
+          RUSTFLAGS: -C target-feature=+simd128
+
+  check-prover-no-cuda:
+    runs-on: macos-latest-xlarge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p stwo --features="prover" --locked
+        env:
+          RUSTFLAGS: -C target-feature=+neon
+
+  check-avx-prover-no-cuda:
+    strategy:
+      matrix:
+        target-feature: [avx512f, avx2]
+    runs-on: stwo-avx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/bootstrap_runners
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p stwo --features="prover" --locked
+        env:
+          RUSTFLAGS: -C target-cpu=native -C target-feature=+${{ matrix.target-feature }}
+
+  check-supported-benchmark-harness:
+    runs-on: ubuntu-latest
+    env:
+      STWO_CUDA_MODE: "no-cuda"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: bash -n scripts/bench.sh scripts/run_supported_wide_fibonacci_trace_benchmark.sh scripts/run_supported_wide_fibonacci_prove_benchmark.sh scripts/check_supported_benchmark_harness.sh scripts/check_supported_fixture_vendored_framework.sh
+      - run: ruby -c scripts/render_benchmark_table.rb
+      - run: sh scripts/check_supported_benchmark_harness.sh
+      - run: sh scripts/check_supported_fixture_vendored_framework.sh
+
+  run-tests-no-prover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.STABLE_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --no-default-features --package stwo
+
+  run-framework-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.STABLE_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --no-default-features --package stwo-constraint-framework
+
+  check-tests-prover-no-cuda:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --tests --features="tracing, prover" --locked
+
+  check-no-external-stwo-cuda:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_no_external_stwo_cuda.sh
+
+  check-no-public-stwo-cuda:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_no_public_stwo_cuda.sh
+
+  check-no-external-backend-cuda-path:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_no_external_backend_cuda_path.sh
+
+  check-no-old-stwo-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_no_old_stwo_boundary.sh
+
+  check-vendored-bridge-delta-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_vendored_bridge_delta_boundary.sh
+
+  check-upstream-hook-replacement-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_upstream_hook_replacement_artifacts.sh
+
+  check-stwo-cuda-companion-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p stwo-cuda --tests --features="prover" --locked
+      - run: ruby scripts/validate_m11_companion_compatibility.rb
+
+  check-standalone-pinned-pairing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: sh scripts/run_standalone_pinned_validation.sh
+
+  check-no-cuda-dispatch-globals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_no_cuda_dispatch_globals.sh
+
+  check-pointer-vector-upload-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_pointer_vector_upload_boundary.sh
+
+  check-proving-allocator-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_proving_allocator_boundary.sh
+
+  check-pedersen-allocator-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_pedersen_allocator_boundary.sh
+
+  check-no-cuda-backend-todo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_no_cuda_backend_todo.sh
+
+  check-cuda-domain-transfer-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_cuda_domain_transfer_boundary.sh
+
+  check-no-legacy-request-compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_no_legacy_request_compat.sh
+
+  check-no-global-cuda-mem-pool-state:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_no_global_cuda_mem_pool_state.sh
+
+  check-no-ungated-cuda-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_no_ungated_cuda_unit_tests.sh
+
+  check-no-public-assert-evaluator-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_no_public_assert_evaluator_surface.sh
+
+  check-no-stwo-raw-cuda-ownership:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_no_stwo_raw_cuda_ownership.sh
+
+  check-generated-cuda-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ruby scripts/validate_registry_artifacts.rb docs/artifacts/component-registry-v1.exemplar.json docs/artifacts/cuda-compatibility-manifest-v1.exemplar.json
+      - run: ruby scripts/validate_abi_artifacts.rb docs/artifacts/component-registry-v1.exemplar.json docs/artifacts/component-abi-v1.exemplar.json
+      - run: ruby scripts/validate_dispatch_artifacts.rb docs/artifacts/component-registry-v1.exemplar.json crates/stwo-cuda-sys/cuda/component_dispatch_v1_generated.cuh
+      - run: ruby scripts/validate_build_inventory_artifacts.rb docs/artifacts/component-registry-v1.exemplar.json crates/stwo-cuda-sys/cuda/component_inventory_v1_generated.cmake
+      - run: ruby scripts/validate_planner_manifest_module.rb docs/artifacts/component-registry-v1.exemplar.json docs/artifacts/cuda-compatibility-manifest-v1.exemplar.json crates/stwo-cuda/src/backend/cuda/planner_manifest_v1_generated.rs
+
+  check-slow-tests-prover-no-cuda:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --tests --features="slow-tests, prover" --locked
+
+  check-tests-parallel-prover-no-cuda:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --tests --features="parallel, prover" --locked
+
+  run-linux-cuda-supported-row-validation:
+    if: ${{ vars.STWO_ENABLE_CUDA_CI == 'true' }}
+    runs-on: [self-hosted, linux, x64, cuda]
+    env:
+      STWO_CUDA_MODE: "cuda-ci"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/bootstrap_runners
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: bash ./scripts/run_remote_cuda_validation.sh
+
+  ensure-no-std-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.STABLE_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cd ensure-verifier-no_std && cargo build -r
+
+  machete:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-07-14
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Machete
+        run: cargo install --locked cargo-machete
+      - name: Run Machete (detect unused dependencies)
+        run: cargo machete
+
+  all-tests:
+    runs-on: ubuntu-latest
+    needs:
+      - clippy
+      - format
+      - check-no-external-stwo-cuda
+      - check-no-cuda-dispatch-globals
+      - check-pointer-vector-upload-boundary
+      - check-proving-allocator-boundary
+      - check-pedersen-allocator-boundary
+      - check-no-cuda-backend-todo
+      - check-tests-prover-no-cuda
+      - check-no-old-stwo-boundary
+      - check-avx-prover-no-cuda
+      - check-prover-no-cuda
+      - check-no-ungated-cuda-unit-tests
+      - check-no-public-assert-evaluator-surface
+      - check-no-stwo-raw-cuda-ownership
+      - check-no-global-cuda-mem-pool-state
+      - check-supported-benchmark-harness
+      - run-wasm32-wasip1-tests
+      - run-tests-no-prover
+      - run-framework-tests
+      - check-slow-tests-prover-no-cuda
+      - check-tests-parallel-prover-no-cuda
+      - run-linux-cuda-supported-row-validation
+      - ensure-no-std-core
+      - machete
+    steps:
+      - name: Decide whether all the needed jobs succeeded or failed
+        uses: re-actors/alls-green@v1.2.2
+        with:
+          jobs: ${{ toJSON(needs) }}

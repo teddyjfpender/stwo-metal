@@ -1,0 +1,28 @@
+[package]
+name = "stwo-constraint-framework"
+version = "2.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Constraint framework for building AIR constraints with STWO"
+
+[workspace]
+members = []
+
+[features]
+default = ["std"]
+std = ["stwo/std", "itertools/use_std", "tracing/std", "num-traits/std", "stwo-std-shims/std"]
+parallel = ["dep:rayon", "stwo/parallel"]
+prover = ["stwo/prover", "std"]
+
+[dependencies]
+rayon = { version = "1.10.0", optional = true }
+num-traits = { version = "0.2.19", default-features = false }
+itertools = { version = "0.12", default-features = false, features = ["use_alloc"] }
+tracing = { version = "0.1.40", default-features = false }
+stwo = { path = "../stwo", version = "2.1.0", default-features = false }
+rand = { version = "0.8.5", default-features = false, features = ["small_rng"] }
+hashbrown = { version = ">=0.15.2", features = ["serde"] }
+stwo-std-shims = { version = "1.0.0", default-features = false }
+
+[package.metadata.cargo-machete]
+ignored = ["stwo-std-shims"]

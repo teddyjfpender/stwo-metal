@@ -1,0 +1,545 @@
+use core::ffi::c_void;
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct CudaSecureField {
+    pub a: u32,
+    pub b: u32,
+    pub c: u32,
+    pub d: u32,
+}
+
+impl CudaSecureField {
+    pub fn zero() -> Self {
+        Self {
+            a: 0,
+            b: 0,
+            c: 0,
+            d: 0,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct CirclePointBaseField {
+    pub x: u32,
+    pub y: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct LayerIndexPair {
+    pub layer_idx: u32,
+    pub hash_idx: u32,
+}
+
+#[repr(C, align(32))]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct Blake2sHash(pub [u8; 32]);
+
+#[cfg_attr(stwo_cuda_link, link(name = "stwo_cuda"))]
+extern "C" {
+    pub fn copy_uint32_t_vec_from_device_to_host(
+        device_ptr: *const u32,
+        host_ptr: *const u32,
+        size: u32,
+    );
+
+    pub fn copy_uint32_t_vec_from_host_to_device(host_ptr: *const u32, size: u32) -> *const u32;
+
+    pub fn copy_uint32_t_vec_from_device_to_device(
+        from: *const u32,
+        dst: *const u32,
+        size: u32,
+    ) -> *const u32;
+
+    pub fn copy_uint32_t_vec_from_device_to_device_offset(
+        from: *const u32,
+        dst: *const u32,
+        size: u32,
+        offset: u32,
+    );
+
+    pub fn cuda_malloc_uint32_t(size: u32) -> *const u32;
+
+    pub fn cuda_set_uint32_t(device_ptr: *const c_void, index: usize, val: u32);
+
+    pub fn cuda_get_uint32_t(device_ptr: *const c_void, index: usize) -> u32;
+
+    pub fn cuda_increase_at(device_ptr: *const c_void, addr: u32);
+
+    pub fn cuda_get_secure_field(device_ptr: *const c_void, index: usize) -> CudaSecureField;
+
+    pub fn cuda_malloc_blake_2s_hash(size: usize) -> *const Blake2sHash;
+
+    pub fn cuda_alloc_zeroes_uint32_t(size: u32) -> *const u32;
+
+    pub fn cuda_alloc_zeroes_blake_2s_hash(size: usize) -> *const Blake2sHash;
+
+    pub fn cuda_free_memory(device_ptr: *const c_void);
+
+    pub fn cuda_get_memory_info(free_mem: *mut usize, total_mem: *mut usize);
+
+    pub fn bit_reverse_base_field(array: *const u32, size: usize);
+
+    pub fn bit_reverse_secure_field(array: *const u32, size: usize);
+
+    pub fn batch_inverse_base_field(from: *const u32, dst: *const u32, size: usize);
+
+    // pub fn batch_inverse_secure_field(from: *const u32, dst: *const u32, size: usize);
+
+    pub fn sort_values_and_permute_with_bit_reverse_order(
+        from: *const u32,
+        size: usize,
+    ) -> *const u32;
+
+    pub fn precompute_twiddles(
+        initial: CirclePointBaseField,
+        step: CirclePointBaseField,
+        total_size: usize,
+    ) -> *const u32;
+
+    pub fn evaluate_columns(
+        eval_domain_sizes: *const u32,
+        values: *const *const u32,
+        twiddles_tree: *const u32,
+        twiddle_tree_size: u32,
+        number_of_columns: u32,
+        column_sizes: *const u32,
+    );
+
+    pub fn eval_at_point(
+        coeffs: *const u32,
+        coeffs_size: u32,
+        point_x: CudaSecureField,
+        point_y: CudaSecureField,
+    ) -> CudaSecureField;
+
+    pub fn batch_eval_at_points(
+        coeffs_ptrs: *const *const u32,
+        coeffs_size: i32,
+        num_polys: i32,
+        point_x: CudaSecureField,
+        point_y: CudaSecureField,
+        results: *mut CudaSecureField,
+    );
+
+    pub fn barycentric_weights_from_point_vanishings(
+        point_vanishings: *const u32,
+        size: u32,
+        even_scale: CudaSecureField,
+        odd_scale: CudaSecureField,
+        result_weights: *const u32,
+    );
+
+    pub fn barycentric_eval_base_field(
+        eval_values: *const u32,
+        weights: *const u32,
+        size: u32,
+    ) -> CudaSecureField;
+
+    pub fn fold_line(
+        gpu_domain: *const u32,
+        twiddle_offset: usize,
+        n: usize,
+        eval_values: *const *const u32,
+        alpha: CudaSecureField,
+        folded_values: *const *const u32,
+    );
+
+    pub fn fold_circle_into_line(
+        gpu_domain: *const u32,
+        twiddle_offset: usize,
+        n: usize,
+        eval_values: *const *const u32,
+        alpha: CudaSecureField,
+        folded_values: *const *const u32,
+    );
+
+    pub fn accumulate(size: u32, left_columns: *const *const u32, right_columns: *const *const u32);
+
+    pub fn lift_accumulate_secure_columns(
+        size: u32,
+        log_ratio: u32,
+        previous_columns: *const *const u32,
+        current_columns: *const *const u32,
+    );
+
+    pub fn commit_on_first_layer(
+        size: usize,
+        amount_of_columns: usize,
+        columns: *const *const u32,
+        result: *mut Blake2sHash,
+    );
+
+    pub fn commit_on_first_layer_lifted(
+        size: usize,
+        amount_of_columns: usize,
+        columns: *const *const u32,
+        column_log_sizes: *const u32,
+        lifting_log_size: u32,
+        result: *mut Blake2sHash,
+    );
+
+    pub fn commit_on_layer_with_previous(
+        size: usize,
+        amount_of_columns: usize,
+        columns: *const *const u32,
+        previous_layer: *const Blake2sHash,
+        result: *mut Blake2sHash,
+    );
+
+    pub fn copy_blake_2s_hash_vec_from_host_to_device(
+        from: *const Blake2sHash,
+        size: usize,
+    ) -> *mut Blake2sHash;
+
+    pub fn copy_blake_2s_hash_vec_from_device_to_host(
+        from: *const Blake2sHash,
+        to: *mut Blake2sHash,
+        size: usize,
+    );
+
+    pub fn copy_blake_2s_hash_vec_from_device_to_device(
+        from: *const Blake2sHash,
+        dst: *const Blake2sHash,
+        size: usize,
+    );
+
+    pub fn cuda_get_blake_2s_hash(
+        device_ptr: *const Blake2sHash,
+        host_ptr: *mut Blake2sHash,
+        index: usize,
+    );
+
+    pub fn cuda_set_blake_2s_hash(
+        device_ptr: *mut Blake2sHash,
+        index: usize,
+        host_ptr: *const Blake2sHash,
+    );
+
+    pub fn cuda_batch_get_blake_2s_hash(
+        device_ptr: *const Blake2sHash,
+        host_ptr: *mut Blake2sHash,
+        indices: *const u32,
+        n_indices: u32,
+    );
+
+    pub fn cuda_multi_layer_batch_get_blake_2s_hash(
+        layer_device_ptrs: *const *const Blake2sHash,
+        host_ptr: *mut Blake2sHash,
+        pairs: *const LayerIndexPair,
+        n_pairs: u32,
+    );
+
+    pub fn copy_device_pointer_vec_from_host_to_device(
+        from: *const *const u32,
+        size: usize,
+    ) -> *const *const u32;
+
+    pub fn cuda_release_uploaded_pointer_vec(device_ptr: *const *const u32);
+
+    pub fn accumulate_quotients(
+        half_coset_initial_index: u32,
+        half_coset_step_size: u32,
+        domain_size: u32,
+        columns: *const *const u32,
+        number_of_columns: usize,
+        random_coeff: CudaSecureField,
+        sample_points: *const u32,
+        sample_columns_indexes: *const u32,
+        sample_columns_indexes_size: u32,
+        sample_column_values: *const CudaSecureField,
+        sample_column_and_values_sizes: *const u32,
+        sample_size: u32,
+        result_column_0: *const u32,
+        result_column_1: *const u32,
+        result_column_2: *const u32,
+        result_column_3: *const u32,
+        flattened_line_coeffs_size: u32,
+    );
+
+    pub fn accumulate_partial_quotient_numerators(
+        domain_size: u32,
+        columns: *const *const u32,
+        sample_column_indexes: *const u32,
+        sample_column_indexes_size: u32,
+        line_coeffs_b: *const CudaSecureField,
+        line_coeffs_c: *const CudaSecureField,
+        result_column_0: *const u32,
+        result_column_1: *const u32,
+        result_column_2: *const u32,
+        result_column_3: *const u32,
+    );
+
+    pub fn combine_quotients_from_numerators(
+        half_coset_initial_index: u32,
+        half_coset_step_size: u32,
+        domain_size: u32,
+        domain_log_size: u32,
+        sample_points: *const CudaSecureField,
+        sample_size: u32,
+        first_linear_term_accs: *const CudaSecureField,
+        partial_numerator_log_sizes: *const u32,
+        partial_numerators_0: *const *const u32,
+        partial_numerators_1: *const *const u32,
+        partial_numerators_2: *const *const u32,
+        partial_numerators_3: *const *const u32,
+        result_column_0: *const u32,
+        result_column_1: *const u32,
+        result_column_2: *const u32,
+        result_column_3: *const u32,
+    );
+
+    pub fn gen_eq_evals(
+        v: CudaSecureField,
+        y: *const CudaSecureField,
+        y_size: u32,
+        evals: *const CudaSecureField,
+        evals_size: u32,
+    );
+
+    pub fn gkr_next_grand_product_layer(
+        input_layer: *const CudaSecureField,
+        input_size: u32,
+        output_layer: *const CudaSecureField,
+    );
+
+    pub fn gkr_next_logup_generic_layer(
+        numerators: *const CudaSecureField,
+        denominators: *const CudaSecureField,
+        input_size: u32,
+        next_numerators: *const CudaSecureField,
+        next_denominators: *const CudaSecureField,
+    );
+
+    pub fn gkr_next_logup_multiplicities_layer(
+        numerators: *const u32,
+        denominators: *const CudaSecureField,
+        input_size: u32,
+        next_numerators: *const CudaSecureField,
+        next_denominators: *const CudaSecureField,
+    );
+
+    pub fn gkr_next_logup_singles_layer(
+        denominators: *const CudaSecureField,
+        input_size: u32,
+        next_numerators: *const CudaSecureField,
+        next_denominators: *const CudaSecureField,
+    );
+
+    pub fn gkr_sum_grand_product(
+        eq_evals: *const CudaSecureField,
+        input_layer: *const CudaSecureField,
+        n_terms: u32,
+        eval_at_0: *mut CudaSecureField,
+        eval_at_2: *mut CudaSecureField,
+    );
+
+    pub fn gkr_sum_logup_generic(
+        eq_evals: *const CudaSecureField,
+        numerators: *const CudaSecureField,
+        denominators: *const CudaSecureField,
+        n_terms: u32,
+        lambda: CudaSecureField,
+        eval_at_0: *mut CudaSecureField,
+        eval_at_2: *mut CudaSecureField,
+    );
+
+    pub fn gkr_sum_logup_multiplicities(
+        eq_evals: *const CudaSecureField,
+        numerators: *const u32,
+        denominators: *const CudaSecureField,
+        n_terms: u32,
+        lambda: CudaSecureField,
+        eval_at_0: *mut CudaSecureField,
+        eval_at_2: *mut CudaSecureField,
+    );
+
+    pub fn gkr_sum_logup_singles(
+        eq_evals: *const CudaSecureField,
+        denominators: *const CudaSecureField,
+        n_terms: u32,
+        lambda: CudaSecureField,
+        eval_at_0: *mut CudaSecureField,
+        eval_at_2: *mut CudaSecureField,
+    );
+
+    pub fn fix_first_variable_base_field(
+        evals: *const u32,
+        evals_size: usize,
+        assignment: CudaSecureField,
+        output_evals: *const u32,
+    );
+
+    pub fn fix_first_variable_secure_field(
+        evals: *const u32,
+        evals_size: usize,
+        assignment: CudaSecureField,
+        output_evals: *const u32,
+    );
+
+    pub fn generate_wide_fibonacci_trace(
+        input_a: *const u32,
+        input_b: *const u32,
+        input_len: u32,
+        traces: *const *const u32,
+        trace_len: u32,
+        n_columns: u32,
+    );
+
+    pub fn generate_poseidon_traces(
+        traces: *const *const u32,
+        lookup_init: *const *const u32,
+        lookup_final: *const *const u32,
+        trace_log_len: u32,
+    );
+
+    pub fn generate_poseidon_interaction_traces(
+        lookup_element: *mut c_void,
+        lookup_init: *const *const u32,
+        lookup_final: *const *const u32,
+        log_size: u32,
+        interaction_traces: *const *const u32,
+        claimed_sum: *const u32,
+    );
+
+    // Assert EQ FP IMM trace generation
+    pub fn generate_assert_eq_fp_imm_traces(
+        trace_columns: *const *const u32,
+        trace_columns_len: u32,
+        registers_lookups: *const *const u32,
+        registers_lookups_len: u32,
+        memory_lookups: *const *const u32,
+        memory_lookups_len: u32,
+        range_check_20_lookups: *const *const u32,
+        range_check_20_lookups_len: u32,
+        inputs: *const c_void, // AssertEqFpImmInput*
+        inputs_len: u32,
+        data_accesses: *const c_void, // DataAccess*
+        data_accesses_len: u32,
+        log_size: u32,
+        non_padded_length: u32,
+    );
+
+    pub fn evaluate_constraint_quotients_on_domain(
+        quotients_0: *const u32,
+        quotients_1: *const u32,
+        quotients_2: *const u32,
+        quotients_3: *const u32,
+        trace0_evaluations: *const *const u32,
+        trace0_evaluations_len: u32,
+        trace1_evaluations: *const *const u32,
+        trace1_evaluations_len: u32,
+        trace2_evaluations: *const *const u32,
+        trace2_evaluations_len: u32,
+        random_coeff_powers: *const u32,
+        denominator_inverses: *const u32,
+        domain_log_size: u32,
+        eval_domain_log_size: u32,
+        number_of_columns: u32,
+        logup_counts: u32,
+        eval: *mut c_void,
+        cumsum_shift: CudaSecureField,
+        should_accumulate: bool,
+        use_assert_evaluator: bool,
+    );
+
+    pub fn ntt_n2b_native_batch(
+        value: *mut *mut u32,
+        log_n: u32,
+        num_poly: u32,
+        start_stage: u32,
+        end_stage: u32,
+        g_twiddles: *const u32,
+        twiddles_size: u32,
+        eval_domain_size: u32,
+    );
+
+    pub fn ntt_b2n_column(
+        values_columns: *mut *mut u32,
+        log_n: u32,
+        num_poly: u32,
+        g_twiddles: *const u32,
+        twiddles_size: u32,
+        eval_domain_size: u32,
+    );
+
+    pub fn ntt_n2b_columns(
+        values_columns: *mut *mut u32,
+        log_n: u32,
+        num_poly: u32,
+        g_twiddles: *const u32,
+        twiddles_size: u32,
+        eval_domain_size: u32,
+    );
+
+    // pub fn inclusive_prefix_sum(
+    //     device_bit_rev_circle_domain_evals:  *const u32,
+    //     len: u32,
+    // );
+
+    // Poseidon252 CUDA acceleration functions
+    // Note: FieldElement252 is represented as 32 bytes (8 x u32)
+    // Note: Poseidon252Hash is 32-byte struct, equivalent to [u8; 32]
+    pub fn cuda_malloc_poseidon252_hash(size: usize) -> *mut [u8; 32];
+
+    pub fn cuda_alloc_zeroes_poseidon252_hash(size: usize) -> *mut [u8; 32];
+
+    pub fn copy_poseidon252_hash_vec_from_host_to_device(
+        from: *const [u8; 32],
+        size: usize,
+    ) -> *mut [u8; 32];
+
+    pub fn copy_poseidon252_hash_vec_from_device_to_host(
+        from: *const [u8; 32],
+        to: *mut [u8; 32],
+        size: usize,
+    );
+
+    pub fn copy_poseidon252_hash_vec_from_device_to_device(
+        from: *const [u8; 32],
+        dst: *mut [u8; 32],
+        size: usize,
+    );
+
+    pub fn cuda_get_poseidon252_hash(
+        device_ptr: *const [u8; 32],
+        host_ptr: *mut [u8; 32],
+        index: usize,
+    );
+
+    pub fn cuda_set_poseidon252_hash(
+        device_ptr: *mut [u8; 32],
+        index: usize,
+        value: *const [u8; 32],
+    );
+
+    // Hybrid Poseidon252 Merkle functions that use GPU for data processing
+    // and CPU for verified hashing
+    // GPU-only aliases matching Blake2s interface
+    pub fn poseidon252_commit_on_first_layer(
+        size: usize,
+        amount_of_columns: usize,
+        columns: *const *const u32,
+        result: *mut [u8; 32],
+    );
+
+    pub fn poseidon252_commit_on_layer_with_previous(
+        size: usize,
+        amount_of_columns: usize,
+        columns: *const *const u32,
+        previous_layer: *const [u8; 32],
+        result: *mut [u8; 32],
+    );
+
+    // Test function to compute offset_bit_reversed_circle_domain_index on GPU
+    pub fn test_offset_bit_reversed_indices(
+        result_host: *mut u32,
+        domain_log_size: u32,
+        eval_log_size: u32,
+        offset: i32,
+        n: u32,
+    );
+}

@@ -1,0 +1,225 @@
+use starknet_ff::FieldElement as FieldElement252;
+#[cfg(feature = "vendored-upstream-bridge")]
+use stwo::core::fields::m31::BaseField;
+#[cfg(not(feature = "vendored-upstream-bridge"))]
+use stwo::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher;
+#[cfg(feature = "vendored-upstream-bridge")]
+use stwo::core::vcs_lifted::poseidon252_merkle::Poseidon252MerkleHasher;
+#[cfg(feature = "vendored-upstream-bridge")]
+use stwo::prover::backend::Column;
+use stwo::prover::backend::ColumnOps;
+#[cfg(feature = "vendored-upstream-bridge")]
+use stwo::prover::backend::CpuBackend;
+#[cfg(not(feature = "vendored-upstream-bridge"))]
+use stwo::prover::vcs::ops::MerkleOps;
+#[cfg(feature = "vendored-upstream-bridge")]
+use stwo::prover::vcs_lifted::ops::MerkleOpsLifted;
+
+use crate::backend::cuda::capability::{panic_for_unsupported_surface, CudaBackendSurface};
+use crate::backend::cuda::{CudaBackend, UploadedDevicePointerVec};
+use crate::stwo_cuda::base_field_vec::BaseFieldVec;
+use crate::stwo_cuda::bindings;
+use crate::stwo_cuda::poseidon252::Poseidon252HashVec;
+
+impl ColumnOps<FieldElement252> for CudaBackend {
+    type Column = Poseidon252HashVec;
+
+    fn bit_reverse_column(_column: &mut Self::Column) {
+        panic_for_unsupported_surface(
+            CudaBackendSurface::Poseidon252HashColumnBitReverse,
+            "ColumnOps<FieldElement252>::bit_reverse_column",
+        )
+    }
+}
+
+#[cfg(not(feature = "vendored-upstream-bridge"))]
+impl MerkleOps<Poseidon252MerkleHasher> for CudaBackend {
+    fn commit_on_layer(
+        log_size: u32,
+        prev_layer: Option<&Poseidon252HashVec>,
+        columns: &[&BaseFieldVec],
+    ) -> Poseidon252HashVec {
+        let size = 1 << log_size;
+        let number_of_columns = columns.len();
+
+        let result: Poseidon252HashVec = Poseidon252HashVec::new_uninitialized(size);
+        unsafe {
+            Self::poseidon252_commit_on_layer_using_gpu(
+                size,
+                number_of_columns,
+                columns,
+                prev_layer,
+                result.device_ptr(),
+            );
+        }
+
+        result
+    }
+}
+
+#[cfg(feature = "vendored-upstream-bridge")]
+impl MerkleOpsLifted<Poseidon252MerkleHasher> for CudaBackend {
+    fn build_leaves(columns: &[&BaseFieldVec], lifting_log_size: u32) -> Poseidon252HashVec {
+        let cpu_columns: Vec<Vec<BaseField>> =
+            columns.iter().map(|column| column.to_cpu()).collect();
+        let column_refs: Vec<&Vec<BaseField>> = cpu_columns.iter().collect();
+        let cpu_hashes = <CpuBackend as MerkleOpsLifted<Poseidon252MerkleHasher>>::build_leaves(
+            &column_refs,
+            lifting_log_size,
+        );
+        Poseidon252HashVec::from_vec(cpu_hashes)
+    }
+
+    fn build_next_layer(prev_layer: &Poseidon252HashVec) -> Poseidon252HashVec {
+        let size = prev_layer.len() / 2;
+        let result = Poseidon252HashVec::new_uninitialized(size);
+
+        unsafe {
+            Self::poseidon252_commit_on_layer_using_gpu(
+                size,
+                0,
+                &[],
+                Some(prev_layer),
+                result.device_ptr(),
+            );
+        }
+
+        result
+    }
+}
+
+impl CudaBackend {
+    unsafe fn poseidon252_commit_on_layer_using_gpu(
+        size: usize,
+        number_of_columns: usize,
+        columns: &[&BaseFieldVec],
+        prev_layer: Option<&Poseidon252HashVec>,
+        result_pointer: *const [u8; 32],
+    ) {
+        let device_column_pointers_vector: Vec<*const u32> =
+            columns.iter().map(|column| column.device_ptr).collect();
+        let device_column_pointers =
+            UploadedDevicePointerVec::upload(&device_column_pointers_vector);
+
+        if let Some(previous_layer) = prev_layer {
+            bindings::poseidon252_commit_on_layer_with_previous(
+                size,
+                number_of_columns,
+                device_column_pointers.as_ptr(),
+                previous_layer.device_ptr(),
+                result_pointer as *mut [u8; 32],
+            );
+        } else {
+            bindings::poseidon252_commit_on_first_layer(
+                size,
+                number_of_columns,
+                device_column_pointers.as_ptr(),
+                result_pointer as *mut [u8; 32],
+            );
+        }
+    }
+}
+
+#[cfg(all(
+    test,
+    stwo_cuda_link,
+    not(target_arch = "wasm32"),
+    not(feature = "vendored-upstream-bridge")
+))]
+mod tests {
+    use stwo::core::fields::m31::{BaseField, M31};
+    use stwo::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher;
+    use stwo::prover::backend::{Column, CpuBackend};
+    use stwo::prover::vcs::ops::MerkleOps;
+
+    use crate::backend::cuda::CudaBackend;
+    use crate::stwo_cuda::base_field_vec::BaseFieldVec;
+    use crate::stwo_cuda::poseidon252::Poseidon252HashVec;
+
+    #[test]
+    fn test_commit_on_first_layer_with_many_columns_compared_with_cpu() {
+        let log_size = 8;
+        let size = 1 << log_size;
+
+        let cpu_columns_vector: Vec<Vec<BaseField>> = columns_test_vector(16, size);
+        let gpu_columns_vector: Vec<BaseFieldVec> = gpu_columns_from(&cpu_columns_vector);
+
+        let expected_result = <CpuBackend as MerkleOps<Poseidon252MerkleHasher>>::commit_on_layer(
+            log_size,
+            None,
+            &cpu_columns_vector.iter().collect::<Vec<_>>(),
+        );
+        let result: Poseidon252HashVec =
+            <CudaBackend as MerkleOps<Poseidon252MerkleHasher>>::commit_on_layer(
+                log_size,
+                None,
+                &gpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
+
+        assert_eq!(result.to_cpu(), expected_result);
+    }
+
+    #[test]
+    fn test_commit_on_layer_with_previous_layer_compared_with_cpu() {
+        let current_layer_log_size = 7;
+        let current_layer_size = 1 << current_layer_log_size;
+        let previous_layer_log_size = current_layer_log_size + 1;
+        let previous_layer_size = 1 << previous_layer_log_size;
+
+        // First layer
+        let cpu_columns_vector: Vec<Vec<BaseField>> = columns_test_vector(12, previous_layer_size);
+        let gpu_columns_vector: Vec<BaseFieldVec> = gpu_columns_from(&cpu_columns_vector);
+
+        let cpu_previous_layer =
+            <CpuBackend as MerkleOps<Poseidon252MerkleHasher>>::commit_on_layer(
+                previous_layer_log_size,
+                None,
+                &cpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
+        let gpu_previous_layer: Poseidon252HashVec =
+            <CudaBackend as MerkleOps<Poseidon252MerkleHasher>>::commit_on_layer(
+                previous_layer_log_size,
+                None,
+                &gpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
+
+        // Current layer
+        let cpu_columns_vector: Vec<Vec<BaseField>> = columns_test_vector(10, current_layer_size);
+        let gpu_columns_vector: Vec<BaseFieldVec> = gpu_columns_from(&cpu_columns_vector);
+
+        let expected_result = <CpuBackend as MerkleOps<Poseidon252MerkleHasher>>::commit_on_layer(
+            current_layer_log_size,
+            Some(&cpu_previous_layer),
+            &cpu_columns_vector.iter().collect::<Vec<_>>(),
+        );
+        let result: Poseidon252HashVec =
+            <CudaBackend as MerkleOps<Poseidon252MerkleHasher>>::commit_on_layer(
+                current_layer_log_size,
+                Some(&gpu_previous_layer),
+                &gpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
+
+        assert_eq!(result.to_cpu(), expected_result);
+    }
+
+    fn gpu_columns_from(columns: &Vec<Vec<BaseField>>) -> Vec<BaseFieldVec> {
+        columns
+            .clone()
+            .into_iter()
+            .map(|vector| BaseFieldVec::from_vec(vector))
+            .collect()
+    }
+
+    fn columns_test_vector(
+        number_of_columns: usize,
+        size_of_columns: usize,
+    ) -> Vec<Vec<BaseField>> {
+        (0..number_of_columns)
+            .map(|index_of_column| {
+                (0..size_of_columns)
+                    .map(|index_in_column| M31::from(index_in_column * index_of_column))
+                    .collect()
+            })
+            .collect()
+    }
+}

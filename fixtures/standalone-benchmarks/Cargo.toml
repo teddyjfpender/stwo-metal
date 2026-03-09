@@ -1,0 +1,25 @@
+[package]
+name = "stwo-metal-standalone-benchmarks"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+members = []
+
+[features]
+default = []
+cuda-runtime = ["dep:stwo-metal"]
+
+[dependencies]
+itertools = { version = "0.12", default-features = false, features = ["use_alloc"] }
+num-traits = { version = "0.2.19", default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo", package = "stwo", default-features = false, features = ["prover"] }
+stwo-constraint-framework = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/constraint-framework", default-features = false, features = ["prover"] }
+stwo-metal = { path = "../../crates/stwo-metal", features = ["prover"], optional = true }
+
+[patch.crates-io]
+stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo" }
+stwo-constraint-framework = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/constraint-framework" }

@@ -1,0 +1,12 @@
+[package]
+name = "stwo-metal-sys"
+version = "0.1.1"
+edition = "2021"
+links = "stwo_cuda"
+
+[build-dependencies]
+cc = "1"
+cmake = "0.1.50"
+
+[lib]
+bench = false

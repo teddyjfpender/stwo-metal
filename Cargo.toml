@@ -1,0 +1,14 @@
+[workspace]
+members = [
+    "crates/stwo-metal",
+    "crates/stwo-metal-sys",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.1"
+edition = "2021"
+
+[profile.bench]
+codegen-units = 1
+lto = true

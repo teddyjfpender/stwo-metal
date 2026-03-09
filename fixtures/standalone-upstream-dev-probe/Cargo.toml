@@ -1,0 +1,18 @@
+[package]
+name = "stwo-metal-standalone-upstream-dev-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+members = []
+
+[dependencies]
+stwo = { git = "https://github.com/starkware-libs/stwo.git", rev = "62b228ed4a30ef96715e201c4c6e0742aa8bbd42", package = "stwo", default-features = false, features = ["prover"] }
+stwo-metal = { path = "../../crates/stwo-metal", default-features = false, features = ["prover"] }
+
+[patch."https://github.com/starkware-libs/stwo.git"]
+stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo" }
+
+[patch."https://github.com/AntChainOpenLabs/NitrooZK-stwo.git"]
+stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo" }
