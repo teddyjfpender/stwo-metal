@@ -29,11 +29,11 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T7 seventh implementation slice: direct MetalBackend prove/verify for the first unchanged upstream example`
+- Active tranche: `T7 eighth implementation slice: direct MetalBackend prove/verify for a multi-tree upstream example`
 - Objective:
-  retire the outer CPU prove helper for the first unchanged upstream example
-  and replace it with a direct `MetalBackend` prove/verify path that keeps the
-  remaining framework-component bridge explicit and local
+  widen direct `MetalBackend` acceptance from the first single-trace example to
+  a multi-tree upstream example while keeping the remaining framework-component
+  bridge explicit and local
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - Current owner area:
@@ -50,33 +50,31 @@ Invariants:
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
-- the first unchanged upstream example now proves and verifies through
-  `MetalBackend` in the acceptance harness:
-  `wide_fibonacci` uses a local framework-component adapter instead of the
-  earlier outer CPU prove helper
+- unchanged upstream `wide_fibonacci` and `state_machine` examples now prove
+  and verify through `MetalBackend` in the acceptance harness
 - the remaining framework-component bridge is still CPU-domain based and still
   lives only in the acceptance harness rather than a stable shared boundary
-- the example-backed acceptance harness is now reusable for single-trace
-  Blake2s-backed backend substitution flows, but only `wide_fibonacci` uses it
-  so far
+- the example-backed acceptance harness now covers both a single-trace row and
+  a multi-tree row, but only the framework-backed example shape is proven so
+  far
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
-- the next acceptance blocker is no longer the first prove/verify seam;
-  it is generalizing beyond the single-trace framework-backed adapter without
-  hiding the remaining CPU-domain bridge
+- the next acceptance blocker is no longer the first multi-tree seam;
+  it is onboarding rows with lookup-heavy or non-framework prover surfaces
+  without hiding the remaining CPU-domain bridge
 
 ## Next three deliverables
 
-1. Generalize the acceptance-backed `ComponentProver<MetalBackend>` adapter
-   beyond the first single-trace example without forking workload logic.
+1. Onboard the next upstream example row that mixes framework-backed and
+   non-framework components without reintroducing an outer CPU prove helper.
 2. Decide whether the current acceptance-local adapter should remain local,
    move into a shared non-public helper boundary, or be superseded by an
    upstream-facing refactor.
-3. Onboard the next upstream example row through direct `MetalBackend`
-   prove/verify instead of reintroducing an outer CPU prove bridge.
+3. Record any vendored example rows that are blocked by upstream protocol
+   limits instead of silently treating them as pending backend work.
 
 ## Explicitly not doing now
 

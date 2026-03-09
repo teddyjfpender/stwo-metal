@@ -575,6 +575,7 @@ Current containment:
 - `vendor/stwo-upstream-dev-62b228e/crates/constraint-framework/src/prover/component_prover.rs`
 - `fixtures/upstream-example-acceptance/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
+- `fixtures/upstream-example-acceptance/tests/state_machine_prove_verify.rs`
 
 Risk if left in place:
 
@@ -613,6 +614,7 @@ Current containment:
 
 - `fixtures/upstream-example-acceptance/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
+- `fixtures/upstream-example-acceptance/tests/state_machine_prove_verify.rs`
 
 Risk if left in place:
 

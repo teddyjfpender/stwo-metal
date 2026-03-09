@@ -232,13 +232,12 @@ where
 /// backend and the stock Blake2s verifier path.
 ///
 /// Inputs:
-/// - `trace_trees`: commitment trees in protocol order, including the
-///   preprocessed tree if present
+/// - `trace_trees`: commitment trees in protocol order, including the preprocessed tree if present
 /// - `proving_components`: the backend-specific proving view of the components
 /// - `components`: the verifier-facing component view for the same workload
 /// - `max_trace_log_size`: the largest trace log size in the workload
-/// - `store_polynomials_coefficients`: whether the commitment scheme should
-///   retain coefficients, matching the upstream workload path
+/// - `store_polynomials_coefficients`: whether the commitment scheme should retain coefficients,
+///   matching the upstream workload path
 ///
 /// Outputs:
 /// - a verified `StarkProof` if the component set proves and verifies
@@ -261,7 +260,10 @@ where
     B: BackendForChannel<Blake2sM31MerkleChannel>,
 {
     let config = PcsConfig::default();
-    let n_preprocessed_columns = trace_trees.first().map(std::vec::Vec::len).unwrap_or_default();
+    let n_preprocessed_columns = trace_trees
+        .first()
+        .map(std::vec::Vec::len)
+        .unwrap_or_default();
     let twiddles = B::precompute_twiddles(
         CanonicCoset::new(max_trace_log_size + 1 + config.fri_config.log_blowup_factor)
             .circle_domain()
@@ -281,12 +283,9 @@ where
         tree_builder.commit(prover_channel);
     }
 
-    let proof = prove::<B, Blake2sM31MerkleChannel>(
-        proving_components,
-        prover_channel,
-        commitment_scheme,
-    )
-    .map_err(ComponentSetBackendError::Prove)?;
+    let proof =
+        prove::<B, Blake2sM31MerkleChannel>(proving_components, prover_channel, commitment_scheme)
+            .map_err(ComponentSetBackendError::Prove)?;
 
     let verifier_channel = &mut Blake2sM31Channel::default();
     let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
@@ -298,8 +297,13 @@ where
     for (commitment, size) in proof.commitments.iter().zip(sizes.iter()) {
         commitment_scheme.commit(*commitment, size, verifier_channel);
     }
-    verify(components, verifier_channel, commitment_scheme, proof.clone())
-        .map_err(ComponentSetBackendError::Verify)?;
+    verify(
+        components,
+        verifier_channel,
+        commitment_scheme,
+        proof.clone(),
+    )
+    .map_err(ComponentSetBackendError::Verify)?;
 
     Ok(proof)
 }
@@ -307,7 +311,10 @@ where
 pub fn simd_evaluation_to_metal(
     eval: CircleEvaluation<stwo::prover::backend::simd::SimdBackend, BaseField, BitReversedOrder>,
 ) -> CircleEvaluation<MetalBackend, BaseField, BitReversedOrder> {
-    CircleEvaluation::new(eval.domain, MetalBaseFieldVec::from_vec(eval.values.to_cpu()))
+    CircleEvaluation::new(
+        eval.domain,
+        MetalBaseFieldVec::from_vec(eval.values.to_cpu()),
+    )
 }
 
 pub fn simd_tree_to_metal(

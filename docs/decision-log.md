@@ -28,6 +28,53 @@ Superseded by:
 
 ## Entries
 
+### DEC-0041: Multi-tree upstream examples may use the same acceptance-local MetalBackend adapter pattern as the first single-trace row
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The unchanged vendored upstream `state_machine` example now proves and verifies
+through direct `MetalBackend` substitution in the acceptance harness. This
+reuses the same acceptance-local framework-component adapter pattern as the
+first `wide_fibonacci` row, while preserving the upstream protocol sequencing
+for multi-tree trace commitments, statement mixing, interaction traces, and
+verification.
+
+Context:
+
+After `wide_fibonacci` proved that the first direct backend-substitution row
+worked, the next honest question was whether the result generalized beyond a
+single-trace component. `state_machine` was the smallest stronger example in
+the vendored set because it has multiple trees, multiple framework-backed
+components, and upstream-owned statement checks, but it still fits the current
+adapter model.
+
+Alternatives rejected:
+
+- stop after the first single-trace example and assume the adapter generalizes
+- jump directly to `blake` or `xor` before proving the multi-tree framework
+  shape works
+- treat the new row as native framework-component support when the adapter is
+  still acceptance-local and CPU-domain backed
+
+Impact:
+
+- direct `MetalBackend` acceptance now covers both a single-trace and a
+  multi-tree upstream example
+- `TD-0017` becomes the main remaining bridge-debt entry for framework-backed
+  example substitution
+- the next honest example rows are shaped by lookup-heavy and non-framework
+  proving surfaces rather than the already-proven basic framework path
+
+Superseded by:
+
+- none
+
 ### DEC-0040: The first unchanged upstream example may prove directly through `MetalBackend` via an acceptance-local framework-component adapter
 
 - Date: `2026-03-09`

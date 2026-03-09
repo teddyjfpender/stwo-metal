@@ -64,8 +64,8 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T7 seventh implementation slice: direct MetalBackend
-prove/verify for the first unchanged upstream example`, as tracked in
+The active tranche is `T7 eighth implementation slice: direct MetalBackend
+prove/verify for a multi-tree upstream example`, as tracked in
 [`controller.md`](./controller.md) and sequenced by
 [`roadmap.md`](./roadmap.md).
 
@@ -172,14 +172,16 @@ The first completed T7 supporting slices are:
 - the remaining framework-component bridge is now localized to an
   acceptance-only adapter that keeps workload logic unchanged and names the
   CPU-domain bridge explicitly
+- the unchanged upstream `state_machine` example now also proves and verifies
+  through `MetalBackend`, covering a multi-tree and multi-component row
 
 The next required T7 boundary is:
 
-- generalize the direct-backend acceptance harness beyond the first
-  single-trace framework-backed row
+- onboard the next example shape that adds lookup-table or non-framework prover
+  structure beyond the current framework-backed adapter
 - keep the next blocker explicit:
   vendored upstream `FrameworkComponent` still only implements
   `ComponentProver` for `CpuBackend` and `SimdBackend`, so the current
   adapter remains a named CPU-domain bridge
-- use the updated harness to onboard the next upstream example row without
-  restoring an outer CPU prove helper
+- keep any vendored protocol limitations, such as unsupported AIR degree
+  shapes, separated from true Metal-backend gaps
