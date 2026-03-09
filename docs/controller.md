@@ -42,8 +42,8 @@ Invariants:
 ## Current blockers
 
 - internal Rust vocabulary is still CUDA-first in many places
-- the first inner FRI-layer now has a bounded native proof-facing row, but the
-  multi-layer inner FRI sequence is not yet packaged
+- the bounded native inner FRI sequence now exists, but it is not yet packaged
+  with the last-layer interpolation step as a bounded FRI commitment slice
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - interpolation, evaluation, and trace-generation primitives are still outside
@@ -51,8 +51,8 @@ Invariants:
 
 ## Next three deliverables
 
-1. Freeze and land the bounded native FRI inner-layer sequence on top of the
-   first proof-facing row.
+1. Freeze and land the bounded FRI commitment slice on top of the native
+   inner-layer sequence.
 2. Decide whether T5 can exit with host-owned commitment hashing still in place
    or requires a GPU-side hash path before any bounded proving row is called
    truthful.

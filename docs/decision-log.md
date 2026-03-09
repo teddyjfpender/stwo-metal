@@ -633,3 +633,44 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0017: The native first inner FRI row now extends to a bounded inner-layer sequence
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`stwo-metal` now packages the native first inner FRI row into a bounded
+inner-layer sequence that owns:
+
+- the ordered native inner-layer rows
+- the native decommit path for each row
+- the resulting last line evaluation after the configured fold schedule
+
+Context:
+
+One isolated proof-facing row was not yet enough to represent the bounded FRI
+commit progression used by the prover. The project needed a deterministic
+sequence abstraction that mirrors the vendored CPU fold schedule and carries the
+final line evaluation forward.
+
+Alternatives rejected:
+
+- stop at a single native row and leave multi-layer sequencing to ad hoc caller
+  logic
+- widen the claim to a full FRI commitment slice before the inner-layer
+  schedule itself was explicit
+
+Impact:
+
+- the bounded native Metal FRI surface now covers the inner-layer schedule, not
+  just one row
+- the next T5 boundary is the bounded FRI commitment slice
+
+Superseded by:
+
+- none

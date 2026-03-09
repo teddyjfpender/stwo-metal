@@ -212,10 +212,12 @@ Current next slices inside T5:
   deterministic vendored CPU parity
 - the first inner FRI layer is now packaged as a bounded native proof-facing
   row with stable root and decommit semantics
+- a bounded native inner-layer FRI sequence now exists with deterministic
+  vendored CPU parity
 - the explicit CPU bridge remains available only as a bounded validation and
   comparison surface
-- the next T5 work is to package multiple native inner rows and the resulting
-  line evaluation into one bounded FRI inner-layer sequence
+- the next T5 work is to package that native inner-layer sequence with
+  last-layer interpolation into a bounded FRI commitment slice
 
 ### T6: Restore one truthful end-to-end supported workload
 
@@ -237,7 +239,7 @@ Required outputs:
 
 ## Current next three planning deliverables
 
-1. Freeze and land the bounded native FRI inner-layer sequence.
+1. Freeze and land the bounded FRI commitment slice.
 2. Decide whether T5 can exit with host-owned commitment hashing still in place
    or requires a GPU-side hash path before any bounded proving row is called
    truthful.

@@ -73,6 +73,7 @@ Current completed T5 supporting slices are:
 - native `MetalLineEvaluation` and first inner-layer commitment root parity
 - native first inner-layer query and decommit parity
 - bounded native first inner-layer proof row
+- bounded native inner-layer FRI sequence
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
@@ -83,4 +84,4 @@ The first declared T5 proving sub-path candidate is:
 
 The next required T5 boundary is:
 
-- bounded native FRI inner-layer sequence
+- bounded FRI commitment slice

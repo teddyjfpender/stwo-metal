@@ -6,6 +6,7 @@ mod handoff;
 mod line;
 mod poly;
 mod row;
+mod sequence;
 
 pub use backend::MetalBackend;
 pub use capability::{
@@ -21,6 +22,7 @@ pub use handoff::{
 pub use line::{MetalFriLayerDecommitment, MetalLineCommitment, MetalLineEvaluation};
 pub use poly::permute_coset_to_circle_domain_bit_reversed;
 pub use row::MetalFriInnerLayerRow;
+pub use sequence::MetalFriInnerLayerSequence;
 
 pub use crate::stwo_metal::{
     BaseFieldVec as MetalBaseFieldVec, SecureFieldVec as MetalSecureFieldVec,
