@@ -75,6 +75,8 @@ Current completed T5 supporting slices are:
 - bounded native first inner-layer proof row
 - bounded native inner-layer FRI sequence
 - bounded FRI commitment slice with explicit last-layer degree-bound truncation
+- bounded proof-facing inner FRI proof slice
+- bounded first-layer circle commitment and decommit boundary
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
@@ -85,4 +87,4 @@ The first declared T5 proving sub-path candidate is:
 
 The next required T5 boundary is:
 
-- bounded proof-facing inner FRI proof slice
+- bounded full FRI proof candidate

@@ -45,6 +45,8 @@ Invariants:
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
+- the bounded first-layer proof boundary now exists, but it is not yet composed
+  with the inner proof slice into a bounded full FRI proof candidate
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - interpolation, evaluation, and trace-generation primitives are still outside
@@ -52,8 +54,8 @@ Invariants:
 
 ## Next three deliverables
 
-1. Package the bounded FRI commitment slice into an honest proof-facing inner
-   proof slice without implying full first-layer support.
+1. Package the native first-layer proof boundary and the inner proof slice into
+   a bounded full FRI proof candidate.
 2. Decide whether T5 can exit with host-owned commitment hashing still in place
    or requires a GPU-side hash path before any bounded proving row is called
    truthful.

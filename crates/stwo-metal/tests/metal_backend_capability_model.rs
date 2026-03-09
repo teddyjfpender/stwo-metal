@@ -23,12 +23,14 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
         MetalBackendSurface::SecureFieldColumnFromIterator,
         MetalBackendSurface::SecureFieldColumnBitReverse,
         MetalBackendSurface::FriFirstLayerFoldCircleIntoLine,
+        MetalBackendSurface::FriFirstLayerProofNative,
         MetalBackendSurface::FriLineFold,
         MetalBackendSurface::FriFirstInnerLayerCommitmentNative,
         MetalBackendSurface::FriFirstInnerLayerDecommitNative,
         MetalBackendSurface::FriFirstInnerLayerProofRowNative,
         MetalBackendSurface::FriInnerLayerSequenceNative,
         MetalBackendSurface::FriCommitmentSliceBounded,
+        MetalBackendSurface::FriInnerProofSliceBounded,
     ] {
         assert_eq!(
             metal_backend_surface_status(surface),

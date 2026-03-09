@@ -717,3 +717,83 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0019: The bounded FRI commitment slice now extends to an inner proof-facing FRI proof slice
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`stwo-metal` now packages the bounded FRI commitment slice into an honest
+inner proof-facing FRI proof slice that owns:
+
+- the bounded inner-layer proofs
+- the bounded last-layer polynomial
+- an explicit contract that first-layer FRI proof support is still out of scope
+
+Context:
+
+The commitment slice made the last-layer polynomial explicit, but callers still
+needed to assemble proof-shaped inner-layer output themselves. The project
+needed one stable proof-facing wrapper for the bounded inner FRI surface
+without implying that the first-layer circle commitment path already exists.
+
+Alternatives rejected:
+
+- stop at the commitment slice and leave proof-shaped inner-layer packaging to
+  ad hoc caller code
+- expose the result as a full `FriProof` even though the first layer is not yet
+  present
+
+Impact:
+
+- the bounded Metal lane now has an honest inner proof-facing FRI slice
+- the next T5 boundary is the first-layer circle commitment and decommit
+  surface needed to form a bounded full FRI proof candidate
+
+Superseded by:
+
+- none
+
+### DEC-0020: The bounded Metal lane now includes a first-layer FRI proof boundary
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`stwo-metal` now owns a bounded first-layer FRI proof boundary consisting of:
+
+- a first-layer circle commitment root
+- a first-layer decommit API that mirrors the vendored FRI proof shape
+- a fold handoff from the committed first layer into the native Metal line lane
+
+Context:
+
+The inner proof slice made the later FRI layers explicit, but the bounded Metal
+path still lacked the first-layer proof boundary needed before a truthful full
+FRI proof candidate could exist.
+
+Alternatives rejected:
+
+- keep the first-layer proof boundary implicit in test scaffolding
+- widen the claim to a full FRI proof before the first-layer proof surface was
+  explicit
+
+Impact:
+
+- the bounded Metal lane now covers both sides of the FRI proof split:
+  first-layer proof and inner-layer proof
+- the next T5 boundary is to compose those pieces into a bounded full FRI proof
+  candidate
+
+Superseded by:
+
+- none

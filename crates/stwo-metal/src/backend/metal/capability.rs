@@ -11,12 +11,14 @@ pub enum MetalBackendSurface {
     SecureFieldColumnFromIterator,
     SecureFieldColumnBitReverse,
     FriFirstLayerFoldCircleIntoLine,
+    FriFirstLayerProofNative,
     FriLineFold,
     FriFirstInnerLayerCommitmentNative,
     FriFirstInnerLayerDecommitNative,
     FriFirstInnerLayerProofRowNative,
     FriInnerLayerSequenceNative,
     FriCommitmentSliceBounded,
+    FriInnerProofSliceBounded,
     FriFirstInnerLayerCommitmentCpuBridge,
     QuotientAccumulate,
 }
@@ -40,12 +42,14 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::SecureFieldColumnFromIterator,
     MetalBackendSurface::SecureFieldColumnBitReverse,
     MetalBackendSurface::FriFirstLayerFoldCircleIntoLine,
+    MetalBackendSurface::FriFirstLayerProofNative,
     MetalBackendSurface::FriLineFold,
     MetalBackendSurface::FriFirstInnerLayerCommitmentNative,
     MetalBackendSurface::FriFirstInnerLayerDecommitNative,
     MetalBackendSurface::FriFirstInnerLayerProofRowNative,
     MetalBackendSurface::FriInnerLayerSequenceNative,
     MetalBackendSurface::FriCommitmentSliceBounded,
+    MetalBackendSurface::FriInnerProofSliceBounded,
     MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge,
     MetalBackendSurface::QuotientAccumulate,
 ];
@@ -62,12 +66,14 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::SecureFieldColumnFromIterator
         | MetalBackendSurface::SecureFieldColumnBitReverse
         | MetalBackendSurface::FriFirstLayerFoldCircleIntoLine
+        | MetalBackendSurface::FriFirstLayerProofNative
         | MetalBackendSurface::FriLineFold
         | MetalBackendSurface::FriFirstInnerLayerCommitmentNative
         | MetalBackendSurface::FriFirstInnerLayerDecommitNative
         | MetalBackendSurface::FriFirstInnerLayerProofRowNative
         | MetalBackendSurface::FriInnerLayerSequenceNative
-        | MetalBackendSurface::FriCommitmentSliceBounded => MetalBackendSurfaceStatus::Supported,
+        | MetalBackendSurface::FriCommitmentSliceBounded
+        | MetalBackendSurface::FriInnerProofSliceBounded => MetalBackendSurfaceStatus::Supported,
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
@@ -99,6 +105,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         MetalBackendSurface::FriFirstLayerFoldCircleIntoLine => {
             "The bounded FRI first-layer fold from circle evaluation into line evaluation is implemented through a native Metal kernel."
         }
+        MetalBackendSurface::FriFirstLayerProofNative => {
+            "The bounded FRI first-layer circle commitment and decommit boundary is implemented through a native stwo-metal proof surface."
+        }
         MetalBackendSurface::FriLineFold => {
             "The bounded FRI line-fold path is implemented through native Metal kernels with host-orchestrated repeated folding."
         }
@@ -116,6 +125,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::FriCommitmentSliceBounded => {
             "A bounded FRI commitment slice is implemented on top of the native inner-layer sequence."
+        }
+        MetalBackendSurface::FriInnerProofSliceBounded => {
+            "A bounded proof-facing inner FRI proof slice is implemented on top of the commitment slice."
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             "The first inner FRI-layer line-evaluation and commitment handoff is available only through an explicit CPU bridge."
