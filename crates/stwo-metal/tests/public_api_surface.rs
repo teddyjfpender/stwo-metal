@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use stwo_metal::{
     cuda_backend_surface_status, plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend,
     CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan,
-    MetalBackend, MetalBaseFieldVec, OwnedConstraintEvalAbiV1, SecureFieldVec,
+    MetalBackend, MetalBaseFieldVec, MetalSecureFieldVec, OwnedConstraintEvalAbiV1, SecureFieldVec,
     StwoCudaWideFibonacciEvalAbiV1, STWO_CUDA_BACKEND_SURFACES_V1,
 };
 
@@ -13,6 +13,7 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<BaseFieldVec>();
     let _ = std::mem::size_of::<MetalBackend>();
     let _ = std::mem::size_of::<MetalBaseFieldVec>();
+    let _ = std::mem::size_of::<MetalSecureFieldVec>();
     let _ = std::mem::size_of::<SecureFieldVec>();
 }
 

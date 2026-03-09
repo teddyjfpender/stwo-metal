@@ -42,18 +42,19 @@ Invariants:
 ## Current blockers
 
 - internal Rust vocabulary is still CUDA-first in many places
-- only one bounded Metal primitive is implemented so far
-- `SecureField` and poly or FRI support surfaces are not yet present on the
-  Metal lane
+- no declared proving sub-path is frozen yet
+- only bounded column and poly-support surfaces are implemented so far
+- no FRI fold, interpolation, evaluation, or trace-generation primitive is on
+  the Metal lane yet
 - the first declared proving sub-path for T5 is not yet frozen
 
 ## Next three deliverables
 
-1. Bring up `SecureField` Metal column support beside the current `BaseField`
-   lane.
-2. Land one bounded poly or FRI support primitive with deterministic CPU-oracle
-   validation.
-3. Use those slices to name the first T5 proving sub-path candidate.
+1. Freeze the first declared proving sub-path candidate for T5.
+2. Land the next bounded FRI or trace-support primitive required by that
+   candidate.
+3. Keep the unsupported matrix and CPU-oracle parity coverage explicit as the
+   path grows.
 
 ## Explicitly not doing now
 

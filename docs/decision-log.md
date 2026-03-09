@@ -292,3 +292,73 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0008: `SecureField` column support is part of the supported bounded Metal surface
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`SecureField` column upload, mutation, readback, and bit reversal are now part
+of the supported bounded Metal surface, with deterministic parity tests against
+the vendored CPU implementation.
+
+Context:
+
+The first `BaseField` slice was not enough to support future proving-path work.
+The next stable shape needed to preserve `SecureField` column semantics before
+growing into FRI and trace-support work.
+
+Alternatives rejected:
+
+- keep `SecureField` support outside the bounded Metal claim
+- skip parity tests and rely on the `BaseField` lane as a proxy
+
+Impact:
+
+- bounded Metal column support now includes both `BaseField` and `SecureField`
+- future proving-path work can build on stable secure-field vector semantics
+
+Superseded by:
+
+- none
+
+### DEC-0009: The first bounded poly-support Metal primitive is coset-order to circle-domain bit-reversed permutation
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The first bounded poly-support primitive on the Metal lane is `BaseField`
+coset-order to circle-domain bit-reversed permutation, implemented as a native
+Metal kernel with deterministic vendored CPU parity.
+
+Context:
+
+The project needed one poly-adjacent primitive that was smaller and safer than
+FRI folding or interpolation, but still directly useful for later polynomial
+and evaluation-order work.
+
+Alternatives rejected:
+
+- jump straight from column support to FRI folding arithmetic
+- treat order permutation as implementation trivia instead of a named bounded
+  contract
+
+Impact:
+
+- T5 now has a bounded poly-support primitive to build on
+- the next step can focus on choosing the first declared proving sub-path and
+  the next required FRI or trace-support slice
+
+Superseded by:
+
+- none

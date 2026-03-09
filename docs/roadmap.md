@@ -196,11 +196,11 @@ Required outputs:
 
 Current next slices inside T5:
 
-- bring up `SecureField` column operations beside the existing `BaseField`
-  Metal lane
-- land one bounded poly or FRI support primitive with deterministic CPU parity
-- keep unsupported proving-path surfaces explicit while the bounded trace path
-  grows
+- `SecureField` column operations now exist beside the `BaseField` Metal lane
+- one bounded poly support primitive now exists:
+  coset-order to circle-domain bit-reversed `BaseField` permutation
+- the next T5 work is to connect these bounded primitives into one declared
+  proving sub-path candidate
 
 ### T6: Restore one truthful end-to-end supported workload
 
@@ -222,9 +222,7 @@ Required outputs:
 
 ## Current next three planning deliverables
 
-1. Land `SecureField` Metal column bring-up with deterministic vendored CPU
-   parity tests.
-2. Land one bounded poly or FRI support primitive on the Metal lane with a
-   narrow, honest contract.
-3. Use those two slices to define the first declared proving sub-path candidate
-   for T5.
+1. Freeze the first declared T5 proving sub-path candidate.
+2. Land the next bounded FRI or trace-support primitive needed by that
+   candidate.
+3. Keep the unsupported matrix explicit while the candidate path grows.

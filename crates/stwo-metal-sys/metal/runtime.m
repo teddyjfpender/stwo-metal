@@ -75,6 +75,58 @@ static id<MTLComputePipelineState> stwo_metal_pipeline(
     return pipeline;
 }
 
+static NSUInteger stwo_metal_threads_per_group(id<MTLComputePipelineState> pipeline) {
+    NSUInteger threadgroup_width = pipeline.threadExecutionWidth > 0 ? pipeline.threadExecutionWidth : 1;
+    NSUInteger max_threads = pipeline.maxTotalThreadsPerThreadgroup > 0 ? pipeline.maxTotalThreadsPerThreadgroup : 1;
+    return MIN((NSUInteger)256, MAX(threadgroup_width, max_threads));
+}
+
+static bool stwo_metal_dispatch_unary_u32_kernel(
+    StwoMetalRuntimeBox *runtime,
+    NSString *kernel_name,
+    StwoMetalBufferBox *buffer,
+    uint32_t log_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, kernel_name, error_message, error_message_len);
+    if (pipeline == nil) {
+        return false;
+    }
+
+    id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+    if (command_buffer == nil) {
+        stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+        return false;
+    }
+
+    id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+    if (encoder == nil) {
+        stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+        return false;
+    }
+
+    NSUInteger len = ((NSUInteger)1) << log_len;
+    [encoder setComputePipelineState:pipeline];
+    [encoder setBuffer:buffer.buffer offset:0 atIndex:0];
+    [encoder setBytes:&log_len length:sizeof(log_len) atIndex:1];
+
+    MTLSize grid_size = MTLSizeMake(len, 1, 1);
+    MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+    [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+    [encoder endEncoding];
+
+    [command_buffer commit];
+    [command_buffer waitUntilCompleted];
+
+    if (command_buffer.status == MTLCommandBufferStatusError) {
+        stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+        return false;
+    }
+
+    return true;
+}
+
 void *stwo_metal_runtime_create(
     const uint8_t *metallib_bytes,
     size_t metallib_len,
@@ -284,7 +336,63 @@ bool stwo_metal_bit_reverse_u32(
             return false;
         }
 
-        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, @"bit_reverse_u32", error_message, error_message_len);
+        return stwo_metal_dispatch_unary_u32_kernel(
+            runtime,
+            @"bit_reverse_u32",
+            buffer,
+            log_len,
+            error_message,
+            error_message_len
+        );
+    }
+}
+
+bool stwo_metal_bit_reverse_u32x4(
+    void *runtime_ptr,
+    void *buffer_ptr,
+    uint32_t log_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *buffer = stwo_metal_buffer_box(buffer_ptr);
+        NSUInteger len = ((NSUInteger)1) << log_len;
+        if (buffer.len != len * 4) {
+            stwo_metal_write_error(error_message, error_message_len, @"u32x4 bit-reverse kernel expected four limbs per logical element.");
+            return false;
+        }
+
+        return stwo_metal_dispatch_unary_u32_kernel(
+            runtime,
+            @"bit_reverse_u32x4",
+            buffer,
+            log_len,
+            error_message,
+            error_message_len
+        );
+    }
+}
+
+bool stwo_metal_permute_coset_to_circle_domain_bit_reversed_u32(
+    void *runtime_ptr,
+    void *src_ptr,
+    void *dst_ptr,
+    uint32_t log_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *src = stwo_metal_buffer_box(src_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        NSUInteger len = ((NSUInteger)1) << log_len;
+        if (src.len != len || dst.len != len) {
+            stwo_metal_write_error(error_message, error_message_len, @"Coset permutation expects equal power-of-two source and destination lengths.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, @"permute_coset_to_circle_domain_bit_reversed_u32", error_message, error_message_len);
         if (pipeline == nil) {
             return false;
         }
@@ -302,13 +410,12 @@ bool stwo_metal_bit_reverse_u32(
         }
 
         [encoder setComputePipelineState:pipeline];
-        [encoder setBuffer:buffer.buffer offset:0 atIndex:0];
-        [encoder setBytes:&log_len length:sizeof(log_len) atIndex:1];
+        [encoder setBuffer:src.buffer offset:0 atIndex:0];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:1];
+        [encoder setBytes:&log_len length:sizeof(log_len) atIndex:2];
 
-        NSUInteger threadgroup_width = pipeline.threadExecutionWidth > 0 ? pipeline.threadExecutionWidth : 1;
-        NSUInteger threads_per_group = MIN((NSUInteger)256, MAX(threadgroup_width, pipeline.maxTotalThreadsPerThreadgroup));
         MTLSize grid_size = MTLSizeMake(len, 1, 1);
-        MTLSize threadgroup_size = MTLSizeMake(threads_per_group, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
         [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
         [encoder endEncoding];
 

@@ -1,8 +1,10 @@
 use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
 use stwo::prover::backend::{Column, ColumnOps};
 
 use super::MetalBackend;
 use crate::stwo_metal::base_field_vec::BaseFieldVec;
+use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
 #[cfg(feature = "vendored-upstream-bridge")]
 fn split_host_backed_vec<T, V>(values: Vec<T>, from_vec: fn(Vec<T>) -> V) -> (V, V) {
@@ -18,6 +20,16 @@ fn split_host_backed_vec<T, V>(values: Vec<T>, from_vec: fn(Vec<T>) -> V) -> (V,
 
 impl ColumnOps<BaseField> for MetalBackend {
     type Column = BaseFieldVec;
+
+    fn bit_reverse_column(column: &mut Self::Column) {
+        let size = column.len();
+        assert!(size.is_power_of_two() && size < u32::MAX as usize);
+        column.bit_reverse();
+    }
+}
+
+impl ColumnOps<SecureField> for MetalBackend {
+    type Column = SecureFieldVec;
 
     fn bit_reverse_column(column: &mut Self::Column) {
         let size = column.len();
@@ -66,6 +78,52 @@ impl FromIterator<BaseField> for BaseFieldVec {
 impl IntoIterator for BaseFieldVec {
     type Item = BaseField;
     type IntoIter = std::vec::IntoIter<BaseField>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.to_cpu().into_iter()
+    }
+}
+
+impl Column<SecureField> for SecureFieldVec {
+    fn zeros(len: usize) -> Self {
+        Self::new_zeroes(len)
+    }
+
+    fn to_cpu(&self) -> Vec<SecureField> {
+        self.to_vec()
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn at(&self, index: usize) -> SecureField {
+        self.get_data(index)
+    }
+
+    fn set(&mut self, index: usize, value: SecureField) {
+        self.set_data(index, value);
+    }
+
+    #[cfg(feature = "vendored-upstream-bridge")]
+    fn split_at_mid(self) -> (Self, Self) {
+        split_host_backed_vec(self.to_vec(), SecureFieldVec::from_vec)
+    }
+
+    unsafe fn uninitialized(len: usize) -> Self {
+        Self::new_uninitialized(len)
+    }
+}
+
+impl FromIterator<SecureField> for SecureFieldVec {
+    fn from_iter<T: IntoIterator<Item = SecureField>>(iter: T) -> Self {
+        Self::from_vec(iter.into_iter().collect())
+    }
+}
+
+impl IntoIterator for SecureFieldVec {
+    type Item = SecureField;
+    type IntoIter = std::vec::IntoIter<SecureField>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.to_cpu().into_iter()

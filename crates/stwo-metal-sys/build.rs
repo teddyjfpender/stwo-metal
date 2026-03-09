@@ -4,6 +4,7 @@ use std::{env, fs};
 
 const CUDA_MODE_VAR: &str = "STWO_CUDA_MODE";
 const METAL_MODE_VAR: &str = "STWO_METAL_MODE";
+const METAL_SOURCES: &[&str] = &["bit_reverse", "poly_order"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CudaMode {
@@ -173,28 +174,31 @@ fn build_metal_support(mode: MetalMode) {
     }
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR must be set"));
-    let air_path = out_dir.join("bit_reverse.air");
     let metallib_path = out_dir.join("stwo-metal.metallib");
-
-    run_command(
-        Command::new("xcrun")
-            .arg("metal")
-            .arg("-c")
-            .arg("metal/bit_reverse.metal")
-            .arg("-o")
-            .arg(&air_path),
-        "compile Metal kernels",
-        mode,
-    );
-    run_command(
-        Command::new("xcrun")
-            .arg("metallib")
-            .arg(&air_path)
-            .arg("-o")
-            .arg(&metallib_path),
-        "link Metal library",
-        mode,
-    );
+    let air_paths: Vec<PathBuf> = METAL_SOURCES
+        .iter()
+        .map(|source| {
+            let air_path = out_dir.join(format!("{source}.air"));
+            run_command(
+                Command::new("xcrun")
+                    .arg("metal")
+                    .arg("-c")
+                    .arg(format!("metal/{source}.metal"))
+                    .arg("-o")
+                    .arg(&air_path),
+                "compile Metal kernels",
+                mode,
+            );
+            air_path
+        })
+        .collect();
+    let mut metallib_command = Command::new("xcrun");
+    metallib_command.arg("metallib");
+    for air_path in &air_paths {
+        metallib_command.arg(air_path);
+    }
+    metallib_command.arg("-o").arg(&metallib_path);
+    run_command(&mut metallib_command, "link Metal library", mode);
     write_metal_autogen(&metallib_path);
 
     cc::Build::new()
@@ -241,7 +245,9 @@ fn write_metal_autogen_stub() {
     fs::write(
         generated,
         "pub const STWO_METAL_KERNEL_LIBRARY: &[u8] = &[];\n\
-         pub const STWO_METAL_BIT_REVERSE_U32_KERNEL: &str = \"bit_reverse_u32\";\n",
+         pub const STWO_METAL_BIT_REVERSE_U32_KERNEL: &str = \"bit_reverse_u32\";\n\
+         pub const STWO_METAL_BIT_REVERSE_U32X4_KERNEL: &str = \"bit_reverse_u32x4\";\n\
+         pub const STWO_METAL_PERMUTE_COSET_TO_CIRCLE_DOMAIN_BIT_REVERSED_U32_KERNEL: &str = \"permute_coset_to_circle_domain_bit_reversed_u32\";\n",
     )
     .expect("write metal autogen stub");
 }
@@ -251,7 +257,9 @@ fn write_metal_autogen(metallib_path: &Path) {
     let generated = out_dir.join("metal_autogen.rs");
     let contents = format!(
         "pub const STWO_METAL_KERNEL_LIBRARY: &[u8] = include_bytes!(r#\"{}\"#);\n\
-         pub const STWO_METAL_BIT_REVERSE_U32_KERNEL: &str = \"bit_reverse_u32\";\n",
+         pub const STWO_METAL_BIT_REVERSE_U32_KERNEL: &str = \"bit_reverse_u32\";\n\
+         pub const STWO_METAL_BIT_REVERSE_U32X4_KERNEL: &str = \"bit_reverse_u32x4\";\n\
+         pub const STWO_METAL_PERMUTE_COSET_TO_CIRCLE_DOMAIN_BIT_REVERSED_U32_KERNEL: &str = \"permute_coset_to_circle_domain_bit_reversed_u32\";\n",
         metallib_path.display()
     );
     fs::write(generated, contents).expect("write metal autogen file");

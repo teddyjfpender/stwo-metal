@@ -184,6 +184,46 @@ impl U32Buffer {
             )
         }
     }
+
+    pub fn bit_reverse_u32x4(&mut self, element_len: usize) -> Result<(), MetalError> {
+        assert!(
+            element_len.is_power_of_two(),
+            "bit reverse requires a power-of-two element length"
+        );
+        assert_eq!(
+            self.len,
+            element_len * 4,
+            "u32x4 bit reverse requires exactly four limbs per element"
+        );
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::bit_reverse_u32x4(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                element_len.ilog2(),
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
+    pub fn permute_coset_to_circle_domain_bit_reversed(&self) -> Result<Self, MetalError> {
+        assert!(
+            self.len.is_power_of_two(),
+            "coset permutation requires a power-of-two buffer"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(self.len)?;
+        unsafe {
+            ffi::permute_coset_to_circle_domain_bit_reversed_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                self.len.ilog2(),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
 }
 
 impl Clone for U32Buffer {
@@ -323,6 +363,21 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_bit_reverse_u32x4(
+            runtime: *mut c_void,
+            buffer: *mut c_void,
+            log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_permute_coset_to_circle_domain_bit_reversed_u32(
+            runtime: *mut c_void,
+            src: *mut c_void,
+            dst: *mut c_void,
+            log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
     }
 
     pub unsafe fn runtime_create(
@@ -457,6 +512,48 @@ mod ffi {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
     }
+
+    pub unsafe fn bit_reverse_u32x4(
+        runtime: *mut c_void,
+        buffer: *mut c_void,
+        log_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_bit_reverse_u32x4(
+            runtime,
+            buffer,
+            log_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn permute_coset_to_circle_domain_bit_reversed_u32(
+        runtime: *mut c_void,
+        src: *mut c_void,
+        dst: *mut c_void,
+        log_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_permute_coset_to_circle_domain_bit_reversed_u32(
+            runtime,
+            src,
+            dst,
+            log_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
 }
 
 #[cfg(not(stwo_metal_link))]
@@ -543,6 +640,29 @@ mod ffi {
     pub unsafe fn bit_reverse_u32(
         _runtime: *mut c_void,
         _buffer: *mut c_void,
+        _log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn bit_reverse_u32x4(
+        _runtime: *mut c_void,
+        _buffer: *mut c_void,
+        _log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn permute_coset_to_circle_domain_bit_reversed_u32(
+        _runtime: *mut c_void,
+        _src: *mut c_void,
+        _dst: *mut c_void,
         _log_len: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {

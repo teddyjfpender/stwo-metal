@@ -18,6 +18,10 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
         MetalBackendSurface::BaseFieldColumnSet,
         MetalBackendSurface::BaseFieldColumnFromIterator,
         MetalBackendSurface::BaseFieldColumnBitReverse,
+        MetalBackendSurface::BaseFieldCosetToCircleDomainBitReverse,
+        MetalBackendSurface::SecureFieldColumnSet,
+        MetalBackendSurface::SecureFieldColumnFromIterator,
+        MetalBackendSurface::SecureFieldColumnBitReverse,
     ] {
         assert_eq!(
             metal_backend_surface_status(surface),
@@ -43,10 +47,7 @@ fn metal_runtime_support_reports_a_formal_state() {
 
 #[test]
 fn later_migration_targets_remain_explicitly_planned() {
-    for surface in [
-        MetalBackendSurface::SecureFieldColumnBitReverse,
-        MetalBackendSurface::QuotientAccumulate,
-    ] {
+    for surface in [MetalBackendSurface::QuotientAccumulate] {
         assert_eq!(
             metal_backend_surface_status(surface),
             MetalBackendSurfaceStatus::UnsupportedPlanned

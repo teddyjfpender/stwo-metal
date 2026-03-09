@@ -60,3 +60,9 @@ The first completed T4 slice is:
 
 - native Metal `BaseField` bit reversal with deterministic CPU-oracle parity
   tests on Apple Silicon
+
+Current completed T5 supporting slices are:
+
+- native Metal `SecureField` column round-trip and bit reversal
+- native Metal `BaseField` coset-order to circle-domain bit-reversed
+  permutation

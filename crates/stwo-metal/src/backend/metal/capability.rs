@@ -6,6 +6,9 @@ pub enum MetalBackendSurface {
     BaseFieldColumnSet,
     BaseFieldColumnFromIterator,
     BaseFieldColumnBitReverse,
+    BaseFieldCosetToCircleDomainBitReverse,
+    SecureFieldColumnSet,
+    SecureFieldColumnFromIterator,
     SecureFieldColumnBitReverse,
     QuotientAccumulate,
 }
@@ -23,6 +26,9 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::BaseFieldColumnSet,
     MetalBackendSurface::BaseFieldColumnFromIterator,
     MetalBackendSurface::BaseFieldColumnBitReverse,
+    MetalBackendSurface::BaseFieldCosetToCircleDomainBitReverse,
+    MetalBackendSurface::SecureFieldColumnSet,
+    MetalBackendSurface::SecureFieldColumnFromIterator,
     MetalBackendSurface::SecureFieldColumnBitReverse,
     MetalBackendSurface::QuotientAccumulate,
 ];
@@ -33,9 +39,12 @@ pub const fn metal_backend_surface_status(
     match surface {
         MetalBackendSurface::BaseFieldColumnSet
         | MetalBackendSurface::BaseFieldColumnFromIterator
-        | MetalBackendSurface::BaseFieldColumnBitReverse => MetalBackendSurfaceStatus::Supported,
-        MetalBackendSurface::SecureFieldColumnBitReverse
-        | MetalBackendSurface::QuotientAccumulate => MetalBackendSurfaceStatus::UnsupportedPlanned,
+        | MetalBackendSurface::BaseFieldColumnBitReverse
+        | MetalBackendSurface::BaseFieldCosetToCircleDomainBitReverse
+        | MetalBackendSurface::SecureFieldColumnSet
+        | MetalBackendSurface::SecureFieldColumnFromIterator
+        | MetalBackendSurface::SecureFieldColumnBitReverse => MetalBackendSurfaceStatus::Supported,
+        MetalBackendSurface::QuotientAccumulate => MetalBackendSurfaceStatus::UnsupportedPlanned,
     }
 }
 
@@ -48,8 +57,17 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         MetalBackendSurface::BaseFieldColumnBitReverse => {
             "Base-field bit reversal is implemented through a native Metal kernel."
         }
+        MetalBackendSurface::BaseFieldCosetToCircleDomainBitReverse => {
+            "Base-field coset-order to circle-domain bit-reversed permutation is implemented through a native Metal kernel."
+        }
+        MetalBackendSurface::SecureFieldColumnSet => {
+            "Secure-field Metal column mutation is supported."
+        }
+        MetalBackendSurface::SecureFieldColumnFromIterator => {
+            "Secure-field Metal column construction from iterators is supported."
+        }
         MetalBackendSurface::SecureFieldColumnBitReverse => {
-            "Secure-field bit reversal is planned but not implemented in the first Metal slice."
+            "Secure-field bit reversal is implemented through a native Metal kernel."
         }
         MetalBackendSurface::QuotientAccumulate => {
             "Constraint quotient accumulation remains in the planned Metal migration set."

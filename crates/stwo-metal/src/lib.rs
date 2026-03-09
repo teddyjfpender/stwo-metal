@@ -89,6 +89,7 @@ pub use crate::backend::cuda::{BaseFieldVec, CudaBackend, SecureFieldVec};
 #[cfg(feature = "prover")]
 pub use crate::backend::metal::{
     metal_backend_surface_detail, metal_backend_surface_status, metal_runtime_error,
-    metal_runtime_support, MetalBackend, MetalBackendSurface, MetalBackendSurfaceStatus,
-    MetalBaseFieldVec, MetalRuntimeSupport, STWO_METAL_BACKEND_SURFACES_V1,
+    metal_runtime_support, permute_coset_to_circle_domain_bit_reversed, MetalBackend,
+    MetalBackendSurface, MetalBackendSurfaceStatus, MetalBaseFieldVec, MetalRuntimeSupport,
+    MetalSecureFieldVec, STWO_METAL_BACKEND_SURFACES_V1,
 };

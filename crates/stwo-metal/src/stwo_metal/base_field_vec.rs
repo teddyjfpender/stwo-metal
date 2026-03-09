@@ -70,6 +70,17 @@ impl BaseFieldVec {
             .expect("Metal BaseFieldVec bit reverse should succeed");
     }
 
+    pub fn coset_to_circle_domain_bit_reversed(&self) -> Self {
+        let buffer = self
+            .buffer
+            .permute_coset_to_circle_domain_bit_reversed()
+            .expect("Metal BaseFieldVec permutation should succeed");
+        Self {
+            buffer,
+            size: self.size,
+        }
+    }
+
     pub fn extend(&mut self, other: &Self) {
         let new_size = self.size + other.size;
         let mut new_vec = Self::new_uninitialized(new_size);

@@ -124,3 +124,37 @@ backend plan.
 Target retirement point:
 
 - `T2`
+
+### TD-0004: The Metal runtime surface is still primitive-specific rather than backend-neutral
+
+- Status: `active`
+- Category: `runtime boundary shape`
+- Introduced: `2026-03-09`
+- Owner area: `stwo-metal-sys`
+
+Why it exists now:
+
+The native Metal runtime currently exposes bounded helpers for `u32`,
+`u32x4`, and one explicit poly-order permutation. This is deliberate for the
+first proving-surface slices, but it is not yet the stable backend-neutral ABI
+we ultimately want.
+
+Current containment:
+
+- `crates/stwo-metal-sys/src/metal.rs`
+- `crates/stwo-metal-sys/metal`
+- `crates/stwo-metal/src/stwo_metal`
+
+Risk if left in place:
+
+Future ports could accumulate one-off runtime entrypoints instead of converging
+on a coherent Metal ABI for proving operations.
+
+Exit condition:
+
+An approved runtime-boundary refactor groups the bounded helpers into a smaller
+and more durable Metal ABI surface without losing deterministic parity tests.
+
+Target retirement point:
+
+- `T5`

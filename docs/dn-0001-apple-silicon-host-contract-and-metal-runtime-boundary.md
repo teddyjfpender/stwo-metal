@@ -38,11 +38,15 @@ Implemented against this note:
   [`crates/stwo-metal-sys/src/metal.rs`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/crates/stwo-metal-sys/src/metal.rs)
 - the first bounded native Metal primitive:
   `BaseField` bit reversal with deterministic vendored CPU parity tests
+- `SecureField` column upload, mutation, readback, and bit reversal through the
+  same native Metal runtime boundary
+- one bounded poly-support primitive:
+  `BaseField` coset-order to circle-domain bit-reversed permutation through a
+  native Metal kernel
 
 Still outside the implemented surface:
 
-- `SecureField` Metal column support
-- bounded poly and FRI support primitives beyond the first column slice
+- bounded FRI fold, interpolation, evaluation, and trace-support primitives
 - any truthful end-to-end proving claim
 
 ## Problem
