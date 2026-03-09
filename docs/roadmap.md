@@ -27,9 +27,18 @@ The target shape is:
 - native Metal runtime ownership on the host
 - `.metal` compute kernels for the hot path
 - correctness first, then speed
+- unchanged Stwo workload logic except for backend wiring at the proving seam
 
 The repository should become a real Metal backend, not a renamed CUDA fork and
 not an unbounded GPU-experiment sandbox.
+
+The primary product definition is:
+
+- take a Stwo trace or example workload produced the normal Stwo way
+- prove it with `MetalBackend`
+- verify the proof with the standard verifier
+
+The architecture driver is backend completeness, not custom benchmark rows.
 
 ## Benchmark north star
 
@@ -41,8 +50,37 @@ The first explicit benchmark objective is:
 - project-supplied reference goal: approach `90 ms`
 - reference row source for that goal: RTX 4090 CUDA benchmark history
 
-This benchmark target is a planning objective, not a correctness gate and not
-yet a support claim for `stwo-metal`.
+This benchmark target is a planning objective, not a correctness gate, not the
+architecture source of truth, and not yet a support claim for `stwo-metal`.
+
+## Example-backed acceptance focus
+
+The primary acceptance direction is to prove upstream Stwo examples with
+`MetalBackend` unchanged except for backend wiring.
+
+Target acceptance set:
+
+- `blake`
+- `poseidon`
+- `state_machine`
+- `wide_fibonacci`
+- `xor`
+
+Current local constraint:
+
+- the current vendored snapshot under `vendor/` does not yet expose the
+  upstream `crates/examples` tree directly, so this acceptance set requires an
+  explicit vendoring or import step before the matrix can be executed fully
+
+Acceptance matrix:
+
+| Example | Role | Current state | Exit signal |
+| --- | --- | --- | --- |
+| `blake` | acceptance workload | `planned` | proves and verifies through `MetalBackend` with unchanged workload logic |
+| `poseidon` | acceptance workload | `planned` | proves and verifies through `MetalBackend` with unchanged workload logic |
+| `state_machine` | acceptance workload | `planned` | proves and verifies through `MetalBackend` with unchanged workload logic |
+| `wide_fibonacci` | acceptance workload and perf reference | `planned` | proves and verifies through `MetalBackend`; benchmark remains secondary evidence |
+| `xor` | acceptance workload | `planned` | proves and verifies through `MetalBackend` with unchanged workload logic |
 
 ## Planning assumptions
 
@@ -56,6 +94,8 @@ These are planning assumptions, not yet final implementation commitments:
    behavior while the backend changes.
 4. Deterministic unit tests against the local vendored Stwo CPU execution are
    the default correctness oracle for bounded Metal work.
+5. Upstream examples are acceptance workloads, not workload-specific rewrite
+   targets.
 
 ## Lessons applied from `stwo-cuda`
 
@@ -134,8 +174,10 @@ Practical rule:
 | T2 | Define the Apple Silicon host contract | `completed` | supported host modes, toolchain assumptions, and fail-safe behavior are approved |
 | T3 | Design the native `stwo-metal-sys` Metal runtime | `completed` | device, queue, memory, ABI, and build ownership are approved in a design note |
 | T4 | Land the first bounded Metal primitive path | `completed` | one reusable GPU-backed primitive exists with deterministic CPU-oracle validation |
-| T5 | Prove one bounded Stwo trace path through Metal | `in_progress` | one declared trace or proving sub-path runs correctly on the Metal backend |
+| T5 | Prove one bounded Stwo trace path through Metal | `completed` | one declared trace or proving sub-path runs correctly on the Metal backend |
+| T5a | Rebaseline around generic backend completion and unchanged upstream examples | `in_progress` | roadmap, controller, plan, and done criteria treat upstream example proving as the primary deliverable |
 | T6 | Restore one truthful end-to-end supported workload | `planned` | one declared workload proves end to end on Metal with matching semantics and declared measurement |
+| T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `planned` | the accepted upstream example set proves and verifies through `MetalBackend` without workload-specific rewrites |
 
 ## Milestone detail
 
@@ -267,8 +309,25 @@ Current next slices inside T5:
   path before an explicit bridge back into the inherited CUDA proving lane
 - the explicit CPU bridge remains available only as a bounded validation and
   comparison surface
-- the next T5 work is to replace the remaining Metal-to-CUDA prove-benchmark
-  bridge by moving the native boundary to pre-FRI PCS commitment
+
+T5 is now treated as completed bounded proving-surface groundwork. The next
+work is no longer to keep extending benchmark-specific rows by default; it is
+to re-anchor the program around generic backend completion and unchanged
+upstream example proving.
+
+### T5a: Rebaseline around generic backend completion and unchanged upstream examples
+
+Required outputs:
+
+- controller, roadmap, program plan, and done criteria all name generic Stwo
+  proving with `MetalBackend` as the primary deliverable
+- benchmark rows are explicitly demoted to supporting validation and
+  performance surfaces
+- one formal milestone exists for proving upstream Stwo examples unchanged
+  except for backend wiring
+- an explicit acceptance matrix exists for the target upstream example set
+- further bespoke benchmark-path expansion is frozen until this correction is
+  written down
 
 ### T6: Restore one truthful end-to-end supported workload
 
@@ -277,6 +336,19 @@ Required outputs:
 - one named workload is support-honest
 - correctness is demonstrated before throughput claims
 - performance reporting uses a declared workload and environment
+
+### T7: Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring
+
+Required outputs:
+
+- the accepted upstream example set is available in the repo or otherwise
+  pinned as an auditable input
+- each example can be proved with `MetalBackend` and verified with the stock
+  verifier
+- workload logic remains upstream-owned; backend wiring is the only intended
+  delta
+- failures are tracked per example as backend-completion gaps rather than
+  patched through workload-specific rewrites
 
 ## Sequencing rules
 
@@ -290,11 +362,9 @@ Required outputs:
 
 ## Current next three planning deliverables
 
-1. Replace the remaining `wide_fibonacci_prove` Metal-to-CUDA bridge by moving
-   the native boundary to pre-FRI PCS commitment.
-2. Package the new native quotient path into one declared workload-facing row
-   without widening the claimed support surface beyond deterministic parity.
-3. Keep the `wide_fibonacci` log-size-20 benchmark objective honest while
-   deciding whether T5 can exit with host-owned commitment hashing still in
-   place or requires a GPU-side hash path before any bounded proving row is
-   called truthful.
+1. Freeze the project definition around generic backend completion and
+   unchanged upstream example proving.
+2. Add the formal milestone and acceptance matrix for `blake`, `poseidon`,
+   `state_machine`, `wide_fibonacci`, and `xor`.
+3. Resume backend porting only once benchmark rows are clearly secondary to the
+   example-backed completion path.

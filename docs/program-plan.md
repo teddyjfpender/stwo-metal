@@ -13,10 +13,14 @@ file keeps the currently intended route aligned with that map.
 Deliver a truthful Apple Silicon and Metal backend path for Stwo without
 smuggling CUDA-era assumptions into the long-term interface or process.
 
-The first benchmark north star for that path is the wide-fibonacci proving row
-at `log_n_instances = 20` and `n_columns = 100`, aiming to approach the
+The primary deliverable is to prove upstream Stwo examples with
+`MetalBackend` and verify them unchanged except for backend wiring.
+
+The first benchmark north star for that path remains the wide-fibonacci proving
+row at `log_n_instances = 20` and `n_columns = 100`, aiming to approach the
 project-supplied `90 ms` RTX 4090 reference result once the Metal workload is
-truthful enough to measure.
+truthful enough to measure, but that benchmark is a supporting objective rather
+than the architectural source of truth.
 
 ## Program invariants
 
@@ -28,6 +32,7 @@ truthful enough to measure.
   implementation work
 - deterministic validation against the local vendored Stwo CPU execution is the
   default correctness oracle for Metal work
+- upstream example workloads are acceptance fixtures, not rewrite targets
 - every temporary bridge must be logged in
   [`tech-debt-register.md`](./tech-debt-register.md)
 
@@ -40,22 +45,28 @@ truthful enough to measure.
 | T2 | Define Apple Silicon host contract | `completed` | host modes, toolchain assumptions, and fail-safe behavior are documented |
 | T3 | Design `stwo-metal-sys` runtime replacement | `completed` | native build, ABI, queue, and memory ownership are approved |
 | T4 | Land first Metal-backed primitive path | `completed` | at least one bounded Metal execution path exists with deterministic validation |
-| T5 | Prove one bounded Stwo trace path through Metal | `in_progress` | one declared trace or proving sub-path runs correctly on the Metal path |
+| T5 | Prove one bounded Stwo trace path through Metal | `completed` | one declared trace or proving sub-path runs correctly on the Metal path |
+| T5a | Rebaseline around generic backend completion and unchanged upstream examples | `in_progress` | planning documents and done criteria are corrected to the backend-first goal |
 | T6 | Restore one truthful end-to-end supported workload | `planned` | one declared workload runs end to end on the Metal path with matching semantics |
+| T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `planned` | the accepted upstream example set proves and verifies through `MetalBackend` |
 
 ## Immediate sequencing rules
 
 - do not start `T3` implementation work before `T1` and `T2` are approved
 - do not claim a supported Metal row before `T6`
-- benchmark work is secondary until one bounded Metal path is correct
+- benchmark work is secondary until backend-completion acceptance criteria are
+  explicit
 - use the local vendored Stwo snapshot as the reference semantic authority
 - require deterministic unit tests against vendored CPU execution for bounded
   Metal cuts
+- do not widen benchmark-specific proving rows while the example-backed
+  backend-completion milestone is still being defined
 
 ## Current focus
 
-The active tranche is `T5 bounded proving-surface bring-up`, as tracked in
-[`controller.md`](./controller.md) and sequenced by [`roadmap.md`](./roadmap.md).
+The active tranche is `T5a planning correction for generic backend
+completion`, as tracked in [`controller.md`](./controller.md) and sequenced by
+[`roadmap.md`](./roadmap.md).
 
 The active formal basis for T2 and T3 is:
 
@@ -109,13 +120,17 @@ Current completed T5 supporting slices are:
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
-The first declared T5 proving sub-path candidate is:
+The new planning correction outputs are:
 
-- FRI first-layer fold from a bit-reversed secure circle evaluation into the
-  first line layer
+- the backend-first project definition is explicit in the control docs
+- a formal milestone exists for proving unchanged upstream examples with
+  `MetalBackend`
+- an acceptance matrix exists for the target upstream example set:
+  `blake`, `poseidon`, `state_machine`, `wide_fibonacci`, and `xor`
+- benchmark rows remain in the plan as secondary validation and performance
+  surfaces
 
-The next required T5 boundary is:
+The next required post-correction milestone is:
 
-- a bounded pre-FRI PCS commitment boundary on top of the native
-  wide-fibonacci quotient path, replacing the remaining
-  `wide_fibonacci_prove` Metal-to-CUDA quotient-output bridge
+- `T7` prove upstream Stwo examples with `MetalBackend` unchanged except for
+  backend wiring

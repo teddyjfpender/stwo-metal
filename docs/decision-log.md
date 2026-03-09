@@ -63,6 +63,52 @@ Superseded by:
 
 - none
 
+### DEC-0032: The primary deliverable is generic Stwo proving with `MetalBackend`, and upstream examples are the acceptance workloads
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`stwo-metal` is rebaselined around one primary deliverable: prove Stwo traces
+with `MetalBackend` and verify them through the standard verifier, without
+rewriting workload logic beyond backend wiring. Upstream Stwo examples are the
+target acceptance workloads for that deliverable.
+
+Context:
+
+The project had started to drift toward benchmark-first proving rows, especially
+around wide-fibonacci. Those bounded slices produced useful primitives, but
+they are not the product definition. The actual goal is backend completion
+against unchanged Stwo workloads, with benchmark rows used only as supporting
+performance evidence once the backend path is truthful.
+
+Alternatives rejected:
+
+- continue using benchmark-specific proving rows as the primary milestone driver
+- treat workload-specific rewrites as acceptable substitutes for backend
+  completeness
+- leave the acceptance target implicit instead of naming upstream examples and
+  backend wiring as the intended seam
+
+Impact:
+
+- the controller, roadmap, program plan, and done criteria are rebaselined
+  around generic backend completion
+- a new formal milestone is opened for proving upstream examples with
+  `MetalBackend` unchanged except for backend wiring
+- further bespoke benchmark-path expansion is frozen until this correction is
+  written down
+- the benchmark north star remains in the plan, but no longer defines
+  completion by itself
+
+Superseded by:
+
+- none
+
 ### DEC-0031: Wide-fibonacci quotient accumulation is now native Metal, and the remaining benchmark bridge moves to pre-FRI PCS commitment
 
 - Date: `2026-03-09`

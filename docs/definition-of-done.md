@@ -19,6 +19,8 @@ Work is done only when the code, contract, and process state agree.
       docs and tracked as debt instead of being treated as implicit support.
 - [ ] Any declared workload boundary states witness, quotient, PCS, and FRI
       ownership explicitly instead of hiding hybrid execution behind one label.
+- [ ] If the slice claims progress toward upstream-example support, it states
+      whether workload code stayed unchanged except for backend wiring.
 - [ ] Proof-facing FRI slices validate their bounded last-layer polynomial
       semantics against the vendored CPU oracle, including the configured
       degree-bound truncation.
@@ -33,6 +35,9 @@ Work is done only when the code, contract, and process state agree.
 - [ ] The controller is advanced to the next active tranche.
 - [ ] Residual debt is explicit.
 - [ ] Obsolete process docs created only for the finished milestone are removed.
+- [ ] Any milestone claiming example-backed support names the accepted example
+      set and records whether the examples are upstream-owned in this repo or
+      still pending vendoring.
 
 ## Not done
 
@@ -42,3 +47,5 @@ The work is not done if any of the following are true:
 - a new compromise exists but no debt entry records it
 - the implementation depends on assumptions that are not written down
 - the docs still describe the previous state
+- upstream-example progress is claimed even though workload-specific rewrites
+  are carrying the result

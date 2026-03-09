@@ -436,3 +436,38 @@ named rather than implicitly inherited from CUDA.
 Target retirement point:
 
 - `T6`
+
+### TD-0013: The target upstream example acceptance set is not yet vendored in the local snapshot
+
+- Status: `active`
+- Category: `acceptance-input gap`
+- Introduced: `2026-03-09`
+- Owner area: `T5a planning correction`
+
+Why it exists now:
+
+The project is now rebaselined around proving upstream Stwo examples with
+`MetalBackend` unchanged except for backend wiring, but the current local
+vendored snapshot under `vendor/` does not expose the upstream
+`crates/examples` tree directly. That means the target acceptance set exists as
+named scope, not yet as a fully local executable matrix.
+
+Current containment:
+
+- `docs/roadmap.md`
+- `docs/program-plan.md`
+- `docs/controller.md`
+
+Risk if left in place:
+
+The project could claim example-backed completion criteria without having the
+actual upstream example inputs pinned locally and auditable in the repo.
+
+Exit condition:
+
+The accepted upstream example set is present in the repo or otherwise vendored
+and pinned as an auditable input for `T7`.
+
+Target retirement point:
+
+- `T7`
