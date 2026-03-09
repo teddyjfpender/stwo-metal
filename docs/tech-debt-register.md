@@ -373,9 +373,9 @@ Why it exists now:
 
 `stwo-metal` now has a declared hybrid workload boundary with explicit witness,
 quotient, PCS, and FRI ownership, and it now has an executable handoff from a
-CPU-owned FRI-ready evaluation. The CPU-owned stages are named, but witness,
-quotient, and PCS artifacts do not yet feed the boundary through an earlier
-stable handoff.
+CPU-owned quotient evaluation. The CPU-owned stages are named, but witness
+artifacts and quotient accumulation do not yet feed the boundary through an
+earlier stable handoff.
 
 Current containment:
 
@@ -385,14 +385,14 @@ Current containment:
 Risk if left in place:
 
 The project could sound more workload-complete than it really is, even though
-the executable hybrid path still begins after witness, quotient, and PCS
-preparation.
+the executable hybrid path still begins after witness generation and quotient
+accumulation.
 
 Exit condition:
 
-One declared workload owns a stable handoff from a CPU-owned witness,
-quotient, or PCS artifact into the executable Metal workload boundary with
-deterministic CPU-oracle parity.
+One declared workload owns a stable handoff from a CPU-owned witness artifact
+into the executable Metal workload boundary with deterministic CPU-oracle
+parity.
 
 Target retirement point:
 

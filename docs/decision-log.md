@@ -1012,3 +1012,47 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0026: The first quotient-owned workload handoff is explicit and executable
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`stwo-metal` now exposes an explicit CPU-owned quotient evaluation handoff for
+the declared hybrid workload boundary. The executable Metal workload can now
+start from:
+
+- a CPU-owned quotient evaluation on a canonic circle domain
+- a named workload boundary for `fibonacci_example`
+- deterministic parity against the vendored CPU FRI prover on that quotient
+  artifact
+
+Context:
+
+The prior executable handoff started at a generic FRI-ready evaluation. The
+next upstream-aligned step was to name the quotient-to-FRI boundary directly,
+because that is the actual proving seam used by the vendored PCS flow.
+
+Alternatives rejected:
+
+- keep the executable workload handoff only as a generic FRI-ready evaluation
+- claim native quotient accumulation before an explicit quotient-owned handoff
+  existed
+
+Impact:
+
+- the executable workload boundary now uses quotient terminology aligned to the
+  vendored prover flow
+- the next remaining workload gap is earlier than quotient evaluation:
+  witness-owned artifacts and quotient accumulation still stay outside the
+  executable Metal path
+- `TD-0011` narrows to that earlier-stage gap
+
+Superseded by:
+
+- none

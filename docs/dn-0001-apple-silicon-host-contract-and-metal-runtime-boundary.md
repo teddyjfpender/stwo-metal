@@ -61,13 +61,15 @@ Implemented against this note:
   Metal FRI ownership
 - executable CPU-owned FRI-ready evaluation handoff into the declared hybrid
   workload boundary with deterministic CPU-oracle parity
+- executable CPU-owned quotient evaluation handoff into the declared hybrid
+  workload boundary with deterministic CPU-oracle parity
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
 Still outside the implemented surface:
 
-- one earlier workload handoff from a witness, quotient, or PCS-owned artifact
-  into the executable hybrid workload boundary
+- one earlier workload handoff from a witness-owned artifact into the
+  executable hybrid workload boundary
 - interpolation, evaluation, and trace-support primitives beyond the bounded
   FRI arithmetic surface
 - any truthful end-to-end proving claim

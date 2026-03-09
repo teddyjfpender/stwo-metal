@@ -233,11 +233,13 @@ Current next slices inside T5:
   stages
 - one executable handoff now exists from a CPU-owned FRI-ready evaluation into
   the declared hybrid workload boundary, with deterministic CPU-oracle parity
+- one executable handoff now exists from a CPU-owned quotient evaluation into
+  the declared hybrid workload boundary, with deterministic CPU-oracle parity
 - the explicit CPU bridge remains available only as a bounded validation and
   comparison surface
 - the next T5 work is to move the executable workload boundary earlier than the
-  FRI-ready evaluation input, starting with one selected `fibonacci_example`
-  workload artifact
+  CPU-owned quotient evaluation input, starting with one selected
+  `fibonacci_example` witness-owned artifact
 
 ### T6: Restore one truthful end-to-end supported workload
 
@@ -259,10 +261,10 @@ Required outputs:
 
 ## Current next three planning deliverables
 
-1. Freeze one earlier workload handoff for `fibonacci_example` before the
-   current FRI-ready evaluation boundary.
-2. Decide whether quotient accumulation or PCS commitment is the next native
-   proving-stage replacement after that earlier handoff is selected.
+1. Freeze one earlier witness-owned workload handoff for `fibonacci_example`
+   before the current CPU quotient evaluation boundary.
+2. Decide whether quotient accumulation or pre-FRI PCS commitment is the next
+   native proving-stage replacement after that earlier handoff is selected.
 3. Decide whether T5 can exit with host-owned commitment hashing still in
    place or requires a GPU-side hash path before any bounded proving row is
    called truthful.

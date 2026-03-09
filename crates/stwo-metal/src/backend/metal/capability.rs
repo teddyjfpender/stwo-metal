@@ -24,6 +24,7 @@ pub enum MetalBackendSurface {
     FriBlake2sSubpathDeclared,
     WorkloadBoundaryHybridDeclared,
     WorkloadFriReadyEvaluationCpuHandoff,
+    WorkloadQuotientEvaluationCpuHandoff,
     FriFirstInnerLayerCommitmentCpuBridge,
     QuotientAccumulate,
 }
@@ -60,6 +61,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::FriBlake2sSubpathDeclared,
     MetalBackendSurface::WorkloadBoundaryHybridDeclared,
     MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff,
+    MetalBackendSurface::WorkloadQuotientEvaluationCpuHandoff,
     MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge,
     MetalBackendSurface::QuotientAccumulate,
 ];
@@ -88,7 +90,8 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::FriProverTranscriptOwnedBounded
         | MetalBackendSurface::FriBlake2sSubpathDeclared
         | MetalBackendSurface::WorkloadBoundaryHybridDeclared
-        | MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff => {
+        | MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff
+        | MetalBackendSurface::WorkloadQuotientEvaluationCpuHandoff => {
             MetalBackendSurfaceStatus::Supported
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
@@ -160,6 +163,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff => {
             "A CPU-owned FRI-ready evaluation handoff is supported for the declared Metal hybrid workload boundary with explicit ownership."
+        }
+        MetalBackendSurface::WorkloadQuotientEvaluationCpuHandoff => {
+            "A CPU-owned quotient evaluation handoff is supported for the declared Metal hybrid workload boundary with explicit ownership."
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             "The first inner FRI-layer line-evaluation and commitment handoff is available only through an explicit CPU bridge."

@@ -6,11 +6,11 @@ use stwo_metal::{
     declare_exemplar_metal_workload_boundary, plan_exemplar_metal_prove_by_name,
     plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend, CudaBackendSurface,
     CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan, MetalBackend,
-    MetalBaseFieldVec, MetalExecutionIntent, MetalExecutionPlan, MetalFriBlake2sSubpath,
-    MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice, MetalFriLayerDecommitment,
-    MetalFriProofSlice, MetalFriProver, MetalFriReadyEvaluationInput, MetalHybridFriWorkload,
-    MetalLineCommitment, MetalLineEvaluation, MetalSecureFieldVec, MetalWorkloadBoundary,
-    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalBaseFieldVec, MetalCpuQuotientEvaluationInput, MetalExecutionIntent, MetalExecutionPlan,
+    MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice,
+    MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver, MetalFriReadyEvaluationInput,
+    MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation, MetalSecureFieldVec,
+    MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
     STWO_CUDA_BACKEND_SURFACES_V1,
 };
@@ -30,6 +30,7 @@ fn companion_surface_exports_backend_core_types() {
     >();
     let _ = std::mem::size_of::<MetalFriBlake2sSubpath>();
     let _ = std::mem::size_of::<MetalFriLayerDecommitment<Blake2sMerkleHasher>>();
+    let _ = std::mem::size_of::<MetalCpuQuotientEvaluationInput>();
     let _ = std::mem::size_of::<MetalFriReadyEvaluationInput>();
     let _ = std::mem::size_of::<MetalWorkloadBoundary>();
     let _ = std::mem::size_of::<MetalWorkloadHandoffError<'static>>();

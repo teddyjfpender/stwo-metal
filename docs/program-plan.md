@@ -85,6 +85,8 @@ Current completed T5 supporting slices are:
   Metal FRI ownership
 - executable CPU-owned FRI-ready evaluation handoff into the declared hybrid
   workload boundary
+- executable CPU-owned quotient evaluation handoff into the declared hybrid
+  workload boundary
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
@@ -95,5 +97,5 @@ The first declared T5 proving sub-path candidate is:
 
 The next required T5 boundary is:
 
-- one earlier workload handoff for `fibonacci_example` before the current
-  FRI-ready evaluation boundary
+- one earlier witness-owned workload handoff for `fibonacci_example` before
+  the current CPU quotient evaluation boundary
