@@ -175,9 +175,9 @@ Practical rule:
 | T3 | Design the native `stwo-metal-sys` Metal runtime | `completed` | device, queue, memory, ABI, and build ownership are approved in a design note |
 | T4 | Land the first bounded Metal primitive path | `completed` | one reusable GPU-backed primitive exists with deterministic CPU-oracle validation |
 | T5 | Prove one bounded Stwo trace path through Metal | `completed` | one declared trace or proving sub-path runs correctly on the Metal backend |
-| T5a | Rebaseline around generic backend completion and unchanged upstream examples | `in_progress` | roadmap, controller, plan, and done criteria treat upstream example proving as the primary deliverable |
+| T5a | Rebaseline around generic backend completion and unchanged upstream examples | `completed` | roadmap, controller, plan, and done criteria treat upstream example proving as the primary deliverable |
 | T6 | Restore one truthful end-to-end supported workload | `planned` | one declared workload proves end to end on Metal with matching semantics and declared measurement |
-| T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `planned` | the accepted upstream example set proves and verifies through `MetalBackend` without workload-specific rewrites |
+| T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `in_progress` | the accepted upstream example set proves and verifies through `MetalBackend` without workload-specific rewrites |
 
 ## Milestone detail
 
@@ -350,6 +350,21 @@ Required outputs:
 - failures are tracked per example as backend-completion gaps rather than
   patched through workload-specific rewrites
 
+Current first implementation slice:
+
+- the upstream `stwo-examples` source is now pinned locally under the vendored
+  snapshot with recorded source provenance
+- one isolated acceptance fixture now consumes the vendored upstream
+  `wide_fibonacci` example unchanged except for backend wiring
+- that first acceptance fixture proves the example can feed the current native
+  Metal trace boundary without passing through a bespoke benchmark harness
+
+Current next slice inside T7:
+
+- define the first honest prove/verify boundary for a vendored upstream example
+  component so progress resumes on backend completion instead of trace-only
+  acceptance
+
 ## Sequencing rules
 
 - Do not widen the public API before T1 is settled.
@@ -364,7 +379,7 @@ Required outputs:
 
 1. Freeze the project definition around generic backend completion and
    unchanged upstream example proving.
-2. Add the formal milestone and acceptance matrix for `blake`, `poseidon`,
-   `state_machine`, `wide_fibonacci`, and `xor`.
-3. Resume backend porting only once benchmark rows are clearly secondary to the
-   example-backed completion path.
+2. Advance `T7` from trace wiring to the first prove/verify boundary for one
+   vendored upstream example.
+3. Resume backend porting only through example-backed completion gaps while
+   benchmark rows remain secondary to the acceptance path.

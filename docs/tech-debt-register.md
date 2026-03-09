@@ -439,18 +439,18 @@ Target retirement point:
 
 ### TD-0013: The target upstream example acceptance set is not yet vendored in the local snapshot
 
-- Status: `active`
+- Status: `retired`
 - Category: `acceptance-input gap`
 - Introduced: `2026-03-09`
 - Owner area: `T5a planning correction`
 
-Why it exists now:
+Why it existed:
 
-The project is now rebaselined around proving upstream Stwo examples with
+The project was rebaselined around proving upstream Stwo examples with
 `MetalBackend` unchanged except for backend wiring, but the current local
-vendored snapshot under `vendor/` does not expose the upstream
-`crates/examples` tree directly. That means the target acceptance set exists as
-named scope, not yet as a fully local executable matrix.
+vendored snapshot under `vendor/` did not expose the upstream
+`crates/examples` tree directly. That meant the target acceptance set existed
+as named scope, not yet as a fully local executable matrix.
 
 Current containment:
 
@@ -458,15 +458,43 @@ Current containment:
 - `docs/program-plan.md`
 - `docs/controller.md`
 
+Resolution:
+
+The upstream `stwo-examples` source is now pinned locally under
+`vendor/stwo-upstream-dev-62b228e/crates/examples` with recorded source
+provenance, so `T7` now has an auditable local input.
+
+### TD-0014: The vendored upstream example crate is pinned from a separately recorded upstream commit and a locally adapted manifest
+
+- Status: `active`
+- Category: `acceptance-input pin`
+- Introduced: `2026-03-09`
+- Owner area: `T7 acceptance harness`
+
+Why it exists now:
+
+The vendored upstream example crate is now present locally, but it was copied
+from a separately recorded upstream commit and given a local `Cargo.toml` so it
+can build against the vendored `stwo` and `stwo-constraint-framework` crates in
+this repository. The example workload logic is intended to remain upstream-owned,
+but the pin still relies on that explicit local adaptation.
+
+Current containment:
+
+- `vendor/stwo-upstream-dev-62b228e/crates/examples/Cargo.toml`
+- `vendor/stwo-upstream-dev-62b228e/crates/examples/STWO_UPSTREAM_SOURCE.md`
+
 Risk if left in place:
 
-The project could claim example-backed completion criteria without having the
-actual upstream example inputs pinned locally and auditable in the repo.
+The acceptance surface could drift subtly from the exact upstream example crate
+shape if the local manifest adaptation or source pin is not maintained
+carefully.
 
 Exit condition:
 
-The accepted upstream example set is present in the repo or otherwise vendored
-and pinned as an auditable input for `T7`.
+The example crate is pinned in a way that no longer requires a separate local
+manifest adaptation, or the project deliberately adopts and documents that
+adapted vendoring model as stable process.
 
 Target retirement point:
 

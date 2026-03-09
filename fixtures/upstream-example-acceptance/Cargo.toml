@@ -1,0 +1,17 @@
+[package]
+name = "stwo-metal-upstream-example-acceptance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+members = []
+
+[dependencies]
+stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo", package = "stwo", default-features = false, features = ["prover"] }
+stwo-examples = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/examples", default-features = false }
+stwo-metal = { path = "../../crates/stwo-metal", features = ["prover"] }
+
+[patch.crates-io]
+stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo" }
+stwo-constraint-framework = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/constraint-framework" }

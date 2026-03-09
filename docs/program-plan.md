@@ -46,9 +46,9 @@ than the architectural source of truth.
 | T3 | Design `stwo-metal-sys` runtime replacement | `completed` | native build, ABI, queue, and memory ownership are approved |
 | T4 | Land first Metal-backed primitive path | `completed` | at least one bounded Metal execution path exists with deterministic validation |
 | T5 | Prove one bounded Stwo trace path through Metal | `completed` | one declared trace or proving sub-path runs correctly on the Metal path |
-| T5a | Rebaseline around generic backend completion and unchanged upstream examples | `in_progress` | planning documents and done criteria are corrected to the backend-first goal |
+| T5a | Rebaseline around generic backend completion and unchanged upstream examples | `completed` | planning documents and done criteria are corrected to the backend-first goal |
 | T6 | Restore one truthful end-to-end supported workload | `planned` | one declared workload runs end to end on the Metal path with matching semantics |
-| T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `planned` | the accepted upstream example set proves and verifies through `MetalBackend` |
+| T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `in_progress` | the accepted upstream example set proves and verifies through `MetalBackend` |
 
 ## Immediate sequencing rules
 
@@ -64,9 +64,9 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T5a planning correction for generic backend
-completion`, as tracked in [`controller.md`](./controller.md) and sequenced by
-[`roadmap.md`](./roadmap.md).
+The active tranche is `T7 first implementation slice: vendored examples and
+wide-fibonacci trace wiring`, as tracked in [`controller.md`](./controller.md)
+and sequenced by [`roadmap.md`](./roadmap.md).
 
 The active formal basis for T2 and T3 is:
 
@@ -130,7 +130,16 @@ The new planning correction outputs are:
 - benchmark rows remain in the plan as secondary validation and performance
   surfaces
 
-The next required post-correction milestone is:
+The first completed T7 supporting slices are:
 
-- `T7` prove upstream Stwo examples with `MetalBackend` unchanged except for
-  backend wiring
+- vendored upstream `stwo-examples` source pinned locally with recorded source
+  provenance
+- isolated acceptance fixture crate for upstream-example backend wiring
+- first unchanged upstream `wide_fibonacci` example wired into the native Metal
+  trace boundary with deterministic parity against the vendored example trace
+
+The next required T7 boundary is:
+
+- the first honest prove/verify boundary for one vendored upstream example
+  component, starting from unchanged example code instead of a benchmark-only
+  harness

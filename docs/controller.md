@@ -29,11 +29,11 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `planning correction for example-driven backend completion`
+- Active tranche: `T7 first implementation slice: vendored examples and wide-fibonacci trace wiring`
 - Objective:
-  rebaseline `stwo-metal` around generic Stwo proving so the primary
-  deliverable is proving upstream Stwo example traces with `MetalBackend` and
-  verifying them unchanged except for backend wiring
+  execute the first example-backed backend-completion slice by pinning the
+  upstream example set locally and wiring one unchanged example into the
+  native Metal path without another bespoke benchmark seam
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - Current owner area:
@@ -43,15 +43,16 @@ Invariants:
 
 - the project goal had drifted toward benchmark-specific proving rows instead
   of a generic Stwo proving backend
-- the local vendored snapshot does not currently contain the upstream
-  `crates/examples` acceptance workloads named for the target set, so the
-  example-backed acceptance matrix needs an explicit vendoring or import step
+- `MetalBackend` still does not implement Stwo's full `Backend` contract, so
+  the first T7 slice can wire unchanged examples into current Metal surfaces
+  but cannot yet prove them end to end through backend substitution alone
 - internal Rust vocabulary is still CUDA-first in many places
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
-- the active workload boundary still centers on benchmark-specific seams rather
-  than a clean backend-wiring path for unchanged upstream examples
+- only the first upstream example wiring slice exists so far:
+  `wide_fibonacci` now feeds the native Metal trace boundary through an
+  acceptance fixture, but the prove/verify path is not yet backend-complete
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
@@ -62,13 +63,13 @@ Invariants:
 
 ## Next three deliverables
 
-1. Rebaseline the roadmap, program plan, and done criteria around generic
-   Stwo proving with `MetalBackend`, not benchmark-first proving rows.
-2. Open a formal milestone for proving upstream Stwo examples unchanged except
-   for backend wiring, with an explicit acceptance matrix for `blake`,
-   `poseidon`, `state_machine`, `wide_fibonacci`, and `xor`.
-3. Freeze further bespoke benchmark-path expansion until backend-completion
-   sequencing and acceptance criteria are written down.
+1. Define the first honest prove/verify boundary for one vendored upstream
+   example, starting from the unchanged example component rather than a custom
+   benchmark harness.
+2. Generalize the acceptance harness pattern so the next upstream examples can
+   be added by backend wiring instead of workload rewrites.
+3. Keep benchmark-specific proving rows secondary while generic backend gaps
+   are closed tranche by tranche.
 
 ## Explicitly not doing now
 

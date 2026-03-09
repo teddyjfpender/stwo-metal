@@ -460,7 +460,8 @@ mod tests {
     use stwo::core::fields::qm31::SecureField;
     use stwo::core::poly::circle::CanonicCoset;
     use stwo::prover::backend::cpu::CpuCirclePoly;
-    use stwo::prover::poly::circle::{PolyOps, SecureEvaluation};
+    use stwo::prover::backend::CpuBackend;
+    use stwo::prover::poly::circle::SecureEvaluation;
     use stwo::prover::poly::BitReversedOrder;
 
     use super::{

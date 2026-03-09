@@ -78,11 +78,18 @@ Implemented against this note:
 - `wide_fibonacci_prove` quotient accumulation retargeted to the native Metal
   path with an explicit quotient-output bridge into the inherited CUDA proving
   lane
+- vendored upstream `stwo-examples` source pinned locally with recorded source
+  provenance
+- isolated acceptance fixture proving that the unchanged upstream
+  `wide_fibonacci` example feeds the native Metal trace boundary without a
+  bespoke benchmark harness
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
 Still outside the implemented surface:
 
+- the first honest prove/verify boundary for one unchanged vendored upstream
+  example component
 - one earlier workload handoff from a witness-owned artifact into the
   executable hybrid workload boundary beyond quotient accumulation
 - the remaining `wide_fibonacci_prove` Metal-to-CUDA bridge after native

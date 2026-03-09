@@ -63,6 +63,50 @@ Superseded by:
 
 - none
 
+### DEC-0033: The upstream example set is pinned locally, and the first T7 implementation slice starts with unchanged wide-fibonacci example wiring
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The upstream `stwo-examples` source is now pinned locally inside the vendored
+snapshot, with recorded source provenance. The first `T7` implementation slice
+uses the unchanged upstream `wide_fibonacci` example to feed the current native
+Metal trace boundary through an isolated acceptance fixture rather than a
+benchmark-specific proving row.
+
+Context:
+
+After the roadmap correction, the next missing input was an auditable local copy
+of the upstream acceptance workloads. The next missing implementation seam was
+an example-backed slice that proved backend wiring could consume an unchanged
+upstream workload without introducing another bespoke benchmark harness.
+
+Alternatives rejected:
+
+- continue with the acceptance set only as a documentation promise
+- wire the first `T7` slice through another standalone benchmark instead of a
+  vendored example
+- claim end-to-end example proving before `MetalBackend` satisfies the full
+  Stwo `Backend` contract
+
+Impact:
+
+- `TD-0013` is retired because the example source is now pinned locally
+- `T7` moves from planned to in-progress
+- the first example-backed execution evidence is trace-boundary parity for the
+  vendored upstream `wide_fibonacci` example
+- the next honest example-backed tranche is the first prove/verify boundary,
+  not more bespoke trace plumbing
+
+Superseded by:
+
+- none
+
 ### DEC-0032: The primary deliverable is generic Stwo proving with `MetalBackend`, and upstream examples are the acceptance workloads
 
 - Date: `2026-03-09`
