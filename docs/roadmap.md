@@ -76,11 +76,11 @@ Acceptance matrix:
 
 | Example | Role | Current state | Exit signal |
 | --- | --- | --- | --- |
-| `blake` | acceptance workload | `planned` | proves and verifies through `MetalBackend` with unchanged workload logic |
+| `blake` | acceptance workload | `complete` | proves and verifies through `MetalBackend` with unchanged workload logic |
 | `poseidon` | acceptance workload | `blocked_upstream_protocol` | proves and verifies through `MetalBackend` with unchanged workload logic once the vendored lifted protocol supports the example’s AIR degree shape |
-| `state_machine` | acceptance workload | `in_progress` | proves and verifies through `MetalBackend` with unchanged workload logic |
-| `wide_fibonacci` | acceptance workload and perf reference | `in_progress` | proves and verifies through `MetalBackend`; benchmark remains secondary evidence |
-| `xor` | acceptance workload | `planned` | proves and verifies through `MetalBackend` with unchanged workload logic |
+| `state_machine` | acceptance workload | `complete` | proves and verifies through `MetalBackend` with unchanged workload logic |
+| `wide_fibonacci` | acceptance workload and perf reference | `complete` | proves and verifies through `MetalBackend`; benchmark remains secondary evidence |
+| `xor` | acceptance workload | `complete` | proves and verifies through `MetalBackend` with unchanged workload logic |
 
 ## Planning assumptions
 
@@ -374,6 +374,14 @@ Current first implementation slice:
 - a further acceptance slice now proves and verifies the unchanged vendored
   `state_machine` example through direct `MetalBackend` substitution, covering
   a multi-tree and multi-component proving row
+- a further acceptance slice now proves and verifies the unchanged vendored
+  `blake` example through direct `MetalBackend` substitution, covering a
+  lookup-heavy row with vendored setup replay for statement mixing and
+  interaction-element transcript flow
+- a further acceptance slice now proves and verifies the unchanged vendored
+  `xor` MLE-eval row through direct `MetalBackend` substitution, covering a
+  mixed-component path with one framework-backed component and one
+  non-framework prover component
 
 Current next slice inside T7:
 
@@ -394,15 +402,15 @@ Current next slice inside T7:
   without pretending the remaining prover traits are native Metal yet
 - `MetalBackend` now satisfies the generic Stwo `Backend` trait and the
   Blake2s `BackendForChannel` surface
-- the next honest blocker is no longer the first direct backend-substitution
-  seam; it is generalizing the acceptance-local framework-component adapter to
-  more example shapes without turning it into hidden support
+- the next honest blocker is no longer adding another named example row; it is
+  deciding what to do with the acceptance-local framework and SIMD-component
+  adapters now that all named non-blocked rows are covered
 - `poseidon` is not the immediate next row because the vendored upstream
   snapshot already marks its lifted proving path unsupported for the current
   AIR degree shape
 - only after those bridge-retirement slices meaningfully widen shared proving
-  support should the next vendored upstream example be added through the
-  reusable acceptance harness
+  support should T7 be marked complete-for-current-vendor or widened to a new
+  accepted example set
 
 ## Sequencing rules
 

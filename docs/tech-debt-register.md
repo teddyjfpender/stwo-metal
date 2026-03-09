@@ -576,6 +576,7 @@ Current containment:
 - `fixtures/upstream-example-acceptance/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
 - `fixtures/upstream-example-acceptance/tests/state_machine_prove_verify.rs`
+- `fixtures/upstream-example-acceptance/tests/blake_prove_verify.rs`
 
 Risk if left in place:
 
@@ -615,6 +616,7 @@ Current containment:
 - `fixtures/upstream-example-acceptance/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
 - `fixtures/upstream-example-acceptance/tests/state_machine_prove_verify.rs`
+- `fixtures/upstream-example-acceptance/tests/blake_prove_verify.rs`
 
 Risk if left in place:
 
@@ -626,6 +628,44 @@ Exit condition:
 The adapter is either generalized cleanly for the next example shapes,
 replaced by an upstream-facing implementation, or retired in favor of a native
 Metal framework-component proving boundary.
+
+Target retirement point:
+
+- `T7`
+
+### TD-0019: The current SIMD-component Metal adapter is acceptance-local and depends on coefficient-retaining trace conversion
+
+- Status: `active`
+- Category: `acceptance bridge`
+- Introduced: `2026-03-09`
+- Owner area: `T7 example proving`
+
+Why it exists now:
+
+The unchanged vendored upstream `xor` MLE-eval row now proves and verifies
+through `MetalBackend` with an acceptance-local adapter around vendored
+`ComponentProver<SimdBackend>`. That keeps workload logic unchanged and opens
+the first mixed-component upstream row, but it still lives only in the
+acceptance harness and currently depends on retained polynomial coefficients
+when converting Metal-owned traces into the bridged proving view.
+
+Current containment:
+
+- `fixtures/upstream-example-acceptance/src/lib.rs`
+- `fixtures/upstream-example-acceptance/tests/xor_mle_eval_prove_verify.rs`
+
+Risk if left in place:
+
+The project could confuse this local mixed-component bridge with a stable
+shared backend boundary and stop short of a reusable or upstream-owned path
+for non-framework prover components.
+
+Exit condition:
+
+One truthful shared or upstream-owned `ComponentProver<MetalBackend>` path
+exists for the non-framework example shapes currently covered by the local
+SIMD-component bridge, or the local adapter is retired in favor of a native
+Metal replacement boundary.
 
 Target retirement point:
 

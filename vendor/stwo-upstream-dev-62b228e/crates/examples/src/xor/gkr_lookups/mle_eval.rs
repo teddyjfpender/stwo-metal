@@ -740,6 +740,91 @@ fn hadamard_product(
     }
 }
 
+pub mod mle_coeff_column {
+    use num_traits::{One, Zero};
+    use stwo::core::air::accumulation::PointEvaluationAccumulator;
+    use stwo::core::circle::CirclePoint;
+    use stwo::core::fields::m31::BaseField;
+    use stwo::core::fields::qm31::SecureField;
+    use stwo::core::pcs::TreeVec;
+    use stwo::core::poly::circle::CanonicCoset;
+    use stwo::core::ColumnVec;
+    use stwo::prover::backend::simd::SimdBackend;
+    use stwo::prover::lookups::mle::Mle;
+    use stwo::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
+    use stwo::prover::poly::BitReversedOrder;
+    use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, PointEvaluator};
+
+    use crate::xor::gkr_lookups::mle_eval::MleCoeffColumnOracle;
+
+    pub type MleCoeffColumnComponent = FrameworkComponent<MleCoeffColumnEval>;
+
+    pub struct MleCoeffColumnEval {
+        interaction: usize,
+        n_variables: usize,
+    }
+
+    impl MleCoeffColumnEval {
+        pub const fn new(interaction: usize, n_variables: usize) -> Self {
+            Self {
+                interaction,
+                n_variables,
+            }
+        }
+    }
+
+    impl FrameworkEval for MleCoeffColumnEval {
+        fn log_size(&self) -> u32 {
+            self.n_variables as u32
+        }
+
+        fn max_constraint_log_degree_bound(&self) -> u32 {
+            self.log_size()
+        }
+
+        fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+            let _ = eval_mle_coeff_col(self.interaction, &mut eval);
+            eval
+        }
+    }
+
+    impl MleCoeffColumnOracle for MleCoeffColumnComponent {
+        fn evaluate_at_point(
+            &self,
+            _point: CirclePoint<SecureField>,
+            mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
+        ) -> SecureField {
+            let mut accumulator = PointEvaluationAccumulator::new(SecureField::one());
+            let mut eval = PointEvaluator::new(
+                mask.sub_tree(self.trace_locations()),
+                &mut accumulator,
+                SecureField::one(),
+                self.log_size(),
+                SecureField::zero(),
+            );
+
+            eval_mle_coeff_col(self.interaction, &mut eval)
+        }
+    }
+
+    fn eval_mle_coeff_col<E: EvalAtRow>(interaction: usize, eval: &mut E) -> E::EF {
+        let [mle_coeff_col_eval] = eval.next_extension_interaction_mask(interaction, [0]);
+        mle_coeff_col_eval
+    }
+
+    pub fn build_trace(
+        mle: &Mle<SimdBackend, SecureField>,
+    ) -> Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+        let log_size = mle.n_variables() as u32;
+        let trace_domain = CanonicCoset::new(log_size).circle_domain();
+        let mle_coeffs_col_by_coords = mle.clone().into_evals().into_secure_column_by_coords();
+        SecureEvaluation::new(trace_domain, mle_coeffs_col_by_coords)
+            .into_coordinate_evals()
+            .into_iter()
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::array;

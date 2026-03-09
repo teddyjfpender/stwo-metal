@@ -8,6 +8,7 @@ use stwo::core::channel::Blake2sM31Channel;
 use stwo::core::circle::CirclePoint;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
+use stwo::core::fields::FieldExpOps;
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
@@ -15,13 +16,14 @@ use stwo::core::utils::bit_reverse;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sM31MerkleHasher};
 use stwo::core::verifier::{verify, VerificationError};
 use stwo::core::ColumnVec;
-use stwo::prover::backend::{BackendForChannel, Column, CpuBackend};
-use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::{BackendForChannel, Col, Column, CpuBackend};
+use stwo::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::secure_column::SecureColumnByCoords;
 use stwo::prover::{
-    prove, CommitmentSchemeProver, ComponentProver, DomainEvaluationAccumulator, ProvingError,
-    Trace,
+    prove, AccumulationOps, CommitmentSchemeProver, ComponentProver,
+    DomainEvaluationAccumulator, Poly, ProvingError, Trace,
 };
 use stwo_constraint_framework::{
     CpuDomainEvaluator, FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX,
@@ -101,10 +103,37 @@ pub struct AcceptanceMetalFrameworkComponent<'a, E: FrameworkEval> {
     inner: &'a FrameworkComponent<E>,
 }
 
+/// Local acceptance-only adapter for vendored upstream SIMD component provers.
+///
+/// Inputs:
+/// - an unchanged vendored `ComponentProver<SimdBackend>`
+///
+/// Outputs:
+/// - a `ComponentProver<MetalBackend>` wrapper suitable for backend-substitution acceptance tests
+///
+/// Invariants:
+/// - workload logic remains upstream-owned
+/// - trace location ownership stays inside the upstream SIMD component prover
+/// - the bridge localizes only backend substitution, not workload semantics
+///
+/// Failure modes:
+/// - panics if the caller did not store polynomial coefficients in the committed trace, because
+///   this bridge evaluates the inner composition polynomial on a larger domain
+#[derive(Clone, Copy)]
+pub struct AcceptanceMetalSimdComponent<'a> {
+    inner: &'a dyn ComponentProver<SimdBackend>,
+}
+
 pub fn bridge_framework_component_to_metal<E: FrameworkEval>(
     component: &FrameworkComponent<E>,
 ) -> AcceptanceMetalFrameworkComponent<'_, E> {
     AcceptanceMetalFrameworkComponent { inner: component }
+}
+
+pub fn bridge_simd_component_to_metal(
+    component: &dyn ComponentProver<SimdBackend>,
+) -> AcceptanceMetalSimdComponent<'_> {
+    AcceptanceMetalSimdComponent { inner: component }
 }
 
 /// Proves and verifies one single-trace upstream component through the stock
@@ -366,6 +395,47 @@ impl<E: FrameworkEval> Component for AcceptanceMetalFrameworkComponent<'_, E> {
     }
 }
 
+impl Component for AcceptanceMetalSimdComponent<'_> {
+    fn n_constraints(&self) -> usize {
+        self.inner.n_constraints()
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.inner.max_constraint_log_degree_bound()
+    }
+
+    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+        self.inner.trace_log_degree_bounds()
+    }
+
+    fn mask_points(
+        &self,
+        point: CirclePoint<SecureField>,
+        max_log_degree_bound: u32,
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        self.inner.mask_points(point, max_log_degree_bound)
+    }
+
+    fn preprocessed_column_indices(&self) -> ColumnVec<usize> {
+        self.inner.preprocessed_column_indices()
+    }
+
+    fn evaluate_constraint_quotients_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
+        max_log_degree_bound: u32,
+    ) {
+        self.inner.evaluate_constraint_quotients_at_point(
+            point,
+            mask,
+            evaluation_accumulator,
+            max_log_degree_bound,
+        );
+    }
+}
+
 impl<E: FrameworkEval + Sync> ComponentProver<MetalBackend>
     for AcceptanceMetalFrameworkComponent<'_, E>
 {
@@ -441,11 +511,81 @@ impl<E: FrameworkEval + Sync> ComponentProver<MetalBackend>
     }
 }
 
+impl ComponentProver<MetalBackend> for AcceptanceMetalSimdComponent<'_> {
+    fn evaluate_constraint_quotients_on_domain(
+        &self,
+        trace: &Trace<'_, MetalBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<MetalBackend>,
+    ) {
+        let n_constraints = self.inner.n_constraints();
+        if n_constraints == 0 {
+            return;
+        }
+
+        let global_log_size = evaluation_accumulator.log_size();
+        let [mut outer_accumulator] =
+            evaluation_accumulator.columns([(global_log_size, n_constraints)]);
+        outer_accumulator.random_coeff_powers.reverse();
+
+        let local_alpha = match outer_accumulator.random_coeff_powers.as_slice() {
+            [single] => *single,
+            coeffs => {
+                let low = *coeffs.last().expect("component must reserve coefficients");
+                let next = coeffs[coeffs.len() - 2];
+                next * low.inverse()
+            }
+        };
+        let global_scale = *outer_accumulator
+            .random_coeff_powers
+            .last()
+            .expect("component must reserve coefficients");
+
+        let simd_trace = metal_trace_to_simd(trace);
+        let mut simd_accumulator = DomainEvaluationAccumulator::<SimdBackend>::new(
+            local_alpha,
+            self.inner.max_constraint_log_degree_bound(),
+            n_constraints,
+        );
+        self.inner
+            .evaluate_constraint_quotients_on_domain(&simd_trace, &mut simd_accumulator);
+
+        let local_poly = simd_accumulator.finalize();
+        let global_domain = CanonicCoset::new(global_log_size).circle_domain();
+        let twiddles = SimdBackend::precompute_twiddles(global_domain.half_coset);
+        let local_eval = local_poly.evaluate_with_twiddles(global_domain, &twiddles);
+
+        let scaled = scale_secure_column_cpu(local_eval.to_cpu().values, global_scale);
+        let scaled_metal = SecureColumnByCoords {
+            columns: scaled.columns.map(MetalBaseFieldVec::from_vec),
+        };
+        MetalBackend::accumulate(outer_accumulator.col, &scaled_metal);
+    }
+}
+
 fn metal_eval_to_cpu(
     eval: CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>,
 ) -> CircleEvaluation<CpuBackend, BaseField, BitReversedOrder> {
     let coeffs_domain = eval.domain;
     CircleEvaluation::new(coeffs_domain, eval.values.to_cpu())
+}
+
+fn metal_trace_to_simd<'a>(trace: &Trace<'a, MetalBackend>) -> Trace<'a, SimdBackend> {
+    Trace {
+        polys: trace.polys.as_cols_ref().map_cols(|poly| {
+            let coeffs = poly.coeffs.as_ref().map(metal_coeffs_to_simd);
+            let evals = CircleEvaluation::new(
+                poly.evals.domain,
+                Col::<SimdBackend, BaseField>::from_iter(poly.evals.values.to_cpu()),
+            );
+            &*Box::leak(Box::new(Poly::new(coeffs, evals)))
+        }),
+    }
+}
+
+fn metal_coeffs_to_simd(
+    coeffs: &CircleCoefficients<MetalBackend>,
+) -> CircleCoefficients<SimdBackend> {
+    CircleCoefficients::new(Col::<SimdBackend, BaseField>::from_iter(coeffs.coeffs.to_cpu()))
 }
 
 fn metal_secure_column_from_cpu(
@@ -454,6 +594,15 @@ fn metal_secure_column_from_cpu(
     SecureColumnByCoords {
         columns: column.columns.map(MetalBaseFieldVec::from_vec),
     }
+}
+
+fn scale_secure_column_cpu(
+    column: SecureColumnByCoords<CpuBackend>,
+    scale: SecureField,
+) -> SecureColumnByCoords<CpuBackend> {
+    (0..column.len())
+        .map(|index| column.at(index) * scale)
+        .collect()
 }
 
 fn accumulate_pointwise_cpu<E: FrameworkEval>(

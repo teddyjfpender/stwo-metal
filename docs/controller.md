@@ -29,11 +29,11 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T7 eighth implementation slice: direct MetalBackend prove/verify for a multi-tree upstream example`
+- Active tranche: `T7 tenth implementation slice: close lookup-heavy and mixed-component upstream example rows`
 - Objective:
-  widen direct `MetalBackend` acceptance from the first single-trace example to
-  a multi-tree upstream example while keeping the remaining framework-component
-  bridge explicit and local
+  close the named upstream-example acceptance matrix for all non-blocked rows
+  while keeping the remaining acceptance-local bridges explicit, local, and
+  auditable
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - Current owner area:
@@ -50,13 +50,14 @@ Invariants:
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
-- unchanged upstream `wide_fibonacci` and `state_machine` examples now prove
-  and verify through `MetalBackend` in the acceptance harness
+- unchanged upstream `wide_fibonacci`, `state_machine`, `blake`, and `xor`
+  example rows now prove and verify through `MetalBackend` in the acceptance
+  harness
 - the remaining framework-component bridge is still CPU-domain based and still
   lives only in the acceptance harness rather than a stable shared boundary
-- the example-backed acceptance harness now covers both a single-trace row and
-  a multi-tree row, but only the framework-backed example shape is proven so
-  far
+- the example-backed acceptance harness now covers single-trace, multi-tree,
+  lookup-heavy, and mixed-component rows, but those bridges are still
+  acceptance-local rather than stable shared boundaries
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
@@ -64,20 +65,21 @@ Invariants:
   readback-based rather than a GPU-side hash pipeline
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it is not the immediate next backend row
-- the next acceptance blocker is onboarding rows with lookup-heavy or
-  non-framework prover surfaces, starting with `blake` and then `xor`,
-  without hiding the remaining CPU-domain bridge
+- the only named upstream-example row still open in the current target set is
+  `poseidon`, and that row is blocked by the vendored lifted protocol rather
+  than by a known Metal-backend gap
 
 ## Next three deliverables
 
-1. Unblock the `blake` acceptance row with the smallest truthful vendored or
-   acceptance-layer surface needed for direct `MetalBackend` substitution.
-2. Decide whether the current acceptance-local adapter should remain local,
-   move into a shared non-public helper boundary, or be superseded by an
-   upstream-facing refactor.
-3. Land the next non-framework or lookup-heavy acceptance row, with `xor` as
-   the next likely candidate after `blake`, and keep upstream protocol limits
-   separated from Metal-backend gaps.
+1. Decide whether the current acceptance-local framework and SIMD-component
+   adapters should remain local, move into a shared non-public helper
+   boundary, or be superseded by an upstream-facing refactor.
+2. Record the current T7 truth explicitly: all named rows except `poseidon`
+   now prove and verify through `MetalBackend`, and `poseidon` remains an
+   upstream protocol blocker.
+3. Re-enter benchmark and performance work from the backend-first posture,
+   with `wide_fibonacci` as the primary performance row rather than the
+   architectural source of truth.
 
 ## Explicitly not doing now
 

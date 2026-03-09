@@ -45,6 +45,9 @@ Work is done only when the code, contract, and process state agree.
 - [ ] Any milestone claiming example-backed support names the accepted example
       set and records whether the examples are upstream-owned in this repo or
       still pending vendoring.
+- [ ] If a milestone is complete for all non-blocked rows but not for the full
+      named example set, the remaining upstream protocol blockers are recorded
+      explicitly instead of being misclassified as Metal-backend gaps.
 
 ## Not done
 

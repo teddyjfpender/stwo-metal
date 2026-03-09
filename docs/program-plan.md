@@ -64,8 +64,8 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T7 eighth implementation slice: direct MetalBackend
-prove/verify for a multi-tree upstream example`, as tracked in
+The active tranche is `T7 tenth implementation slice: close lookup-heavy and
+mixed-component upstream example rows`, as tracked in
 [`controller.md`](./controller.md) and sequenced by
 [`roadmap.md`](./roadmap.md).
 
@@ -174,11 +174,23 @@ The first completed T7 supporting slices are:
   CPU-domain bridge explicitly
 - the unchanged upstream `state_machine` example now also proves and verifies
   through `MetalBackend`, covering a multi-tree and multi-component row
+- the unchanged upstream `blake` example now also proves and verifies through
+  `MetalBackend`, covering a lookup-heavy row with vendored setup replay for
+  statement mixing and interaction-element transcript flow
+- the unchanged upstream `xor` MLE-eval row now also proves and verifies
+  through `MetalBackend`, covering a mixed-component path with one
+  framework-backed component and one non-framework prover component
+- the acceptance harness now contains both a framework-component adapter and a
+  generic SIMD-component adapter, each kept explicit and local to the
+  acceptance layer
 
 The next required T7 boundary is:
 
-- onboard the next example shape that adds lookup-table or non-framework prover
-  structure beyond the current framework-backed adapter
+- decide whether the acceptance-local adapters should remain local, move into a
+  shared non-public helper boundary, or be superseded by an upstream-facing
+  refactor
+- record T7 honestly as complete for all named non-blocked rows in the current
+  vendored snapshot
 - keep `poseidon` explicitly classified as an upstream protocol blocker in the
   current vendored snapshot rather than a pending Metal-backend slice
 - keep the next blocker explicit:

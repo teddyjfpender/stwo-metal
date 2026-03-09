@@ -28,6 +28,95 @@ Superseded by:
 
 ## Entries
 
+### DEC-0043: Mixed-component upstream rows may use an acceptance-local SIMD-component Metal bridge when the framework-backed row already remains explicit
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The unchanged vendored upstream `xor` MLE-eval row may prove and verify
+through `MetalBackend` by combining the existing acceptance-local
+framework-component adapter with a second acceptance-local adapter for
+vendored `ComponentProver<SimdBackend>` rows. This is accepted only as a local
+acceptance boundary, not as a stable public or upstream-owned support claim.
+
+Context:
+
+After `wide_fibonacci`, `state_machine`, and `blake`, the next honest example
+shape was not another framework-only row. The vendored `xor` MLE-eval path
+mixes one framework-backed component with one non-framework prover component,
+so it was the smallest truthful place to validate whether direct
+`MetalBackend` substitution generalized beyond the framework-only adapter.
+
+Alternatives rejected:
+
+- stop after the framework-backed examples and treat mixed-component rows as a
+  future concern
+- fork the vendored `xor` workload into a bespoke Metal-only harness
+- claim the new SIMD-component bridge as a stable shared proving interface
+
+Impact:
+
+- the named upstream example set now proves and verifies through `MetalBackend`
+  for every non-blocked row in the current vendored snapshot
+- `TD-0019` is now the explicit debt entry for the acceptance-local
+  SIMD-component bridge
+- the next honest question moves from example onboarding to bridge retirement
+  and milestone-closure semantics
+
+Superseded by:
+
+- none
+
+### DEC-0042: Lookup-heavy upstream rows may use a vendored proving-setup seam to preserve the stock Blake transcript flow during MetalBackend substitution
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The unchanged vendored upstream `blake` example may prove and verify through
+`MetalBackend` by exposing a small vendored proving-setup seam that replays the
+example’s stock statement-mixing and interaction-element transcript flow, while
+keeping workload logic and verifier logic upstream-owned.
+
+Context:
+
+`blake` was the first named row in the acceptance matrix that combined a
+lookup-heavy workload with protocol sequencing beyond the earlier
+single-trace and multi-tree framework rows. The example’s statement mixing and
+interaction-element draws had to stay transcript-faithful during backend
+substitution, which made a small vendored setup seam safer than a larger
+acceptance-only reconstruction.
+
+Alternatives rejected:
+
+- reconstruct the `blake` proving row in the acceptance crate from many
+  private vendored details
+- defer `blake` until a stable shared framework-component proving boundary
+  exists
+- hide the transcript replay requirement inside an undocumented test-local
+  hack
+
+Impact:
+
+- `blake` now proves and verifies through `MetalBackend` with unchanged
+  workload logic
+- the acceptance harness now covers a lookup-heavy upstream row
+- the remaining gaps narrow to acceptance-local bridge retirement and the
+  upstream `poseidon` blocker
+
+Superseded by:
+
+- none
+
 ### DEC-0041: Multi-tree upstream examples may use the same acceptance-local MetalBackend adapter pattern as the first single-trace row
 
 - Date: `2026-03-09`

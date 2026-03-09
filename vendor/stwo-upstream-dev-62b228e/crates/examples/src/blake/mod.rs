@@ -14,7 +14,7 @@ use stwo::prover::backend::simd::qm31::PackedSecureField;
 use stwo_constraint_framework::{relation, EvalAtRow, Relation, RelationEntry};
 use xor_table::{xor12, xor4, xor7, xor8, xor9};
 
-mod air;
+pub mod air;
 mod preprocessed_columns;
 mod round;
 mod scheduler;
