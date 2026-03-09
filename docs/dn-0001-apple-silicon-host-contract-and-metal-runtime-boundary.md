@@ -63,6 +63,8 @@ Implemented against this note:
   workload boundary with deterministic CPU-oracle parity
 - executable CPU-owned quotient evaluation handoff into the declared hybrid
   workload boundary with deterministic CPU-oracle parity
+- declared `wide_fibonacci` benchmark target for `log_n_instances = 20`,
+  `n_columns = 100`, with a project-supplied `90 ms` RTX 4090 reference goal
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 

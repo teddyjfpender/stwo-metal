@@ -3,6 +3,8 @@ use stwo_metal_sys::metal;
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum MetalBackendSurface {
+    WideFibonacciBenchmarkTargetDeclared,
+    WideFibonacciWitnessInputBoundaryDeclared,
     BaseFieldColumnSet,
     BaseFieldColumnFromIterator,
     BaseFieldColumnBitReverse,
@@ -40,6 +42,8 @@ pub enum MetalBackendSurfaceStatus {
 pub use metal::MetalRuntimeSupport;
 
 pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
+    MetalBackendSurface::WideFibonacciBenchmarkTargetDeclared,
+    MetalBackendSurface::WideFibonacciWitnessInputBoundaryDeclared,
     MetalBackendSurface::BaseFieldColumnSet,
     MetalBackendSurface::BaseFieldColumnFromIterator,
     MetalBackendSurface::BaseFieldColumnBitReverse,
@@ -70,7 +74,9 @@ pub const fn metal_backend_surface_status(
     surface: MetalBackendSurface,
 ) -> MetalBackendSurfaceStatus {
     match surface {
-        MetalBackendSurface::BaseFieldColumnSet
+        MetalBackendSurface::WideFibonacciBenchmarkTargetDeclared
+        | MetalBackendSurface::WideFibonacciWitnessInputBoundaryDeclared
+        | MetalBackendSurface::BaseFieldColumnSet
         | MetalBackendSurface::BaseFieldColumnFromIterator
         | MetalBackendSurface::BaseFieldColumnBitReverse
         | MetalBackendSurface::BaseFieldCosetToCircleDomainBitReverse
@@ -103,6 +109,12 @@ pub const fn metal_backend_surface_status(
 
 pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'static str {
     match surface {
+        MetalBackendSurface::WideFibonacciBenchmarkTargetDeclared => {
+            "A declared wide-fibonacci benchmark target is supported as a formal Metal port objective."
+        }
+        MetalBackendSurface::WideFibonacciWitnessInputBoundaryDeclared => {
+            "A witness-input boundary is supported for the declared wide-fibonacci benchmark target."
+        }
         MetalBackendSurface::BaseFieldColumnSet => "Base-field Metal column mutation is supported.",
         MetalBackendSurface::BaseFieldColumnFromIterator => {
             "Base-field Metal column construction from iterators is supported."

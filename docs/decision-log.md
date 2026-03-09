@@ -1056,3 +1056,52 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0027: The first benchmark north star is the wide-fibonacci log-size-20 row
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The first explicit benchmark objective for `stwo-metal` is the wide-fibonacci
+row represented by the existing standalone fixtures:
+
+- benchmark ids:
+  `wide_fibonacci_trace_generation_v1` and `wide_fibonacci_prove_verify_v1`
+- `log_n_instances = 20`
+- `n_columns = 100`
+- project-supplied reference goal: approach `90 ms`
+- reference platform label: RTX 4090 CUDA history
+
+This is recorded as a benchmark north star, not as a correctness oracle and
+not as a present support claim for Metal.
+
+Context:
+
+The project needed its performance direction pinned to one named workload row
+instead of a generic promise to be "fast on Metal". The existing standalone
+benchmark fixtures already encode the relevant workload dimensions, so the next
+clean step was to make that objective explicit in the planning and boundary
+surface.
+
+Alternatives rejected:
+
+- keep the benchmark target implicit in fixture defaults and script names
+- treat the benchmark number as a correctness gate for early Metal slices
+- declare a wider benchmark portfolio before one north star row was fixed
+
+Impact:
+
+- the benchmark-facing objective is now explicit in code and docs
+- workload planning can prioritize the wide-fibonacci witness and prove path
+  intentionally
+- the remaining benchmark gap is explicit: the witness/trace stage is still
+  outside the native Metal lane
+
+Superseded by:
+
+- none

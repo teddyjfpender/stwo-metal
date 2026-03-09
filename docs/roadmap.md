@@ -31,6 +31,19 @@ The target shape is:
 The repository should become a real Metal backend, not a renamed CUDA fork and
 not an unbounded GPU-experiment sandbox.
 
+## Benchmark north star
+
+The first explicit benchmark objective is:
+
+- `wide_fibonacci_prove_verify_v1`
+- `log_n_instances = 20`
+- `n_columns = 100`
+- project-supplied reference goal: approach `90 ms`
+- reference row source for that goal: RTX 4090 CUDA benchmark history
+
+This benchmark target is a planning objective, not a correctness gate and not
+yet a support claim for `stwo-metal`.
+
 ## Planning assumptions
 
 These are planning assumptions, not yet final implementation commitments:
@@ -235,6 +248,9 @@ Current next slices inside T5:
   the declared hybrid workload boundary, with deterministic CPU-oracle parity
 - one executable handoff now exists from a CPU-owned quotient evaluation into
   the declared hybrid workload boundary, with deterministic CPU-oracle parity
+- the `wide_fibonacci` benchmark target is now declared formally at
+  `log_n_instances = 20` and `n_columns = 100`, with a project-supplied
+  `90 ms` RTX 4090 reference goal
 - the explicit CPU bridge remains available only as a bounded validation and
   comparison surface
 - the next T5 work is to move the executable workload boundary earlier than the
@@ -265,6 +281,7 @@ Required outputs:
    before the current CPU quotient evaluation boundary.
 2. Decide whether quotient accumulation or pre-FRI PCS commitment is the next
    native proving-stage replacement after that earlier handoff is selected.
-3. Decide whether T5 can exit with host-owned commitment hashing still in
+3. Keep the `wide_fibonacci` log-size-20 benchmark objective honest while
+   deciding whether T5 can exit with host-owned commitment hashing still in
    place or requires a GPU-side hash path before any bounded proving row is
    called truthful.

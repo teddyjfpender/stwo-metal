@@ -15,6 +15,8 @@ fn tracked_metal_backend_surfaces_v1_are_unique() {
 #[test]
 fn first_metal_slice_marks_base_field_support_explicitly() {
     for surface in [
+        MetalBackendSurface::WideFibonacciBenchmarkTargetDeclared,
+        MetalBackendSurface::WideFibonacciWitnessInputBoundaryDeclared,
         MetalBackendSurface::BaseFieldColumnSet,
         MetalBackendSurface::BaseFieldColumnFromIterator,
         MetalBackendSurface::BaseFieldColumnBitReverse,

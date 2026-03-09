@@ -13,6 +13,11 @@ file keeps the currently intended route aligned with that map.
 Deliver a truthful Apple Silicon and Metal backend path for Stwo without
 smuggling CUDA-era assumptions into the long-term interface or process.
 
+The first benchmark north star for that path is the wide-fibonacci proving row
+at `log_n_instances = 20` and `n_columns = 100`, aiming to approach the
+project-supplied `90 ms` RTX 4090 reference result once the Metal workload is
+truthful enough to measure.
+
 ## Program invariants
 
 - the smallest stable public API wins
@@ -87,6 +92,7 @@ Current completed T5 supporting slices are:
   workload boundary
 - executable CPU-owned quotient evaluation handoff into the declared hybrid
   workload boundary
+- declared `wide_fibonacci` benchmark target for the log-size-20 proving row
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 

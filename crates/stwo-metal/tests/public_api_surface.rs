@@ -3,16 +3,18 @@ use std::collections::HashSet;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
 use stwo_metal::{
     cuda_backend_surface_status, declare_exemplar_hybrid_fri_workload,
-    declare_exemplar_metal_workload_boundary, plan_exemplar_metal_prove_by_name,
-    plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend, CudaBackendSurface,
-    CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan, MetalBackend,
-    MetalBaseFieldVec, MetalCpuQuotientEvaluationInput, MetalExecutionIntent, MetalExecutionPlan,
+    declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
+    plan_exemplar_metal_prove_by_name, plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend,
+    CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan,
+    MetalBackend, MetalBaseFieldVec, MetalBenchmarkInputError, MetalBenchmarkTarget,
+    MetalCpuQuotientEvaluationInput, MetalExecutionIntent, MetalExecutionPlan,
     MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice,
     MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver, MetalFriReadyEvaluationInput,
     MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation, MetalSecureFieldVec,
-    MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs, MetalWorkloadBoundary,
+    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
-    STWO_CUDA_BACKEND_SURFACES_V1,
+    STWO_CUDA_BACKEND_SURFACES_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
 };
 
 #[test]
@@ -28,6 +30,10 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<
         MetalFriProver<stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel>,
     >();
+    let _ = std::mem::size_of::<MetalBenchmarkTarget>();
+    let _ = std::mem::size_of::<MetalWideFibonacciBenchmarkBoundary>();
+    let _ = std::mem::size_of::<MetalWideFibonacciWitnessInputs>();
+    let _ = std::mem::size_of::<MetalBenchmarkInputError>();
     let _ = std::mem::size_of::<MetalFriBlake2sSubpath>();
     let _ = std::mem::size_of::<MetalFriLayerDecommitment<Blake2sMerkleHasher>>();
     let _ = std::mem::size_of::<MetalCpuQuotientEvaluationInput>();
@@ -88,6 +94,16 @@ fn companion_surface_exports_workload_boundary_api() {
     assert_eq!(
         boundary.stage_ownership(MetalWorkloadStage::FriBlake2s),
         Some(MetalWorkloadOwnership::MetalNative)
+    );
+
+    let benchmark_boundary = declare_wide_fibonacci_benchmark_boundary(
+        MetalExecutionIntent::PreferMetal,
+        WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+    )
+    .unwrap();
+    assert_eq!(
+        benchmark_boundary.workload_boundary().plan(),
+        MetalExecutionPlan::MetalFriHybrid
     );
 }
 

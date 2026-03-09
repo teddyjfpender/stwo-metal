@@ -48,6 +48,10 @@ Invariants:
 - one executable CPU-owned quotient evaluation handoff now exists, but the
   executable hybrid workload still starts after witness generation and quotient
   accumulation rather than owning an earlier workload artifact boundary
+- the declared `wide_fibonacci` benchmark target is now pinned at
+  `log_n_instances = 20`, `n_columns = 100`, with a project-supplied 4090
+  reference goal of `90 ms`, but the witness/trace stage is still outside the
+  native Metal lane
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - interpolation, evaluation, and trace-generation primitives are still outside
@@ -59,8 +63,8 @@ Invariants:
    before the CPU quotient evaluation boundary.
 2. Decide whether quotient accumulation or pre-FRI PCS commitment is the next
    native proving-stage replacement after that earlier handoff is selected.
-3. Keep the unsupported matrix, explicit CPU bridges, and CPU-oracle parity
-   coverage explicit as the path grows.
+3. Keep the `wide_fibonacci` log-size-20 benchmark target explicit while the
+   unsupported matrix, CPU bridges, and CPU-oracle parity coverage evolve.
 
 ## Explicitly not doing now
 

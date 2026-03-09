@@ -34,6 +34,16 @@ pub mod capability {
 }
 
 #[cfg(feature = "prover")]
+pub mod benchmark {
+    pub use crate::backend::metal::{
+        declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError,
+        MetalBenchmarkOperation, MetalBenchmarkReferencePlatform, MetalBenchmarkTarget,
+        MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
+        WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
+    };
+}
+
+#[cfg(feature = "prover")]
 pub mod planner {
     pub use crate::backend::cuda::{
         plan_exemplar_prove_by_name, CudaComponentCapability, CudaExecutionIntent,
@@ -78,6 +88,13 @@ pub mod witness {
 pub use abi::{
     CudaPoseidonLookupElementsAbiV1, OwnedConstraintEvalAbiV1, StwoCudaLookupElements16AbiV1,
     StwoCudaPoseidonEvalAbiV1, StwoCudaWideFibonacciEvalAbiV1,
+};
+#[cfg(feature = "prover")]
+pub use benchmark::{
+    declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError, MetalBenchmarkOperation,
+    MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalWideFibonacciBenchmarkBoundary,
+    MetalWideFibonacciWitnessInputs, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+    WIDE_FIBONACCI_TRACE_LOG20_TARGET,
 };
 #[cfg(feature = "prover")]
 pub use capability::{

@@ -381,6 +381,7 @@ Current containment:
 
 - `crates/stwo-metal/src/backend/metal/workload.rs`
 - `crates/stwo-metal/src/backend/metal/subpath.rs`
+- `crates/stwo-metal/src/backend/metal/benchmark.rs`
 
 Risk if left in place:
 
@@ -397,3 +398,39 @@ parity.
 Target retirement point:
 
 - `T5`
+
+### TD-0012: The wide-fibonacci benchmark north star is declared, but its witness/trace stage is still CUDA-era
+
+- Status: `active`
+- Category: `benchmark execution boundary`
+- Introduced: `2026-03-09`
+- Owner area: `T5 benchmark-target alignment`
+
+Why it exists now:
+
+`stwo-metal` now declares the log-size-20 wide-fibonacci benchmark target with
+an explicit `90 ms` RTX 4090 reference goal, but the executable benchmark
+fixtures still enter through the inherited CUDA witness and trace-generation
+path.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/benchmark.rs`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_trace.rs`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
+
+Risk if left in place:
+
+The project could optimize the Metal FRI/proof lane while still having no
+native route into the wide-fibonacci trace-generation stages that dominate the
+benchmark objective.
+
+Exit condition:
+
+The wide-fibonacci benchmark path has a truthful native Metal witness or trace
+boundary, with benchmark execution no longer depending on the inherited CUDA
+witness path.
+
+Target retirement point:
+
+- `T6`
