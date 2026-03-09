@@ -257,3 +257,38 @@ endpoint or has replaced it with a GPU-side hash path.
 Target retirement point:
 
 - `T5`
+
+### TD-0008: Last-layer interpolation in the bounded FRI commitment slice is still CPU-bridged
+
+- Status: `active`
+- Category: `proving-facing bridge`
+- Introduced: `2026-03-09`
+- Owner area: `T5 bounded FRI bring-up`
+
+Why it exists now:
+
+The bounded `MetalFriCommitmentSlice` now packages the native inner-layer FRI
+sequence with last-layer interpolation, but that interpolation still
+materializes a `LineEvaluation<CpuBackend>` through the explicit handoff bridge
+before deriving the bounded `LinePoly`.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/commitment_slice.rs`
+- `crates/stwo-metal/src/backend/metal/handoff.rs`
+
+Risk if left in place:
+
+The proof-facing slice is now truthful about its degree-bound output, but the
+last-layer polynomial contract could remain partially CPU-owned instead of
+converging on a clearer native `stwo-metal` interpolation boundary.
+
+Exit condition:
+
+The bounded Metal FRI path derives the last-layer polynomial through a native
+`stwo-metal` interpolation boundary, or the team explicitly accepts the
+CPU-bridged interpolation as the T5 endpoint.
+
+Target retirement point:
+
+- `T5`

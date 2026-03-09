@@ -1,6 +1,7 @@
 mod backend;
 mod capability;
 mod column;
+mod commitment_slice;
 mod fri;
 mod handoff;
 mod line;
@@ -14,6 +15,7 @@ pub use capability::{
     metal_runtime_support, MetalBackendSurface, MetalBackendSurfaceStatus, MetalRuntimeSupport,
     STWO_METAL_BACKEND_SURFACES_V1,
 };
+pub use commitment_slice::MetalFriCommitmentSlice;
 pub use fri::{fold_circle_into_line_first_layer, fold_line};
 pub use handoff::{
     commit_line_evaluation_via_cpu_bridge, materialize_line_evaluation_via_cpu_bridge,

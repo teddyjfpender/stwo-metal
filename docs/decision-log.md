@@ -674,3 +674,46 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0018: The bounded native inner-layer sequence now extends to a bounded FRI commitment slice
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`stwo-metal` now packages the bounded native inner-layer FRI sequence into a
+bounded FRI commitment slice that owns:
+
+- the ordered inner-layer sequence
+- the bounded last-layer polynomial
+- the explicit last-layer degree-bound truncation contract
+
+Context:
+
+The native inner-layer sequence carried the correct folded evaluations, but it
+was not yet a truthful commitment-stage boundary because the last-layer
+polynomial contract remained implicit. The project needed one explicit slice
+that mirrors the vendored CPU commitment stage up to, but not including, the
+first-layer proof surface.
+
+Alternatives rejected:
+
+- stop at the inner-layer sequence and leave last-layer interpolation implicit
+  in caller code
+- widen the claim to a full FRI proof before the bounded commitment-stage slice
+  was explicit
+
+Impact:
+
+- the bounded Metal FRI lane now has an explicit commitment-stage slice
+- last-layer degree-bound truncation is now part of the proof-facing contract,
+  not an ambient implementation detail
+- the next T5 boundary is a bounded proof-facing inner FRI proof slice
+
+Superseded by:
+
+- none

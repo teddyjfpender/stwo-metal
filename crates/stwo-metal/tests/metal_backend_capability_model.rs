@@ -28,6 +28,7 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
         MetalBackendSurface::FriFirstInnerLayerDecommitNative,
         MetalBackendSurface::FriFirstInnerLayerProofRowNative,
         MetalBackendSurface::FriInnerLayerSequenceNative,
+        MetalBackendSurface::FriCommitmentSliceBounded,
     ] {
         assert_eq!(
             metal_backend_surface_status(surface),

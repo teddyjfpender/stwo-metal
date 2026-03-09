@@ -50,12 +50,13 @@ Implemented against this note:
 - native first inner-layer query and decommit parity
 - bounded native first inner-layer proof row
 - bounded native inner-layer FRI sequence
+- bounded FRI commitment slice with explicit last-layer degree-bound truncation
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
 Still outside the implemented surface:
 
-- bounded FRI commitment slice
+- bounded proof-facing inner FRI proof slice
 - interpolation, evaluation, and trace-support primitives beyond the bounded
   FRI arithmetic surface
 - any truthful end-to-end proving claim

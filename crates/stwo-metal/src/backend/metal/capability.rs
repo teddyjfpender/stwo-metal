@@ -16,6 +16,7 @@ pub enum MetalBackendSurface {
     FriFirstInnerLayerDecommitNative,
     FriFirstInnerLayerProofRowNative,
     FriInnerLayerSequenceNative,
+    FriCommitmentSliceBounded,
     FriFirstInnerLayerCommitmentCpuBridge,
     QuotientAccumulate,
 }
@@ -44,6 +45,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::FriFirstInnerLayerDecommitNative,
     MetalBackendSurface::FriFirstInnerLayerProofRowNative,
     MetalBackendSurface::FriInnerLayerSequenceNative,
+    MetalBackendSurface::FriCommitmentSliceBounded,
     MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge,
     MetalBackendSurface::QuotientAccumulate,
 ];
@@ -64,7 +66,8 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::FriFirstInnerLayerCommitmentNative
         | MetalBackendSurface::FriFirstInnerLayerDecommitNative
         | MetalBackendSurface::FriFirstInnerLayerProofRowNative
-        | MetalBackendSurface::FriInnerLayerSequenceNative => MetalBackendSurfaceStatus::Supported,
+        | MetalBackendSurface::FriInnerLayerSequenceNative
+        | MetalBackendSurface::FriCommitmentSliceBounded => MetalBackendSurfaceStatus::Supported,
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
@@ -110,6 +113,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::FriInnerLayerSequenceNative => {
             "A bounded native inner-layer FRI sequence is implemented on top of the first proof-facing row."
+        }
+        MetalBackendSurface::FriCommitmentSliceBounded => {
+            "A bounded FRI commitment slice is implemented on top of the native inner-layer sequence."
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             "The first inner FRI-layer line-evaluation and commitment handoff is available only through an explicit CPU bridge."
