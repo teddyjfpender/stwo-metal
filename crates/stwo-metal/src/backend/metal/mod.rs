@@ -9,6 +9,7 @@ mod line;
 mod poly;
 mod proof;
 mod proof_slice;
+mod prover;
 mod row;
 mod sequence;
 
@@ -31,6 +32,7 @@ pub use proof::{
     MetalExtendedInnerFriProof, MetalFriInnerProofSlice, MetalInnerFriProof, MetalInnerFriProofAux,
 };
 pub use proof_slice::MetalFriProofSlice;
+pub use prover::MetalFriProver;
 pub use row::MetalFriInnerLayerRow;
 pub use sequence::MetalFriInnerLayerSequence;
 

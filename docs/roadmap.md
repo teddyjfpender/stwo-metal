@@ -222,11 +222,12 @@ Current next slices inside T5:
   deterministic vendored CPU parity
 - a bounded full FRI proof candidate now exists by composing the native
   first-layer proof boundary with the inner proof slice
+- a bounded transcript-owned Metal FRI prover now exists with vendored channel
+  ordering and deterministic CPU parity
 - the explicit CPU bridge remains available only as a bounded validation and
   comparison surface
-- the next T5 work is to bind that bounded full FRI proof candidate into one
-  declared Stwo proving sub-path with explicit transcript and unsupported-edge
-  accounting
+- the next T5 work is to bind that bounded transcript-owned FRI prover into one
+  declared Stwo proving sub-path with explicit unsupported-edge accounting
 
 ### T6: Restore one truthful end-to-end supported workload
 
@@ -248,10 +249,10 @@ Required outputs:
 
 ## Current next three planning deliverables
 
-1. Bind the bounded full FRI proof candidate into one declared Stwo proving
-   sub-path with explicit transcript and unsupported-edge accounting.
+1. Bind the bounded transcript-owned FRI prover into one declared Stwo proving
+   sub-path with explicit unsupported-edge accounting.
 2. Decide whether T5 can exit with host-owned commitment hashing still in place
    or requires a GPU-side hash path before any bounded proving row is called
    truthful.
-3. Keep the unsupported matrix, explicit CPU bridges, and transcript gaps
-   explicit while the candidate path grows.
+3. Keep the unsupported matrix and explicit CPU bridges explicit while the
+   candidate path grows.

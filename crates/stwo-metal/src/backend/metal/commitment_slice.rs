@@ -55,7 +55,7 @@ impl<H: MerkleHasherLifted> MetalFriCommitmentSlice<H> {
     }
 }
 
-fn interpolate_last_layer(
+pub(super) fn interpolate_last_layer(
     config: FriConfig,
     last_evaluation: &super::line::MetalLineEvaluation,
 ) -> LinePoly {

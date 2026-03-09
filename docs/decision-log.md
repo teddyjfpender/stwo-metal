@@ -838,3 +838,45 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0022: The bounded Metal FRI lane now owns transcript-driven commit and decommit
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`stwo-metal` now exposes a bounded transcript-owned FRI prover that:
+
+- mixes first-layer and inner-layer roots in vendored order
+- draws folding alphas from the channel instead of taking them from the caller
+- mixes the bounded last-layer polynomial into the channel
+- draws query positions from that same transcript and returns the vendored
+  `FriDecommitResult` / `ExtendedFriProof` shapes
+
+Context:
+
+The bounded full FRI proof candidate had the right proof shape, but it still
+depended on caller-supplied folding challenges. The project needed a truthful
+transcript boundary before the bounded Metal lane could be treated as a proving
+sub-path rather than a proof-packaging helper.
+
+Alternatives rejected:
+
+- keep the bounded proof candidate as a caller-driven challenge helper
+- add a transcript wrapper that returned a custom local proof result instead of
+  the vendored FRI result shapes
+
+Impact:
+
+- the bounded Metal FRI lane now owns transcript-driven commit and decommit
+- `TD-0009` is retired for the bounded FRI lane
+- the next T5 boundary is one declared Stwo proving sub-path that consumes this
+  transcript-owned lane and names the remaining unsupported edges
+
+Superseded by:
+
+- none

@@ -295,17 +295,17 @@ Target retirement point:
 
 ### TD-0009: The bounded full FRI proof candidate still depends on caller-supplied folding alphas
 
-- Status: `active`
+- Status: `retired`
 - Category: `transcript ownership`
 - Introduced: `2026-03-09`
 - Owner area: `T5 bounded FRI bring-up`
 
-Why it exists now:
+Why it existed:
 
-The bounded Metal FRI proof slice now packages the first-layer and inner-layer
-proof surfaces into the vendored `ExtendedFriProof` shape, but it still takes
-the first-layer alpha and inner-layer alphas as explicit caller inputs instead
-of deriving them from a transcript-owned channel boundary.
+The bounded Metal FRI proof slice initially packaged the first-layer and
+inner-layer proof surfaces into the vendored `ExtendedFriProof` shape, but it
+still took the first-layer alpha and inner-layer alphas as explicit caller
+inputs instead of deriving them from a transcript-owned channel boundary.
 
 Current containment:
 
@@ -314,15 +314,15 @@ Current containment:
 
 Risk if left in place:
 
-The bounded proof object shape is now truthful, but the supported Metal story
-could stall at a proof-construction helper rather than a declared proving
-sub-path with transcript ownership aligned to vendored Stwo semantics.
+The bounded proof object shape would have remained truthful, but the supported
+Metal story could have stalled at a proof-construction helper rather than a
+declared proving sub-path with transcript ownership aligned to vendored Stwo
+semantics.
 
 Exit condition:
 
-One declared proving sub-path owns its challenge flow at an explicit transcript
-boundary without weakening deterministic CPU-oracle parity for the bounded FRI
-lane.
+The bounded FRI lane owns its challenge flow at an explicit transcript boundary
+without weakening deterministic CPU-oracle parity.
 
 Target retirement point:
 

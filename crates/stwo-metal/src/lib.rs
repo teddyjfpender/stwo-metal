@@ -94,7 +94,7 @@ pub use crate::backend::metal::{
     permute_coset_to_circle_domain_bit_reversed, CpuLineCommitmentBridge, MetalBackend,
     MetalBackendSurface, MetalBackendSurfaceStatus, MetalBaseFieldVec, MetalExtendedInnerFriProof,
     MetalFriCommitmentSlice, MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerLayerSequence,
-    MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice, MetalInnerFriProof,
-    MetalInnerFriProofAux, MetalLineCommitment, MetalLineEvaluation, MetalRuntimeSupport,
-    MetalSecureFieldVec, STWO_METAL_BACKEND_SURFACES_V1,
+    MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver,
+    MetalInnerFriProof, MetalInnerFriProofAux, MetalLineCommitment, MetalLineEvaluation,
+    MetalRuntimeSupport, MetalSecureFieldVec, STWO_METAL_BACKEND_SURFACES_V1,
 };
