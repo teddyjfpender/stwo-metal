@@ -55,13 +55,14 @@ Implemented against this note:
 - bounded first-layer circle commitment and decommit boundary
 - bounded full FRI proof candidate
 - bounded transcript-owned FRI prover
+- declared bounded Blake2s FRI proving sub-path
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
 Still outside the implemented surface:
 
-- one declared proving sub-path that consumes the bounded transcript-owned FRI
-  prover
+- one declared Stwo workload boundary that consumes the declared bounded
+  Blake2s FRI proving sub-path
 - interpolation, evaluation, and trace-support primitives beyond the bounded
   FRI arithmetic surface
 - any truthful end-to-end proving claim

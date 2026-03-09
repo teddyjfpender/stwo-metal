@@ -4,10 +4,11 @@ use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
 use stwo_metal::{
     cuda_backend_surface_status, plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend,
     CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan,
-    MetalBackend, MetalBaseFieldVec, MetalFriFirstLayer, MetalFriInnerLayerRow,
-    MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver,
-    MetalLineCommitment, MetalLineEvaluation, MetalSecureFieldVec, OwnedConstraintEvalAbiV1,
-    SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1, STWO_CUDA_BACKEND_SURFACES_V1,
+    MetalBackend, MetalBaseFieldVec, MetalFriBlake2sSubpath, MetalFriFirstLayer,
+    MetalFriInnerLayerRow, MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice,
+    MetalFriProver, MetalLineCommitment, MetalLineEvaluation, MetalSecureFieldVec,
+    OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
+    STWO_CUDA_BACKEND_SURFACES_V1,
 };
 
 #[test]
@@ -23,6 +24,7 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<
         MetalFriProver<stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel>,
     >();
+    let _ = std::mem::size_of::<MetalFriBlake2sSubpath>();
     let _ = std::mem::size_of::<MetalFriLayerDecommitment<Blake2sMerkleHasher>>();
     let _ = std::mem::size_of::<MetalLineEvaluation>();
     let _ = std::mem::size_of::<MetalLineCommitment<Blake2sMerkleHasher>>();

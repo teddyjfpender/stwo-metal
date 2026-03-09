@@ -327,3 +327,37 @@ without weakening deterministic CPU-oracle parity.
 Target retirement point:
 
 - `T5`
+
+### TD-0010: The declared bounded FRI sub-path is still FRI-only and not yet workload-complete
+
+- Status: `active`
+- Category: `workload integration`
+- Introduced: `2026-03-09`
+- Owner area: `T5 bounded proving-path bring-up`
+
+Why it exists now:
+
+`stwo-metal` now has a declared bounded Blake2s FRI proving sub-path, but that
+declared path still stops at the FRI boundary. It does not yet own quotient,
+trace, or PCS integration for one declared Stwo workload.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/subpath.rs`
+- `crates/stwo-metal/src/backend/metal/prover.rs`
+
+Risk if left in place:
+
+The project could over-index on a truthful FRI lane while still lacking one
+declared Stwo workload boundary that demonstrates where FRI plugs into the rest
+of the prover.
+
+Exit condition:
+
+One declared Stwo workload boundary consumes the declared bounded FRI sub-path
+with explicit quotient, trace, and PCS ownership and deterministic CPU-oracle
+parity.
+
+Target retirement point:
+
+- `T5`

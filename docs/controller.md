@@ -45,8 +45,9 @@ Invariants:
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
-- the bounded transcript-owned FRI prover now exists, but it is not yet bound
-  into one declared Stwo proving sub-path
+- one declared bounded Blake2s FRI proving sub-path now exists, but it is not
+  yet integrated with quotient, trace, or PCS ownership for a declared Stwo
+  workload
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - interpolation, evaluation, and trace-generation primitives are still outside
@@ -54,8 +55,8 @@ Invariants:
 
 ## Next three deliverables
 
-1. Freeze one declared Stwo proving sub-path that consumes the bounded
-   transcript-owned FRI prover and names its remaining unsupported edges.
+1. Bind the declared bounded Blake2s FRI sub-path into one declared Stwo
+   workload boundary with explicit quotient, trace, and PCS ownership.
 2. Decide whether T5 can exit with host-owned commitment hashing still in place
    or requires a GPU-side hash path before any bounded proving row is called
    truthful.

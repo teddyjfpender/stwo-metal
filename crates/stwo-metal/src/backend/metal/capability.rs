@@ -21,6 +21,7 @@ pub enum MetalBackendSurface {
     FriInnerProofSliceBounded,
     FriProofSliceBounded,
     FriProverTranscriptOwnedBounded,
+    FriBlake2sSubpathDeclared,
     FriFirstInnerLayerCommitmentCpuBridge,
     QuotientAccumulate,
 }
@@ -54,6 +55,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::FriInnerProofSliceBounded,
     MetalBackendSurface::FriProofSliceBounded,
     MetalBackendSurface::FriProverTranscriptOwnedBounded,
+    MetalBackendSurface::FriBlake2sSubpathDeclared,
     MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge,
     MetalBackendSurface::QuotientAccumulate,
 ];
@@ -79,9 +81,8 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::FriCommitmentSliceBounded
         | MetalBackendSurface::FriInnerProofSliceBounded
         | MetalBackendSurface::FriProofSliceBounded
-        | MetalBackendSurface::FriProverTranscriptOwnedBounded => {
-            MetalBackendSurfaceStatus::Supported
-        }
+        | MetalBackendSurface::FriProverTranscriptOwnedBounded
+        | MetalBackendSurface::FriBlake2sSubpathDeclared => MetalBackendSurfaceStatus::Supported,
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
@@ -142,6 +143,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::FriProverTranscriptOwnedBounded => {
             "A bounded transcript-owned Metal FRI prover is implemented with vendored channel ordering for commit and decommit."
+        }
+        MetalBackendSurface::FriBlake2sSubpathDeclared => {
+            "A declared bounded Blake2s FRI proving sub-path is implemented on top of the transcript-owned Metal prover."
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             "The first inner FRI-layer line-evaluation and commitment handoff is available only through an explicit CPU bridge."

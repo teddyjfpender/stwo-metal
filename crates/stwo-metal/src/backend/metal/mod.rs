@@ -12,6 +12,7 @@ mod proof_slice;
 mod prover;
 mod row;
 mod sequence;
+mod subpath;
 
 pub use backend::MetalBackend;
 pub use capability::{
@@ -35,6 +36,7 @@ pub use proof_slice::MetalFriProofSlice;
 pub use prover::MetalFriProver;
 pub use row::MetalFriInnerLayerRow;
 pub use sequence::MetalFriInnerLayerSequence;
+pub use subpath::MetalFriBlake2sSubpath;
 
 pub use crate::stwo_metal::{
     BaseFieldVec as MetalBaseFieldVec, SecureFieldVec as MetalSecureFieldVec,

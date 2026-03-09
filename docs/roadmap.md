@@ -224,10 +224,13 @@ Current next slices inside T5:
   first-layer proof boundary with the inner proof slice
 - a bounded transcript-owned Metal FRI prover now exists with vendored channel
   ordering and deterministic CPU parity
+- one declared bounded Blake2s FRI proving sub-path now exists on top of that
+  transcript-owned prover
 - the explicit CPU bridge remains available only as a bounded validation and
   comparison surface
-- the next T5 work is to bind that bounded transcript-owned FRI prover into one
-  declared Stwo proving sub-path with explicit unsupported-edge accounting
+- the next T5 work is to bind that declared FRI sub-path into one declared Stwo
+  workload boundary with explicit unsupported-edge accounting across quotient,
+  trace, and PCS ownership
 
 ### T6: Restore one truthful end-to-end supported workload
 
@@ -249,8 +252,8 @@ Required outputs:
 
 ## Current next three planning deliverables
 
-1. Bind the bounded transcript-owned FRI prover into one declared Stwo proving
-   sub-path with explicit unsupported-edge accounting.
+1. Bind the declared bounded Blake2s FRI sub-path into one declared Stwo
+   workload boundary with explicit unsupported-edge accounting.
 2. Decide whether T5 can exit with host-owned commitment hashing still in place
    or requires a GPU-side hash path before any bounded proving row is called
    truthful.

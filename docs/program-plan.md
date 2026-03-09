@@ -79,6 +79,7 @@ Current completed T5 supporting slices are:
 - bounded first-layer circle commitment and decommit boundary
 - bounded full FRI proof candidate
 - bounded transcript-owned FRI prover
+- declared bounded Blake2s FRI proving sub-path
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
@@ -89,5 +90,5 @@ The first declared T5 proving sub-path candidate is:
 
 The next required T5 boundary is:
 
-- one declared proving sub-path that consumes the bounded transcript-owned FRI
-  prover
+- one declared Stwo workload boundary that consumes the declared bounded
+  Blake2s FRI proving sub-path

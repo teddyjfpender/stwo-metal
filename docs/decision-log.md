@@ -880,3 +880,43 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0023: The bounded Metal FRI lane now has one declared Blake2s sub-path
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`stwo-metal` now exposes one declared bounded proving sub-path:
+
+- a Blake2s-backed FRI sub-path built on the transcript-owned Metal FRI prover
+
+This declared sub-path is intentionally narrow. It does not yet claim quotient,
+trace, PCS, or end-to-end workload support.
+
+Context:
+
+The transcript-owned prover made the FRI lane truthful, but the project still
+needed one named entry point that represented the currently supported path
+rather than forcing callers to compose low-level pieces themselves.
+
+Alternatives rejected:
+
+- keep the bounded FRI lane only as low-level building blocks
+- declare a broader Stwo workload path before quotient, trace, and PCS
+  ownership are explicit
+
+Impact:
+
+- `stwo-metal` now has one declared bounded proving sub-path
+- the next T5 boundary is to bind that declared FRI sub-path into one declared
+  Stwo workload boundary
+- `TD-0010` records that the declared sub-path is still FRI-only
+
+Superseded by:
+
+- none
