@@ -797,3 +797,44 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0021: The bounded Metal FRI lane now packages a full proof candidate shape
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`stwo-metal` now packages the bounded first-layer proof boundary and the
+bounded inner proof slice into the vendored `ExtendedFriProof` shape for one
+explicit FRI lane.
+
+This decision does not claim a full proving-path integration yet. The bounded
+proof candidate still takes caller-supplied folding alphas and still relies on
+host-owned hashing plus a CPU-bridged last-layer interpolation boundary.
+
+Context:
+
+Once both proof halves existed, the project needed one honest wrapper that
+matched the vendored FRI proof structure so later work can integrate a declared
+proving sub-path without inventing another proof representation.
+
+Alternatives rejected:
+
+- keep the first-layer and inner-layer proof surfaces separate and force callers
+  to assemble the vendored proof shape manually
+- claim a truthful end-to-end proving path before transcript ownership and
+  declared sub-path integration exist
+
+Impact:
+
+- the bounded Metal lane now has a full FRI proof candidate shape
+- the next T5 boundary is one declared proving sub-path that consumes it with
+  explicit transcript and unsupported-edge accounting
+
+Superseded by:
+
+- none

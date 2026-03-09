@@ -5,9 +5,9 @@ use stwo_metal::{
     cuda_backend_surface_status, plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend,
     CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan,
     MetalBackend, MetalBaseFieldVec, MetalFriFirstLayer, MetalFriInnerLayerRow,
-    MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalLineCommitment, MetalLineEvaluation,
-    MetalSecureFieldVec, OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
-    STWO_CUDA_BACKEND_SURFACES_V1,
+    MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice, MetalLineCommitment,
+    MetalLineEvaluation, MetalSecureFieldVec, OwnedConstraintEvalAbiV1, SecureFieldVec,
+    StwoCudaWideFibonacciEvalAbiV1, STWO_CUDA_BACKEND_SURFACES_V1,
 };
 
 #[test]
@@ -19,6 +19,7 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<MetalFriFirstLayer<Blake2sMerkleHasher>>();
     let _ = std::mem::size_of::<MetalFriInnerLayerRow<Blake2sMerkleHasher>>();
     let _ = std::mem::size_of::<MetalFriInnerProofSlice<Blake2sMerkleHasher>>();
+    let _ = std::mem::size_of::<MetalFriProofSlice<Blake2sMerkleHasher>>();
     let _ = std::mem::size_of::<MetalFriLayerDecommitment<Blake2sMerkleHasher>>();
     let _ = std::mem::size_of::<MetalLineEvaluation>();
     let _ = std::mem::size_of::<MetalLineCommitment<Blake2sMerkleHasher>>();

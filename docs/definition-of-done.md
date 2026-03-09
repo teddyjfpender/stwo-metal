@@ -20,6 +20,9 @@ Work is done only when the code, contract, and process state agree.
 - [ ] Proof-facing FRI slices validate their bounded last-layer polynomial
       semantics against the vendored CPU oracle, including the configured
       degree-bound truncation.
+- [ ] Any caller-supplied challenge material used by a bounded proof slice is
+      named explicitly and tracked as debt until a transcript-owned boundary
+      replaces it.
 
 ## Milestone done
 

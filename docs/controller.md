@@ -45,8 +45,10 @@ Invariants:
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
-- the bounded first-layer proof boundary now exists, but it is not yet composed
-  with the inner proof slice into a bounded full FRI proof candidate
+- the bounded full FRI proof candidate now exists, but it still depends on
+  caller-supplied folding alphas rather than transcript-owned challenge flow
+- the bounded full FRI proof candidate is not yet integrated into one declared
+  Stwo proving sub-path
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - interpolation, evaluation, and trace-generation primitives are still outside
@@ -54,13 +56,13 @@ Invariants:
 
 ## Next three deliverables
 
-1. Package the native first-layer proof boundary and the inner proof slice into
-   a bounded full FRI proof candidate.
+1. Freeze one declared Stwo proving sub-path that consumes the bounded full FRI
+   proof candidate and names its remaining unsupported edges.
 2. Decide whether T5 can exit with host-owned commitment hashing still in place
    or requires a GPU-side hash path before any bounded proving row is called
    truthful.
-3. Keep the unsupported matrix, explicit CPU bridges, and CPU-oracle parity
-   coverage explicit as the path grows.
+3. Keep the unsupported matrix, explicit CPU bridges, transcript gaps, and
+   CPU-oracle parity coverage explicit as the path grows.
 
 ## Explicitly not doing now
 

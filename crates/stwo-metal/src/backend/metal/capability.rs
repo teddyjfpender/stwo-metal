@@ -19,6 +19,7 @@ pub enum MetalBackendSurface {
     FriInnerLayerSequenceNative,
     FriCommitmentSliceBounded,
     FriInnerProofSliceBounded,
+    FriProofSliceBounded,
     FriFirstInnerLayerCommitmentCpuBridge,
     QuotientAccumulate,
 }
@@ -50,6 +51,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::FriInnerLayerSequenceNative,
     MetalBackendSurface::FriCommitmentSliceBounded,
     MetalBackendSurface::FriInnerProofSliceBounded,
+    MetalBackendSurface::FriProofSliceBounded,
     MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge,
     MetalBackendSurface::QuotientAccumulate,
 ];
@@ -73,7 +75,8 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::FriFirstInnerLayerProofRowNative
         | MetalBackendSurface::FriInnerLayerSequenceNative
         | MetalBackendSurface::FriCommitmentSliceBounded
-        | MetalBackendSurface::FriInnerProofSliceBounded => MetalBackendSurfaceStatus::Supported,
+        | MetalBackendSurface::FriInnerProofSliceBounded
+        | MetalBackendSurface::FriProofSliceBounded => MetalBackendSurfaceStatus::Supported,
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
@@ -128,6 +131,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::FriInnerProofSliceBounded => {
             "A bounded proof-facing inner FRI proof slice is implemented on top of the commitment slice."
+        }
+        MetalBackendSurface::FriProofSliceBounded => {
+            "A bounded full FRI proof slice is implemented by composing the native first-layer proof boundary with the inner proof slice."
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
             "The first inner FRI-layer line-evaluation and commitment handoff is available only through an explicit CPU bridge."

@@ -8,6 +8,7 @@ mod handoff;
 mod line;
 mod poly;
 mod proof;
+mod proof_slice;
 mod row;
 mod sequence;
 
@@ -29,6 +30,7 @@ pub use poly::permute_coset_to_circle_domain_bit_reversed;
 pub use proof::{
     MetalExtendedInnerFriProof, MetalFriInnerProofSlice, MetalInnerFriProof, MetalInnerFriProofAux,
 };
+pub use proof_slice::MetalFriProofSlice;
 pub use row::MetalFriInnerLayerRow;
 pub use sequence::MetalFriInnerLayerSequence;
 
