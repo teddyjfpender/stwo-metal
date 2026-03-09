@@ -99,6 +99,8 @@ Current completed T5 supporting slices are:
   trace path
 - `wide_fibonacci_prove` trace generation retargeted to the native Metal trace
   path with an explicit bridge back into the inherited CUDA proving lane
+- workload-level CPU-owned wide-fibonacci witness handoff feeding the native
+  Metal trace boundary before quotient accumulation
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
@@ -109,6 +111,6 @@ The first declared T5 proving sub-path candidate is:
 
 The next required T5 boundary is:
 
-- one earlier witness-owned workload handoff for `fibonacci_example` before
-  the current CPU quotient evaluation boundary, followed by the remaining
-  `wide_fibonacci_prove` Metal-to-CUDA trace bridge
+- native quotient accumulation on top of the witness-owned handoff, replacing
+  the remaining `wide_fibonacci_prove` Metal-to-CUDA trace bridge before
+  pre-FRI PCS commitment work

@@ -7,13 +7,13 @@ use stwo_metal::{
     plan_exemplar_metal_prove_by_name, plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend,
     CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan,
     MetalBackend, MetalBaseFieldVec, MetalBenchmarkInputError, MetalBenchmarkTarget,
-    MetalCpuQuotientEvaluationInput, MetalExecutionIntent, MetalExecutionPlan,
-    MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice,
-    MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver, MetalFriReadyEvaluationInput,
-    MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation, MetalSecureFieldVec,
-    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
-    MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs, MetalWorkloadBoundary,
-    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput, MetalExecutionIntent,
+    MetalExecutionPlan, MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow,
+    MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver,
+    MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation,
+    MetalSecureFieldVec, MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciTrace,
+    MetalWideFibonacciTraceError, MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs,
+    MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
     STWO_CUDA_BACKEND_SURFACES_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
 };
@@ -41,6 +41,7 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<MetalFriBlake2sSubpath>();
     let _ = std::mem::size_of::<MetalFriLayerDecommitment<Blake2sMerkleHasher>>();
     let _ = std::mem::size_of::<MetalCpuQuotientEvaluationInput>();
+    let _ = std::mem::size_of::<MetalCpuWideFibonacciWitnessInput>();
     let _ = std::mem::size_of::<MetalFriReadyEvaluationInput>();
     let _ = std::mem::size_of::<MetalWorkloadBoundary>();
     let _ = std::mem::size_of::<MetalWorkloadHandoffError<'static>>();

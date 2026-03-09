@@ -1193,3 +1193,46 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0030: Quotient accumulation is the next native proving-stage replacement after the witness-owned handoff
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+After defining the workload-level CPU-owned wide-fibonacci witness handoff that
+feeds the native Metal trace boundary, the next native replacement target is
+quotient accumulation, not pre-FRI PCS commitment.
+
+Context:
+
+The earlier proving seam is now explicit: CPU-owned witness inputs feed native
+Metal trace generation before the prove benchmark bridges back into the
+inherited CUDA lane. The two plausible next boundaries were quotient
+accumulation and pre-FRI PCS commitment. Quotient accumulation is earlier in
+the prover flow, removes more of the remaining Metal-to-CUDA bridge, and
+matches the existing explicit quotient-evaluation handoff already present in
+the workload surface.
+
+Alternatives rejected:
+
+- jump to pre-FRI PCS commitment before quotient accumulation is native
+- leave the next native replacement unspecified after landing the witness
+  handoff
+
+Impact:
+
+- the next honest tranche is fixed: native quotient accumulation on top of the
+  witness-owned handoff
+- pre-FRI PCS commitment remains explicit future work, not the immediate next
+  target
+- `TD-0011` narrows to the quotient-accumulation gap instead of a generic
+  earlier-witness gap
+
+Superseded by:
+
+- none

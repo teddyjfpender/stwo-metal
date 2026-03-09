@@ -71,15 +71,17 @@ Implemented against this note:
   trace path with explicit `STWO_METAL_MODE` reporting
 - `wide_fibonacci_prove` trace generation retargeted to the native Metal trace
   path with an explicit bridge into the inherited CUDA proving lane
+- workload-level CPU-owned wide-fibonacci witness handoff feeding the native
+  Metal trace boundary before quotient accumulation
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
 Still outside the implemented surface:
 
 - one earlier workload handoff from a witness-owned artifact into the
-  executable hybrid workload boundary
-- the remaining `wide_fibonacci_prove` Metal-to-CUDA trace bridge and earlier
-  proving seams
+  executable hybrid workload boundary beyond quotient accumulation
+- the remaining `wide_fibonacci_prove` Metal-to-CUDA bridge after native trace
+  generation
 - interpolation, evaluation, and trace-support primitives beyond the bounded
   FRI arithmetic surface
 - any truthful end-to-end proving claim

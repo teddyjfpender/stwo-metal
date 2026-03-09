@@ -1,3 +1,4 @@
+use stwo::core::fields::m31::BaseField;
 use stwo::core::fri::FriConfig;
 use stwo::core::poly::circle::CircleDomain;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
@@ -12,6 +13,10 @@ use super::planner::{
 };
 use super::planner_manifest_v1_generated::planner_input_for_prove;
 use super::subpath::MetalFriBlake2sSubpath;
+use super::witness::{
+    generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
+    MetalWideFibonacciTraceRequest,
+};
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -110,6 +115,54 @@ impl MetalWorkloadBoundary {
             quotient_evaluation: quotient_evaluation.clone(),
         })
     }
+
+    pub fn ingest_cpu_wide_fibonacci_witness(
+        &self,
+        input_a: &[BaseField],
+        input_b: &[BaseField],
+        n_columns: u32,
+    ) -> Result<MetalCpuWideFibonacciWitnessInput, MetalWorkloadHandoffError<'static>> {
+        if self.workload_name != "fibonacci_example" {
+            return Err(MetalWorkloadHandoffError::UnsupportedWitnessArtifact {
+                workload_name: self.workload_name,
+            });
+        }
+        if self.stage_ownership(MetalWorkloadStage::WitnessMain)
+            != Some(MetalWorkloadOwnership::CpuOwned)
+        {
+            return Err(MetalWorkloadHandoffError::UnsupportedCpuOwnership {
+                workload_name: self.workload_name,
+                stage: MetalWorkloadStage::WitnessMain,
+            });
+        }
+        if input_a.len() != input_b.len() {
+            return Err(MetalWorkloadHandoffError::WitnessInputLengthMismatch {
+                workload_name: self.workload_name,
+                input_a_len: input_a.len(),
+                input_b_len: input_b.len(),
+            });
+        }
+        if !input_a.len().is_power_of_two() {
+            return Err(MetalWorkloadHandoffError::WitnessInputLengthNotPowerOfTwo {
+                workload_name: self.workload_name,
+                input_len: input_a.len(),
+            });
+        }
+        if n_columns < 2 {
+            return Err(MetalWorkloadHandoffError::InvalidWitnessColumnCount {
+                workload_name: self.workload_name,
+                n_columns,
+            });
+        }
+
+        Ok(MetalCpuWideFibonacciWitnessInput {
+            workload_name: self.workload_name,
+            log_n_instances: input_a.len().ilog2(),
+            n_columns,
+            input_a: input_a.to_vec(),
+            input_b: input_b.to_vec(),
+        })
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -128,6 +181,22 @@ pub enum MetalWorkloadHandoffError<'a> {
     UnsupportedCpuOwnership {
         workload_name: &'a str,
         stage: MetalWorkloadStage,
+    },
+    UnsupportedWitnessArtifact {
+        workload_name: &'a str,
+    },
+    WitnessInputLengthMismatch {
+        workload_name: &'a str,
+        input_a_len: usize,
+        input_b_len: usize,
+    },
+    WitnessInputLengthNotPowerOfTwo {
+        workload_name: &'a str,
+        input_len: usize,
+    },
+    InvalidWitnessColumnCount {
+        workload_name: &'a str,
+        n_columns: u32,
     },
 }
 
@@ -169,6 +238,45 @@ impl MetalCpuQuotientEvaluationInput {
 
     pub fn domain(&self) -> CircleDomain {
         self.quotient_evaluation.domain
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MetalCpuWideFibonacciWitnessInput {
+    workload_name: &'static str,
+    log_n_instances: u32,
+    n_columns: u32,
+    input_a: Vec<BaseField>,
+    input_b: Vec<BaseField>,
+}
+
+impl MetalCpuWideFibonacciWitnessInput {
+    pub fn workload_name(&self) -> &'static str {
+        self.workload_name
+    }
+
+    pub fn log_n_instances(&self) -> u32 {
+        self.log_n_instances
+    }
+
+    pub fn n_columns(&self) -> u32 {
+        self.n_columns
+    }
+
+    pub fn input_a(&self) -> &[BaseField] {
+        &self.input_a
+    }
+
+    pub fn input_b(&self) -> &[BaseField] {
+        &self.input_b
+    }
+
+    pub fn generate_trace(&self) -> Result<MetalWideFibonacciTrace, MetalWideFibonacciTraceError> {
+        generate_metal_wide_fibonacci_trace(MetalWideFibonacciTraceRequest {
+            input_a: &self.input_a,
+            input_b: &self.input_b,
+            n_columns: self.n_columns,
+        })
     }
 }
 

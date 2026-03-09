@@ -60,8 +60,9 @@ pub use witness::{
 };
 pub use workload::{
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
-    MetalCpuQuotientEvaluationInput, MetalFriReadyEvaluationInput, MetalHybridFriWorkload,
-    MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput,
+    MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalWorkloadBoundary,
+    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     MetalWorkloadStageAssignment,
 };
 

@@ -53,6 +53,30 @@ fn poseidon_boundary_keeps_interaction_trace_explicitly_cpu_owned() {
 }
 
 #[test]
+fn fibonacci_boundary_accepts_wide_fibonacci_witness_handoff() {
+    let boundary = declare_exemplar_metal_workload_boundary(
+        MetalExecutionIntent::PreferMetal,
+        "fibonacci_example",
+    )
+    .unwrap();
+    let input_len = 1usize << 6;
+    let input_a = vec![BaseField::from_u32_unchecked(1); input_len];
+    let input_b = (0..input_len)
+        .map(|i| BaseField::from_u32_unchecked((i as u32 % 17) + 2))
+        .collect::<Vec<_>>();
+
+    let handoff = boundary
+        .ingest_cpu_wide_fibonacci_witness(&input_a, &input_b, 8)
+        .unwrap();
+
+    assert_eq!(handoff.workload_name(), "fibonacci_example");
+    assert_eq!(handoff.log_n_instances(), 6);
+    assert_eq!(handoff.n_columns(), 8);
+    assert_eq!(handoff.input_a(), input_a);
+    assert_eq!(handoff.input_b(), input_b);
+}
+
+#[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn declared_hybrid_workload_executes_the_declared_fri_subpath() {
     assert_eq!(

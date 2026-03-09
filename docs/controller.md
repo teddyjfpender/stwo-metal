@@ -46,8 +46,8 @@ Invariants:
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
 - one executable CPU-owned quotient evaluation handoff now exists, but the
-  executable hybrid workload still starts after witness generation and quotient
-  accumulation rather than owning an earlier workload artifact boundary
+  executable hybrid workload still starts after quotient accumulation rather
+  than owning a native replacement for that earlier proving seam
 - the declared `wide_fibonacci` benchmark target is now pinned at
   `log_n_instances = 20`, `n_columns = 100`, with a project-supplied 4090
   reference goal of `90 ms`; the standalone trace benchmark and the prove
@@ -61,13 +61,13 @@ Invariants:
 
 ## Next three deliverables
 
-1. Freeze one earlier witness-owned workload handoff for `fibonacci_example`
-   that feeds the native Metal trace boundary before the CPU quotient
-   evaluation boundary.
-2. Replace the explicit Metal-to-CUDA trace-evaluation bridge inside
-   `wide_fibonacci_prove` with an earlier proving-stage boundary.
-3. Decide whether quotient accumulation or pre-FRI PCS commitment is the next
-   native proving-stage replacement after that earlier handoff is selected.
+1. Replace the explicit Metal-to-CUDA trace-evaluation bridge inside
+   `wide_fibonacci_prove` by moving the proving boundary to native quotient
+   accumulation.
+2. Define the bounded quotient-accumulation contract that consumes the
+   witness-owned handoff and feeds the existing quotient evaluation seam.
+3. Keep the `wide_fibonacci` log-size-20 benchmark objective honest while the
+   quotient and PCS ownership boundary is being replaced tranche by tranche.
 
 ## Explicitly not doing now
 

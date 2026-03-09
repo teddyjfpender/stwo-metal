@@ -26,6 +26,7 @@ pub enum MetalBackendSurface {
     FriProverTranscriptOwnedBounded,
     FriBlake2sSubpathDeclared,
     WorkloadBoundaryHybridDeclared,
+    WorkloadWideFibonacciWitnessCpuHandoff,
     WorkloadFriReadyEvaluationCpuHandoff,
     WorkloadQuotientEvaluationCpuHandoff,
     FriFirstInnerLayerCommitmentCpuBridge,
@@ -66,6 +67,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::FriProverTranscriptOwnedBounded,
     MetalBackendSurface::FriBlake2sSubpathDeclared,
     MetalBackendSurface::WorkloadBoundaryHybridDeclared,
+    MetalBackendSurface::WorkloadWideFibonacciWitnessCpuHandoff,
     MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff,
     MetalBackendSurface::WorkloadQuotientEvaluationCpuHandoff,
     MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge,
@@ -99,6 +101,7 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::FriProverTranscriptOwnedBounded
         | MetalBackendSurface::FriBlake2sSubpathDeclared
         | MetalBackendSurface::WorkloadBoundaryHybridDeclared
+        | MetalBackendSurface::WorkloadWideFibonacciWitnessCpuHandoff
         | MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff
         | MetalBackendSurface::WorkloadQuotientEvaluationCpuHandoff => {
             MetalBackendSurfaceStatus::Supported
@@ -178,6 +181,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::WorkloadBoundaryHybridDeclared => {
             "A declared Stwo workload boundary is supported for routing one workload through the Metal FRI sub-path while keeping witness, quotient, and PCS ownership explicit."
+        }
+        MetalBackendSurface::WorkloadWideFibonacciWitnessCpuHandoff => {
+            "A CPU-owned wide-fibonacci witness handoff is supported for feeding the native Metal trace boundary before quotient accumulation."
         }
         MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff => {
             "A CPU-owned FRI-ready evaluation handoff is supported for the declared Metal hybrid workload boundary with explicit ownership."

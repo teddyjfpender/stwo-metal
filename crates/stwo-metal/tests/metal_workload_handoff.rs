@@ -91,6 +91,31 @@ fn cpu_owned_quotient_handoff_preserves_domain_and_plan() {
 }
 
 #[test]
+fn cpu_owned_wide_fibonacci_witness_handoff_preserves_inputs_and_plan() {
+    let boundary = declare_exemplar_metal_workload_boundary(
+        MetalExecutionIntent::PreferMetal,
+        "fibonacci_example",
+    )
+    .unwrap();
+    let input_len = 1usize << 6;
+    let input_a = vec![BaseField::from_u32_unchecked(1); input_len];
+    let input_b = (0..input_len)
+        .map(|i| BaseField::from_u32_unchecked((i as u32 * 3) + 2))
+        .collect::<Vec<_>>();
+
+    let input = boundary
+        .ingest_cpu_wide_fibonacci_witness(&input_a, &input_b, 8)
+        .unwrap();
+
+    assert_eq!(boundary.plan(), MetalExecutionPlan::MetalFriHybrid);
+    assert_eq!(input.workload_name(), "fibonacci_example");
+    assert_eq!(input.log_n_instances(), 6);
+    assert_eq!(input.n_columns(), 8);
+    assert_eq!(input.input_a(), input_a);
+    assert_eq!(input.input_b(), input_b);
+}
+
+#[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn cpu_owned_fri_ready_handoff_matches_cpu_reference() {
     assert_eq!(
@@ -206,4 +231,35 @@ fn cpu_owned_quotient_handoff_matches_cpu_reference() {
         metal_result.fri_proof.proof.inner_layers.len(),
         cpu_result.fri_proof.proof.inner_layers.len()
     );
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn cpu_owned_wide_fibonacci_witness_handoff_generates_native_trace() {
+    assert_eq!(
+        metal_runtime_support(),
+        MetalRuntimeSupport::Available,
+        "Metal runtime must be available for the native Apple Silicon parity test"
+    );
+
+    let boundary = declare_exemplar_metal_workload_boundary(
+        MetalExecutionIntent::PreferMetal,
+        "fibonacci_example",
+    )
+    .unwrap();
+    let input_len = 1usize << 6;
+    let input_a = vec![BaseField::from_u32_unchecked(1); input_len];
+    let input_b = (0..input_len)
+        .map(|i| BaseField::from_u32_unchecked((i as u32 % 23) + 2))
+        .collect::<Vec<_>>();
+
+    let input = boundary
+        .ingest_cpu_wide_fibonacci_witness(&input_a, &input_b, 8)
+        .unwrap();
+    let trace = input.generate_trace().unwrap();
+
+    assert_eq!(trace.input_len(), input_len);
+    assert_eq!(trace.n_columns(), 8);
+    assert_eq!(trace.value(0, 0), input_a[0]);
+    assert_eq!(trace.value(1, 0), input_b[0]);
 }

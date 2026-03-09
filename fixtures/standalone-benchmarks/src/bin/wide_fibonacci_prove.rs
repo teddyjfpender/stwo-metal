@@ -44,11 +44,10 @@ use stwo::prover::{
 };
 #[cfg(feature = "cuda-runtime")]
 use stwo_metal::{
-    declare_wide_fibonacci_benchmark_boundary,
+    declare_exemplar_metal_workload_boundary,
     launch_constraint_quotients_on_domain, opaque_eval_ptr, BaseFieldVec, ConstraintQuotientEvalRequest,
-    CudaBackend, MetalBenchmarkTarget, MetalExecutionIntent, MetalWideFibonacciTrace,
-    SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
-    WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+    CudaBackend, MetalExecutionIntent, MetalWideFibonacciTrace, SecureFieldVec,
+    StwoCudaWideFibonacciEvalAbiV1,
 };
 use stwo_metal_standalone_benchmarks::support::{
     env_flag, env_or, env_u32, env_usize, epoch_ms, required_env_path, runner_metadata,
@@ -911,17 +910,14 @@ fn generate_wide_fibonacci_trace_evaluations(
     WideFibonacciSentinel,
 ) {
     let input_len = 1usize << log_n_instances;
-    let target = MetalBenchmarkTarget {
-        log_n_instances,
-        n_columns: n_columns as u32,
-        ..WIDE_FIBONACCI_PROVE_LOG20_TARGET
-    };
-    let boundary =
-        declare_wide_fibonacci_benchmark_boundary(MetalExecutionIntent::PreferMetal, target)
-            .expect("wide-fibonacci prove benchmark boundary should be declared");
+    let boundary = declare_exemplar_metal_workload_boundary(
+        MetalExecutionIntent::PreferMetal,
+        "fibonacci_example",
+    )
+    .expect("wide-fibonacci prove workload boundary should be declared");
     let witness_inputs = boundary
-        .ingest_cpu_witness_inputs(input_a_host, input_b_host)
-        .expect("wide-fibonacci prove benchmark witness inputs should be accepted");
+        .ingest_cpu_wide_fibonacci_witness(input_a_host, input_b_host, n_columns as u32)
+        .expect("wide-fibonacci prove witness handoff should be accepted");
     let trace = witness_inputs
         .generate_trace()
         .expect("wide-fibonacci prove benchmark should generate the trace through Metal");

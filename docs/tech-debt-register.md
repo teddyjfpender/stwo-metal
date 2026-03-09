@@ -362,7 +362,7 @@ Target retirement point:
 
 - `T5`
 
-### TD-0011: The declared hybrid workload boundary still begins at a FRI-ready evaluation input
+### TD-0011: The executable hybrid workload still begins after quotient accumulation
 
 - Status: `active`
 - Category: `workload handoff`
@@ -372,28 +372,27 @@ Target retirement point:
 Why it exists now:
 
 `stwo-metal` now has a declared hybrid workload boundary with explicit witness,
-quotient, PCS, and FRI ownership, and it now has an executable handoff from a
-CPU-owned quotient evaluation. The CPU-owned stages are named, but witness
-artifacts and quotient accumulation do not yet feed the boundary through an
-earlier stable handoff.
+quotient, PCS, and FRI ownership, plus an explicit CPU-owned
+wide-fibonacci witness handoff feeding the native Metal trace boundary. The
+remaining earlier-stage gap is quotient accumulation: the executable hybrid
+path still begins only once a CPU-owned quotient evaluation already exists.
 
 Current containment:
 
 - `crates/stwo-metal/src/backend/metal/workload.rs`
 - `crates/stwo-metal/src/backend/metal/subpath.rs`
-- `crates/stwo-metal/src/backend/metal/benchmark.rs`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
 
 Risk if left in place:
 
 The project could sound more workload-complete than it really is, even though
-the executable hybrid path still begins after witness generation and quotient
-accumulation.
+the executable hybrid path still begins after quotient accumulation.
 
 Exit condition:
 
-One declared workload owns a stable handoff from a CPU-owned witness artifact
-into the executable Metal workload boundary with deterministic CPU-oracle
-parity.
+One declared workload owns a native quotient-accumulation boundary on top of
+the witness-owned handoff, so the executable Metal workload no longer begins
+after a precomputed CPU-owned quotient evaluation.
 
 Target retirement point:
 
