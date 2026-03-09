@@ -1,3 +1,4 @@
+mod accumulation;
 mod backend;
 mod benchmark;
 mod capability;

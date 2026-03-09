@@ -511,14 +511,19 @@ Why it exists now:
 
 The unchanged vendored upstream `wide_fibonacci` example now proves and
 verifies through a real acceptance fixture, but the proving path still crosses
-an explicit CPU bridge after native Metal trace generation. The bridge
-materializes the Metal trace as `CircleEvaluation<CpuBackend, ...>` values and
-then runs the stock CPU prover and verifier because `MetalBackend` does not yet
-implement the full Stwo `BackendForChannel` contract.
+an explicit CPU bridge after native Metal trace generation. `MetalBackend` now
+implements `PolyOps`, `AccumulationOps`, and `QuotientOps` through explicit CPU
+bridges, but direct backend substitution still lacks `FriOps`, `GkrOps`, and
+the `BackendForChannel` surfaces. The current bridge therefore remains broader
+than the eventual supported boundary even though part of the generic backend
+gap is now retired.
 
 Current containment:
 
 - `crates/stwo-metal/src/backend/metal/witness.rs`
+- `crates/stwo-metal/src/backend/metal/poly.rs`
+- `crates/stwo-metal/src/backend/metal/accumulation.rs`
+- `crates/stwo-metal/src/backend/metal/quotient.rs`
 - `fixtures/upstream-example-acceptance/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
 
@@ -533,7 +538,8 @@ Exit condition:
 
 At least one accepted upstream example proves and verifies through a direct
 `MetalBackend` path, with no explicit CPU prover bridge required after native
-Metal trace generation.
+Metal trace generation and with the remaining shared backend traits satisfied
+directly enough to make backend substitution truthful.
 
 Target retirement point:
 

@@ -28,6 +28,56 @@ Superseded by:
 
 ## Entries
 
+### DEC-0036: `MetalBackend` may advance trait-by-trait through explicit CPU bridges so long as each bridge is named and parity-tested
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`MetalBackend` now advances beyond `ColumnOps` by implementing `PolyOps`,
+`AccumulationOps`, and `QuotientOps` through explicit CPU bridges over
+Metal-owned columns, secure-column storage, and evaluations. These slices are
+accepted because they retire a generic backend gap trait by trait, keep the
+bridge explicit in the capability model, and add deterministic parity tests
+against the vendored CPU backend.
+
+Context:
+
+The first upstream-example prove/verify acceptance row proved that native Metal
+trace generation can feed an unchanged vendored workload, but the proving path
+still depended on a broad CPU prover bridge. The smallest semantics-preserving
+way to shrink that bridge was not another example harness; it was to implement
+the next shared backend traits in order. `PolyOps`, `AccumulationOps`, and
+`QuotientOps` were the first honest tranche because they widen backend
+coverage without overclaiming direct end-to-end Metal proving support.
+
+Alternatives rejected:
+
+- keep the CPU bridge broad and unnamed until every remaining backend trait is
+  ready
+- add more upstream-example acceptance rows before shared backend support
+  materially widens
+- describe the new slices as native Metal support when they still rely on the
+  vendored CPU backend for the underlying trait execution
+
+Impact:
+
+- `MetalBackend` now satisfies more of the generic Stwo backend contract
+  without changing proof semantics
+- the capability model now distinguishes the new bridge-backed traits
+- `TD-0015` narrows from a broad backend gap toward the remaining
+  `FriOps`/`GkrOps`/channel-backed requirements
+- the next honest tranche is `FriOps`, not another workload-specific proving
+  seam
+
+Superseded by:
+
+- none
+
 ### DEC-0001: Reset `stwo-metal` documentation to a process-only clean slate
 
 - Date: `2026-03-09`

@@ -369,11 +369,16 @@ Current first implementation slice:
 
 Current next slice inside T7:
 
-- start the first backend-completion slice at the `PolyOps` boundary for
-  `MetalBackend`, because only `ColumnOps` is implemented today and direct
-  example proving cannot become truthful before that changes
-- only after that bridge-retirement work should the next vendored upstream
-  example be added through the reusable acceptance harness
+- the first backend-completion bridge tranche is now landed:
+  `MetalBackend` implements `PolyOps`, `AccumulationOps`, and `QuotientOps`
+  through explicit CPU bridges over Metal-owned columns and evaluations
+- those slices are accepted because they shrink the generic backend gap
+  without pretending the remaining prover traits are native Metal yet
+- the next honest shared trait gap is `FriOps`, followed by `GkrOps`, then
+  the `BackendForChannel` surfaces
+- only after those bridge-retirement slices meaningfully widen shared proving
+  support should the next vendored upstream example be added through the
+  reusable acceptance harness
 
 ## Sequencing rules
 
@@ -390,7 +395,8 @@ Current next slice inside T7:
 1. Freeze the project definition around generic backend completion and
    unchanged upstream example proving.
 2. Advance `T7` from the first bridge-backed prove/verify boundary into the
-   first direct backend slice that retires an explicit CPU prove bridge.
+   next shared backend slice that retires the remaining explicit CPU prove
+   bridge trait by trait.
 3. Add more vendored upstream examples only when the reusable acceptance
    harness can exercise newly shared backend support instead of another
    one-off bridge.

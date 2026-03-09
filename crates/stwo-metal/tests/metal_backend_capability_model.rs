@@ -62,6 +62,30 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge
     )
     .contains("explicit CPU bridge"));
+    assert_eq!(
+        metal_backend_surface_status(MetalBackendSurface::PolyOpsCpuBridge),
+        MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+    );
+    assert!(
+        metal_backend_surface_detail(MetalBackendSurface::PolyOpsCpuBridge)
+            .contains("explicit CPU bridge")
+    );
+    assert_eq!(
+        metal_backend_surface_status(MetalBackendSurface::AccumulationOpsCpuBridge),
+        MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+    );
+    assert!(
+        metal_backend_surface_detail(MetalBackendSurface::AccumulationOpsCpuBridge)
+            .contains("explicit CPU bridge")
+    );
+    assert_eq!(
+        metal_backend_surface_status(MetalBackendSurface::QuotientOpsCpuBridge),
+        MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+    );
+    assert!(
+        metal_backend_surface_detail(MetalBackendSurface::QuotientOpsCpuBridge)
+            .contains("explicit CPU bridge")
+    );
 }
 
 #[test]

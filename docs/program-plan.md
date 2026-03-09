@@ -142,11 +142,20 @@ The first completed T7 supporting slices are:
   bridge
 - reusable single-trace Blake2s acceptance helper extracted so future example
   rows do not need bespoke test-local CPU-bridge proving code
+- first direct backend-completion bridge tranche landed:
+  `MetalBackend` now implements `PolyOps`, `AccumulationOps`, and
+  `QuotientOps` through explicit CPU bridges over Metal-owned columns,
+  evaluations, and secure-column storage
+- deterministic parity tests now lock those `PolyOps` and PCS bridge surfaces
+  against the vendored CPU backend
 
 The next required T7 boundary is:
 
-- start the first direct backend-completion slice at the `PolyOps` boundary
-  for `MetalBackend`, because direct example proving cannot become truthful
-  while only `ColumnOps` is implemented
+- land the next direct backend-completion slice at the `FriOps` boundary for
+  `MetalBackend`, because the backend now reaches `QuotientOps` but still
+  cannot satisfy the Stwo `Backend` trait without `FriOps`
+- keep the next trait-sequenced gap explicit after `FriOps`, starting with
+  `GkrOps` and then the `BackendForChannel` surfaces
 - use the reusable acceptance harness for the next vendored upstream example
-  only after that shared backend slice exists
+  only after those shared backend slices materially reduce the remaining prove
+  bridge

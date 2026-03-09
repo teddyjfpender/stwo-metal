@@ -7,6 +7,9 @@ pub enum MetalBackendSurface {
     WideFibonacciWitnessInputBoundaryDeclared,
     WideFibonacciTraceGenerationNative,
     WideFibonacciTraceCpuBridge,
+    PolyOpsCpuBridge,
+    AccumulationOpsCpuBridge,
+    QuotientOpsCpuBridge,
     BaseFieldColumnSet,
     BaseFieldColumnFromIterator,
     BaseFieldColumnBitReverse,
@@ -50,6 +53,9 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::WideFibonacciWitnessInputBoundaryDeclared,
     MetalBackendSurface::WideFibonacciTraceGenerationNative,
     MetalBackendSurface::WideFibonacciTraceCpuBridge,
+    MetalBackendSurface::PolyOpsCpuBridge,
+    MetalBackendSurface::AccumulationOpsCpuBridge,
+    MetalBackendSurface::QuotientOpsCpuBridge,
     MetalBackendSurface::BaseFieldColumnSet,
     MetalBackendSurface::BaseFieldColumnFromIterator,
     MetalBackendSurface::BaseFieldColumnBitReverse,
@@ -112,7 +118,12 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::WorkloadQuotientEvaluationCpuHandoff => {
             MetalBackendSurfaceStatus::Supported
         }
-        MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
+        MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge
+        | MetalBackendSurface::PolyOpsCpuBridge => {
+            MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+        }
+        MetalBackendSurface::AccumulationOpsCpuBridge
+        | MetalBackendSurface::QuotientOpsCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
         MetalBackendSurface::QuotientAccumulate => MetalBackendSurfaceStatus::UnsupportedPlanned,
@@ -132,6 +143,15 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::WideFibonacciTraceCpuBridge => {
             "The native Metal wide-fibonacci trace CPU bridge is supported and materializes ordinary CPU circle evaluations for unchanged upstream example prove/verify wiring."
+        }
+        MetalBackendSurface::PolyOpsCpuBridge => {
+            "The `PolyOps` boundary is supported through an explicit CPU bridge over Metal-owned column storage and host twiddles."
+        }
+        MetalBackendSurface::AccumulationOpsCpuBridge => {
+            "The `AccumulationOps` boundary is supported through an explicit CPU bridge over Metal-owned secure-column storage."
+        }
+        MetalBackendSurface::QuotientOpsCpuBridge => {
+            "The `QuotientOps` boundary is supported through an explicit CPU bridge over Metal-owned evaluation and accumulation storage."
         }
         MetalBackendSurface::BaseFieldColumnSet => "Base-field Metal column mutation is supported.",
         MetalBackendSurface::BaseFieldColumnFromIterator => {

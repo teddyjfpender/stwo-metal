@@ -1,7 +1,16 @@
+use itertools::Itertools;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
+use stwo::prover::backend::{Column, CpuBackend};
+use stwo::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
+use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::secure_column::SecureColumnByCoords;
+use stwo::prover::{AccumulatedNumerators, QuotientOps};
 use stwo_metal_sys::metal::{MetalError, U32Buffer};
 
+use super::accumulation::metal_secure_column_from_cpu;
+use super::MetalBackend;
+use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
 #[derive(Clone, Copy, Debug)]
@@ -211,4 +220,63 @@ pub fn accumulate_wide_fibonacci_quotients(
         values: SecureFieldVec::from_buffer(values),
         eval_domain_size,
     })
+}
+
+fn metal_secure_evaluation_from_cpu(
+    evaluation: SecureEvaluation<CpuBackend, BitReversedOrder>,
+) -> SecureEvaluation<MetalBackend, BitReversedOrder> {
+    SecureEvaluation::new(
+        evaluation.domain,
+        SecureColumnByCoords {
+            columns: evaluation.values.columns.map(BaseFieldVec::from_vec),
+        },
+    )
+}
+
+impl QuotientOps for MetalBackend {
+    fn accumulate_numerators(
+        columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
+        sample_batches: &[stwo::core::pcs::quotients::ColumnSampleBatch],
+        accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
+    ) {
+        let cpu_columns = columns
+            .iter()
+            .map(|column| {
+                CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(
+                    column.domain,
+                    column.values.to_cpu(),
+                )
+            })
+            .collect_vec();
+        let cpu_column_refs = cpu_columns.iter().collect_vec();
+        let mut cpu_accumulated = Vec::new();
+        CpuBackend::accumulate_numerators(&cpu_column_refs, sample_batches, &mut cpu_accumulated);
+        accumulated_numerators_vec.extend(cpu_accumulated.into_iter().map(|accumulated| {
+            AccumulatedNumerators {
+                sample_point: accumulated.sample_point,
+                partial_numerators_acc: metal_secure_column_from_cpu(
+                    accumulated.partial_numerators_acc,
+                ),
+                first_linear_term_acc: accumulated.first_linear_term_acc,
+            }
+        }));
+    }
+
+    fn compute_quotients_and_combine(
+        accs: Vec<AccumulatedNumerators<Self>>,
+        lifting_log_size: u32,
+    ) -> SecureEvaluation<Self, BitReversedOrder> {
+        let cpu_accs = accs
+            .into_iter()
+            .map(|accumulated| AccumulatedNumerators {
+                sample_point: accumulated.sample_point,
+                partial_numerators_acc: accumulated.partial_numerators_acc.to_cpu(),
+                first_linear_term_acc: accumulated.first_linear_term_acc,
+            })
+            .collect();
+        metal_secure_evaluation_from_cpu(CpuBackend::compute_quotients_and_combine(
+            cpu_accs,
+            lifting_log_size,
+        ))
+    }
 }

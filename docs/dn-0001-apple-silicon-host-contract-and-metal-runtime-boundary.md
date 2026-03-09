@@ -88,6 +88,10 @@ Implemented against this note:
   generation plus an explicit CPU prover/verifier bridge
 - reusable single-trace Blake2s acceptance harness extracted for future
   upstream examples that still require the explicit CPU prove bridge
+- explicit `PolyOps`, `AccumulationOps`, and `QuotientOps` implementations for
+  `MetalBackend` through named CPU bridges over Metal-owned columns,
+  evaluations, and secure-column storage
+- deterministic parity tests for the new `PolyOps` and PCS bridge slices
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
@@ -95,12 +99,13 @@ Still outside the implemented surface:
 
 - direct `MetalBackend` substitution for the first unchanged vendored upstream
   example prove/verify path
+- `FriOps` and `GkrOps` for `MetalBackend`
+- `BackendForChannel` support, including lifted Merkle and proof-of-work
+  surfaces
 - one earlier workload handoff from a witness-owned artifact into the
   executable hybrid workload boundary beyond quotient accumulation
 - the remaining `wide_fibonacci_prove` Metal-to-CUDA bridge after native
   quotient accumulation
-- interpolation, evaluation, and trace-support primitives beyond the bounded
-  FRI arithmetic surface
 - any truthful end-to-end proving claim
 
 The first declared T5 candidate path is:
