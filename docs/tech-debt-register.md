@@ -513,10 +513,11 @@ The unchanged vendored upstream `wide_fibonacci` example now proves and
 verifies through a real acceptance fixture, but the proving path still crosses
 an explicit CPU bridge after native Metal trace generation. `MetalBackend` now
 implements `PolyOps`, `AccumulationOps`, and `QuotientOps` through explicit CPU
-bridges, but direct backend substitution still lacks `FriOps`, `GkrOps`, and
-the `BackendForChannel` surfaces. The current bridge therefore remains broader
-than the eventual supported boundary even though part of the generic backend
-gap is now retired.
+bridges, and it now implements `FriOps` through an explicit bridge-backed FRI
+trait slice. Direct backend substitution still lacks `GkrOps` and the
+`BackendForChannel` surfaces. The current bridge therefore remains broader than
+the eventual supported boundary even though most of the generic backend gap is
+now retired.
 
 Current containment:
 
@@ -524,6 +525,7 @@ Current containment:
 - `crates/stwo-metal/src/backend/metal/poly.rs`
 - `crates/stwo-metal/src/backend/metal/accumulation.rs`
 - `crates/stwo-metal/src/backend/metal/quotient.rs`
+- `crates/stwo-metal/src/backend/metal/fri.rs`
 - `fixtures/upstream-example-acceptance/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
 

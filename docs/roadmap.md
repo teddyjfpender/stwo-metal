@@ -372,10 +372,14 @@ Current next slice inside T7:
 - the first backend-completion bridge tranche is now landed:
   `MetalBackend` implements `PolyOps`, `AccumulationOps`, and `QuotientOps`
   through explicit CPU bridges over Metal-owned columns and evaluations
+- the next backend-completion bridge tranche is now landed too:
+  `MetalBackend` implements `FriOps` through an explicit CPU bridge that
+  repacks Metal-owned secure columns into the bounded Metal fold kernels and
+  keeps `decompose` on the vendored CPU backend
 - those slices are accepted because they shrink the generic backend gap
   without pretending the remaining prover traits are native Metal yet
-- the next honest shared trait gap is `FriOps`, followed by `GkrOps`, then
-  the `BackendForChannel` surfaces
+- the next honest shared trait gap is `GkrOps`, followed by the
+  `BackendForChannel` surfaces
 - only after those bridge-retirement slices meaningfully widen shared proving
   support should the next vendored upstream example be added through the
   reusable acceptance harness

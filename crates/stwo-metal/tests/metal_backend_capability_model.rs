@@ -86,6 +86,14 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
         metal_backend_surface_detail(MetalBackendSurface::QuotientOpsCpuBridge)
             .contains("explicit CPU bridge")
     );
+    assert_eq!(
+        metal_backend_surface_status(MetalBackendSurface::FriOpsCpuBridge),
+        MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+    );
+    assert!(
+        metal_backend_surface_detail(MetalBackendSurface::FriOpsCpuBridge)
+            .contains("explicit CPU bridge")
+    );
 }
 
 #[test]

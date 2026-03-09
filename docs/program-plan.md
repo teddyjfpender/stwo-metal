@@ -148,14 +148,21 @@ The first completed T7 supporting slices are:
   evaluations, and secure-column storage
 - deterministic parity tests now lock those `PolyOps` and PCS bridge surfaces
   against the vendored CPU backend
+- second direct backend-completion bridge tranche landed:
+  `MetalBackend` now implements `FriOps` through an explicit CPU bridge that
+  repacks Metal-owned secure columns into the bounded Metal fold kernels and
+  keeps `decompose` on the vendored CPU backend
+- deterministic parity tests now lock the `FriOps` trait surface itself, not
+  just the earlier bounded free-function FRI helpers
 
 The next required T7 boundary is:
 
-- land the next direct backend-completion slice at the `FriOps` boundary for
-  `MetalBackend`, because the backend now reaches `QuotientOps` but still
-  cannot satisfy the Stwo `Backend` trait without `FriOps`
-- keep the next trait-sequenced gap explicit after `FriOps`, starting with
-  `GkrOps` and then the `BackendForChannel` surfaces
+- land the next direct backend-completion slice at the lookup boundary,
+  starting with `MleOps` and `GkrOps`, because `MetalBackend` now reaches
+  `FriOps` but still cannot satisfy the Stwo `Backend` trait without the GKR
+  layer
+- keep the next trait-sequenced gap explicit after the lookup tranche,
+  starting with the `BackendForChannel` surfaces
 - use the reusable acceptance harness for the next vendored upstream example
   only after those shared backend slices materially reduce the remaining prove
   bridge

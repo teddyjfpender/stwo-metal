@@ -28,6 +28,54 @@ Superseded by:
 
 ## Entries
 
+### DEC-0037: `FriOps` is accepted as a bridge-backed `MetalBackend` slice when the fold kernels are Metal-owned and the remaining repacking and decomposition are explicit
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`MetalBackend` now implements `FriOps`. This slice is accepted even though it
+is still bridge-backed, because the fold surface reuses the existing bounded
+Metal FRI kernels while keeping the current secure-column repacking and the
+`decompose` fallback explicit in the capability model and parity tests.
+
+Context:
+
+After landing `PolyOps`, `AccumulationOps`, and `QuotientOps`, the next honest
+missing trait in the Stwo backend contract was `FriOps`. The current backend
+column representation does not yet match the packed secure-field representation
+used by the bounded Metal FRI helpers, so a fully native trait implementation
+would have required a larger representation refactor. The smallest
+semantics-preserving step was to expose `FriOps` now, make the repacking rule
+explicit, and verify the trait methods directly against the vendored CPU
+backend.
+
+Alternatives rejected:
+
+- leave `FriOps` unimplemented until a fully native packed representation
+  exists
+- implement `FriOps` entirely on the CPU and ignore the bounded Metal fold
+  kernels already present in the repo
+- describe the new trait slice as direct native Metal support while the
+  repacking and `decompose` fallback are still bridge-backed
+
+Impact:
+
+- `MetalBackend` advances to the final missing shared lookup/backend trait gap:
+  `GkrOps`
+- the acceptance bridge is now blocked by lookup and channel-backed surfaces,
+  not by FRI trait absence
+- `TD-0015` narrows again toward the remaining `GkrOps` and
+  `BackendForChannel` requirements
+
+Superseded by:
+
+- none
+
 ### DEC-0036: `MetalBackend` may advance trait-by-trait through explicit CPU bridges so long as each bridge is named and parity-tested
 
 - Date: `2026-03-09`

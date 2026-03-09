@@ -92,6 +92,10 @@ Implemented against this note:
   `MetalBackend` through named CPU bridges over Metal-owned columns,
   evaluations, and secure-column storage
 - deterministic parity tests for the new `PolyOps` and PCS bridge slices
+- explicit `FriOps` implementation for `MetalBackend` through a named bridge
+  that repacks Metal-owned secure columns into the bounded Metal fold kernels
+  and keeps `decompose` on the vendored CPU backend
+- deterministic parity tests for the `FriOps` trait surface
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
@@ -99,7 +103,7 @@ Still outside the implemented surface:
 
 - direct `MetalBackend` substitution for the first unchanged vendored upstream
   example prove/verify path
-- `FriOps` and `GkrOps` for `MetalBackend`
+- `GkrOps` for `MetalBackend`
 - `BackendForChannel` support, including lifted Merkle and proof-of-work
   surfaces
 - one earlier workload handoff from a witness-owned artifact into the

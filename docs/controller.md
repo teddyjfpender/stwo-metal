@@ -29,11 +29,12 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T7 fourth implementation slice: retire the explicit CPU prove bridge trait by trait`
+- Active tranche: `T7 fifth implementation slice: retire the remaining backend trait gaps after FriOps`
 - Objective:
-  widen `MetalBackend` across the next shared backend traits so the current
-  explicit CPU prove bridge shrinks from a generic backend gap into a smaller
-  and auditable set of remaining channel-backed requirements
+  close the remaining shared backend trait gaps after `FriOps` so the current
+  explicit CPU prove bridge shrinks from a generic backend gap into the
+  smaller set of lookup and channel-backed requirements that still block direct
+  `MetalBackend` substitution
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - Current owner area:
@@ -43,9 +44,9 @@ Invariants:
 
 - the project goal had drifted toward benchmark-specific proving rows instead
   of a generic Stwo proving backend
-- `MetalBackend` now implements `ColumnOps`, `PolyOps`, `AccumulationOps`, and
-  `QuotientOps`, but it still does not satisfy the full Stwo `Backend`
-  contract because `FriOps` and `GkrOps` remain open
+- `MetalBackend` now implements `ColumnOps`, `PolyOps`, `AccumulationOps`,
+  `QuotientOps`, and `FriOps`, but the backend contract still remains open at
+  the lookup layer because `GkrOps` is not implemented yet
 - internal Rust vocabulary is still CUDA-first in many places
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
@@ -53,8 +54,8 @@ Invariants:
 - only the first upstream example prove/verify slice exists so far:
   `wide_fibonacci` now proves and verifies through an acceptance fixture, but
   the proving path still crosses an explicit CPU bridge because direct
-  `MetalBackend` substitution still lacks `FriOps`, `GkrOps`, and
-  `BackendForChannel` support
+  `MetalBackend` substitution still lacks `GkrOps` and `BackendForChannel`
+  support
 - the example-backed acceptance harness is now reusable for single-trace
   Blake2s-backed CPU bridge flows, but only `wide_fibonacci` uses it so far
 - the declared `wide_fibonacci` benchmark target remains useful for
@@ -63,15 +64,14 @@ Invariants:
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - the remaining shared trait gap after the new bridge tranche starts at
-  `FriOps`, not another workload-specific acceptance harness
+  `GkrOps`, not another workload-specific acceptance harness
 
 ## Next three deliverables
 
-1. Land the next shared backend-completion slice at the `FriOps` boundary for
-   `MetalBackend`, reusing the existing bounded Metal FRI helpers where they
-   are already truthful and naming any remaining CPU bridge explicitly.
-2. Follow `FriOps` with the next honest trait gap rather than adding another
-   example row too early.
+1. Land the next shared backend-completion slice at the lookup boundary,
+   starting with `MleOps` and `GkrOps` for `MetalBackend`.
+2. Follow the lookup tranche with the next honest channel-backed gap rather
+   than adding another example row too early.
 3. Add the next upstream example through the reusable acceptance harness only
    after a shared backend slice meaningfully widens direct proving support.
 

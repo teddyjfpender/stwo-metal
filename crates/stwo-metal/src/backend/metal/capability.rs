@@ -10,6 +10,7 @@ pub enum MetalBackendSurface {
     PolyOpsCpuBridge,
     AccumulationOpsCpuBridge,
     QuotientOpsCpuBridge,
+    FriOpsCpuBridge,
     BaseFieldColumnSet,
     BaseFieldColumnFromIterator,
     BaseFieldColumnBitReverse,
@@ -56,6 +57,7 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::PolyOpsCpuBridge,
     MetalBackendSurface::AccumulationOpsCpuBridge,
     MetalBackendSurface::QuotientOpsCpuBridge,
+    MetalBackendSurface::FriOpsCpuBridge,
     MetalBackendSurface::BaseFieldColumnSet,
     MetalBackendSurface::BaseFieldColumnFromIterator,
     MetalBackendSurface::BaseFieldColumnBitReverse,
@@ -123,7 +125,8 @@ pub const fn metal_backend_surface_status(
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
         MetalBackendSurface::AccumulationOpsCpuBridge
-        | MetalBackendSurface::QuotientOpsCpuBridge => {
+        | MetalBackendSurface::QuotientOpsCpuBridge
+        | MetalBackendSurface::FriOpsCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
         MetalBackendSurface::QuotientAccumulate => MetalBackendSurfaceStatus::UnsupportedPlanned,
@@ -152,6 +155,9 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::QuotientOpsCpuBridge => {
             "The `QuotientOps` boundary is supported through an explicit CPU bridge over Metal-owned evaluation and accumulation storage."
+        }
+        MetalBackendSurface::FriOpsCpuBridge => {
+            "The `FriOps` boundary is supported through an explicit CPU bridge that repacks Metal-owned secure columns into the bounded Metal fold kernels and uses the vendored CPU backend for decomposition."
         }
         MetalBackendSurface::BaseFieldColumnSet => "Base-field Metal column mutation is supported.",
         MetalBackendSurface::BaseFieldColumnFromIterator => {
