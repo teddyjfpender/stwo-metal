@@ -8,9 +8,10 @@ use stwo_metal::{
     CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan, MetalBackend,
     MetalBaseFieldVec, MetalExecutionIntent, MetalExecutionPlan, MetalFriBlake2sSubpath,
     MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice, MetalFriLayerDecommitment,
-    MetalFriProofSlice, MetalFriProver, MetalHybridFriWorkload, MetalLineCommitment,
-    MetalLineEvaluation, MetalSecureFieldVec, MetalWorkloadBoundary, MetalWorkloadOwnership,
-    MetalWorkloadStage, OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
+    MetalFriProofSlice, MetalFriProver, MetalFriReadyEvaluationInput, MetalHybridFriWorkload,
+    MetalLineCommitment, MetalLineEvaluation, MetalSecureFieldVec, MetalWorkloadBoundary,
+    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+    OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
     STWO_CUDA_BACKEND_SURFACES_V1,
 };
 
@@ -29,7 +30,9 @@ fn companion_surface_exports_backend_core_types() {
     >();
     let _ = std::mem::size_of::<MetalFriBlake2sSubpath>();
     let _ = std::mem::size_of::<MetalFriLayerDecommitment<Blake2sMerkleHasher>>();
+    let _ = std::mem::size_of::<MetalFriReadyEvaluationInput>();
     let _ = std::mem::size_of::<MetalWorkloadBoundary>();
+    let _ = std::mem::size_of::<MetalWorkloadHandoffError<'static>>();
     let _ = std::mem::size_of::<MetalHybridFriWorkload>();
     let _ = std::mem::size_of::<MetalLineEvaluation>();
     let _ = std::mem::size_of::<MetalLineCommitment<Blake2sMerkleHasher>>();

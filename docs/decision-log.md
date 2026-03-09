@@ -966,3 +966,49 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0025: The first executable workload handoff starts at a CPU-owned FRI-ready evaluation
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The first executable workload handoff for the declared hybrid workload
+boundary is:
+
+- a CPU-owned `SecureEvaluation<CpuBackend, BitReversedOrder>`
+- on a canonic circle domain
+- materialized into a `MetalSecureFieldVec` only at the explicit workload
+  handoff boundary
+
+The workload API names this as a FRI-ready evaluation handoff. It does not
+claim witness, quotient, or PCS generation has moved.
+
+Context:
+
+The hybrid workload boundary made stage ownership explicit, but callers still
+had to pass an already-uploaded Metal column with no named contract. The next
+truthful step was to freeze the earliest executable handoff we currently own
+without pretending earlier workload stages are already ported.
+
+Alternatives rejected:
+
+- keep taking raw `MetalSecureFieldVec` inputs with no workload-handoff contract
+- claim witness, quotient, or PCS ownership had already crossed into the
+  executable Metal path
+
+Impact:
+
+- `stwo-metal` now has an executable workload handoff with deterministic
+  CPU-oracle parity
+- the remaining workload gap is narrower and explicit: the executable boundary
+  still starts after witness, quotient, and PCS preparation
+- `TD-0011` remains active for that earlier-stage gap
+
+Superseded by:
+
+- none

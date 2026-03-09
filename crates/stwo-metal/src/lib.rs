@@ -52,7 +52,8 @@ pub mod planner {
 pub mod workload {
     pub use crate::backend::metal::{
         declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
-        MetalHybridFriWorkload, MetalWorkloadBoundary, MetalWorkloadOwnership, MetalWorkloadStage,
+        MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalWorkloadBoundary,
+        MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
         MetalWorkloadStageAssignment,
     };
 }
@@ -104,7 +105,8 @@ pub use witness::{
 #[cfg(feature = "prover")]
 pub use workload::{
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
-    MetalHybridFriWorkload, MetalWorkloadBoundary, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalWorkloadBoundary,
+    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     MetalWorkloadStageAssignment,
 };
 

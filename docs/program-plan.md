@@ -83,6 +83,8 @@ Current completed T5 supporting slices are:
 - manifest-driven workload planner for exemplar Stwo workloads
 - declared hybrid workload boundary with explicit witness, quotient, PCS, and
   Metal FRI ownership
+- executable CPU-owned FRI-ready evaluation handoff into the declared hybrid
+  workload boundary
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
@@ -93,5 +95,5 @@ The first declared T5 proving sub-path candidate is:
 
 The next required T5 boundary is:
 
-- one executable handoff from a CPU-owned workload artifact into the declared
-  hybrid workload boundary
+- one earlier workload handoff for `fibonacci_example` before the current
+  FRI-ready evaluation boundary

@@ -35,6 +35,7 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
         MetalBackendSurface::FriProverTranscriptOwnedBounded,
         MetalBackendSurface::FriBlake2sSubpathDeclared,
         MetalBackendSurface::WorkloadBoundaryHybridDeclared,
+        MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff,
     ] {
         assert_eq!(
             metal_backend_surface_status(surface),

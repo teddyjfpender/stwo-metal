@@ -48,7 +48,8 @@ pub use sequence::MetalFriInnerLayerSequence;
 pub use subpath::MetalFriBlake2sSubpath;
 pub use workload::{
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
-    MetalHybridFriWorkload, MetalWorkloadBoundary, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalWorkloadBoundary,
+    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     MetalWorkloadStageAssignment,
 };
 

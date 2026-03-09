@@ -45,9 +45,9 @@ Invariants:
 - the bounded FRI commitment slice now exists, but its last-layer
   interpolation still crosses an explicit CPU bridge rather than a native
   `stwo-metal` interpolation boundary
-- one declared hybrid workload boundary now exists, but it still begins at a
-  precomputed FRI-ready `SecureFieldVec` instead of a stable handoff from a
-  CPU-owned witness, quotient, or PCS artifact
+- one executable CPU-owned FRI-ready evaluation handoff now exists, but the
+  executable hybrid workload still starts after witness, quotient, and PCS
+  preparation rather than owning an earlier workload artifact boundary
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - interpolation, evaluation, and trace-generation primitives are still outside
@@ -55,11 +55,10 @@ Invariants:
 
 ## Next three deliverables
 
-1. Freeze one executable workload handoff that moves a CPU-owned FRI-ready
-   evaluation into the declared Metal hybrid workload boundary without hiding
-   ownership.
+1. Freeze one earlier workload handoff for `fibonacci_example`, before the
+   FRI-ready evaluation boundary if possible.
 2. Decide whether quotient accumulation or PCS commitment is the next native
-   proving-stage replacement after that handoff lands.
+   proving-stage replacement after that earlier handoff is selected.
 3. Keep the unsupported matrix, explicit CPU bridges, and CPU-oracle parity
    coverage explicit as the path grows.
 

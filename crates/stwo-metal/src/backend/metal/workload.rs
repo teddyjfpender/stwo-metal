@@ -1,7 +1,10 @@
 use stwo::core::fri::FriConfig;
 use stwo::core::poly::circle::CircleDomain;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
+use stwo::prover::backend::CpuBackend;
 use stwo::prover::fri::FriDecommitResult;
+use stwo::prover::poly::circle::SecureEvaluation;
+use stwo::prover::poly::BitReversedOrder;
 
 use super::planner::{
     plan_metal_operation, MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind,
@@ -60,6 +63,68 @@ impl MetalWorkloadBoundary {
             .find(|assignment| assignment.stage == stage)
             .map(|assignment| assignment.ownership)
     }
+
+    pub fn ingest_cpu_fri_ready_evaluation(
+        &self,
+        evaluation: &SecureEvaluation<CpuBackend, BitReversedOrder>,
+    ) -> Result<MetalFriReadyEvaluationInput, MetalWorkloadHandoffError<'static>> {
+        if !matches!(
+            self.plan,
+            MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull
+        ) {
+            return Err(MetalWorkloadHandoffError::PlanNotMetalCapable {
+                workload_name: self.workload_name,
+                plan: self.plan,
+            });
+        }
+        if !evaluation.domain.is_canonic() {
+            return Err(MetalWorkloadHandoffError::NonCanonicDomain {
+                workload_name: self.workload_name,
+            });
+        }
+
+        Ok(MetalFriReadyEvaluationInput {
+            workload_name: self.workload_name,
+            domain: evaluation.domain,
+            column: SecureFieldVec::from_vec(evaluation.values.to_vec()),
+        })
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalWorkloadHandoffError<'a> {
+    PlanNotMetalCapable {
+        workload_name: &'a str,
+        plan: MetalExecutionPlan,
+    },
+    NonCanonicDomain {
+        workload_name: &'a str,
+    },
+    WorkloadMismatch {
+        expected_workload: &'a str,
+        actual_workload: &'a str,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct MetalFriReadyEvaluationInput {
+    workload_name: &'static str,
+    domain: CircleDomain,
+    column: SecureFieldVec,
+}
+
+impl MetalFriReadyEvaluationInput {
+    pub fn workload_name(&self) -> &'static str {
+        self.workload_name
+    }
+
+    pub fn domain(&self) -> CircleDomain {
+        self.domain
+    }
+
+    pub fn column(&self) -> &SecureFieldVec {
+        &self.column
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -83,6 +148,28 @@ impl MetalHybridFriWorkload {
         domain: CircleDomain,
     ) -> FriDecommitResult<Blake2sMerkleHasher> {
         self.fri_subpath.prove(column, domain)
+    }
+
+    pub fn prove_input(
+        &self,
+        input: &MetalFriReadyEvaluationInput,
+    ) -> Result<FriDecommitResult<Blake2sMerkleHasher>, MetalWorkloadHandoffError<'static>> {
+        if input.workload_name() != self.boundary.workload_name() {
+            return Err(MetalWorkloadHandoffError::WorkloadMismatch {
+                expected_workload: self.boundary.workload_name(),
+                actual_workload: input.workload_name(),
+            });
+        }
+
+        Ok(self.prove(input.column(), input.domain()))
+    }
+
+    pub fn prove_from_cpu_evaluation(
+        &self,
+        evaluation: &SecureEvaluation<CpuBackend, BitReversedOrder>,
+    ) -> Result<FriDecommitResult<Blake2sMerkleHasher>, MetalWorkloadHandoffError<'static>> {
+        let input = self.boundary.ingest_cpu_fri_ready_evaluation(evaluation)?;
+        self.prove_input(&input)
     }
 }
 
@@ -206,9 +293,16 @@ pub fn declare_exemplar_hybrid_fri_workload(
 
 #[cfg(test)]
 mod tests {
+    use stwo::core::fields::m31::BaseField;
+    use stwo::core::fields::qm31::SecureField;
+    use stwo::core::poly::circle::CanonicCoset;
+    use stwo::prover::backend::cpu::CpuCirclePoly;
+    use stwo::prover::poly::circle::{PolyOps, SecureEvaluation};
+    use stwo::prover::poly::BitReversedOrder;
+
     use super::{
         declare_exemplar_metal_workload_boundary, MetalExecutionIntent, MetalExecutionPlan,
-        MetalWorkloadOwnership, MetalWorkloadStage,
+        MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     };
 
     #[test]
@@ -241,6 +335,78 @@ mod tests {
         assert_eq!(
             boundary.stage_ownership(MetalWorkloadStage::WitnessInteraction),
             Some(MetalWorkloadOwnership::CpuOwned)
+        );
+    }
+
+    #[test]
+    fn boundary_ingests_cpu_fri_ready_evaluation() {
+        const LOG_SIZE: u32 = 5;
+
+        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+        let values = CpuCirclePoly::new(
+            (1..=(1 << 4))
+                .map(|i| BaseField::from_u32_unchecked(i))
+                .collect(),
+        )
+        .evaluate(domain)
+        .values
+        .into_iter()
+        .map(SecureField::from)
+        .collect::<Vec<_>>();
+        let evaluation = SecureEvaluation::<CpuBackend, BitReversedOrder>::new(
+            domain,
+            values.clone().into_iter().collect(),
+        );
+        let boundary = declare_exemplar_metal_workload_boundary(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+        )
+        .unwrap();
+
+        let input = boundary
+            .ingest_cpu_fri_ready_evaluation(&evaluation)
+            .unwrap();
+
+        assert_eq!(input.workload_name(), "fibonacci_example");
+        assert_eq!(input.domain(), domain);
+        assert_eq!(input.column().to_vec(), values);
+    }
+
+    #[test]
+    fn cpu_only_boundary_rejects_fri_ready_handoff() {
+        const LOG_SIZE: u32 = 5;
+
+        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+        let values = CpuCirclePoly::new(
+            (1..=(1 << 4))
+                .map(|i| BaseField::from_u32_unchecked(i))
+                .collect(),
+        )
+        .evaluate(domain)
+        .values
+        .into_iter()
+        .map(SecureField::from)
+        .collect::<Vec<_>>();
+        let evaluation = SecureEvaluation::<CpuBackend, BitReversedOrder>::new(
+            domain,
+            values.into_iter().collect(),
+        );
+        let boundary = declare_exemplar_metal_workload_boundary(
+            MetalExecutionIntent::ForceCpu,
+            "fibonacci_example",
+        )
+        .unwrap();
+
+        let error = boundary
+            .ingest_cpu_fri_ready_evaluation(&evaluation)
+            .unwrap_err();
+
+        assert_eq!(
+            error,
+            MetalWorkloadHandoffError::PlanNotMetalCapable {
+                workload_name: "fibonacci_example",
+                plan: MetalExecutionPlan::CpuOnly,
+            }
         );
     }
 }

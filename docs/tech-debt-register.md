@@ -372,9 +372,10 @@ Target retirement point:
 Why it exists now:
 
 `stwo-metal` now has a declared hybrid workload boundary with explicit witness,
-quotient, PCS, and FRI ownership, but the executable path still begins at a
-precomputed `SecureFieldVec` that is already FRI-ready. The CPU-owned stages
-are named, but they do not yet feed the boundary through one stable handoff.
+quotient, PCS, and FRI ownership, and it now has an executable handoff from a
+CPU-owned FRI-ready evaluation. The CPU-owned stages are named, but witness,
+quotient, and PCS artifacts do not yet feed the boundary through an earlier
+stable handoff.
 
 Current containment:
 
@@ -384,8 +385,8 @@ Current containment:
 Risk if left in place:
 
 The project could sound more workload-complete than it really is, even though
-the executable hybrid path still relies on callers to prepare the FRI input
-artifact outside the declared workload boundary.
+the executable hybrid path still begins after witness, quotient, and PCS
+preparation.
 
 Exit condition:
 
