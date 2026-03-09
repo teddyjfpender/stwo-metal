@@ -72,6 +72,7 @@ Current completed T5 supporting slices are:
   deterministic vendored CPU parity
 - native `MetalLineEvaluation` and first inner-layer commitment root parity
 - native first inner-layer query and decommit parity
+- bounded native first inner-layer proof row
 - explicit CPU bridge retained as a bounded validation path for the same
   boundary
 
@@ -82,4 +83,4 @@ The first declared T5 proving sub-path candidate is:
 
 The next required T5 boundary is:
 
-- first bounded native FRI inner-layer proof row
+- bounded native FRI inner-layer sequence

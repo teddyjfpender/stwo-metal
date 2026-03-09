@@ -595,3 +595,41 @@ Impact:
 Superseded by:
 
 - none
+
+### DEC-0016: The first inner FRI layer is now packaged as a bounded native proof row
+
+- Date: `2026-03-09`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The native first inner FRI layer is now exposed as a bounded proof-facing row
+with:
+
+- a stable commitment root
+- a stable fold step
+- a stable decommit API that returns the vendored FRI layer proof shape
+
+Context:
+
+Raw native commit and decommit helpers were not yet a truthful proving-facing
+surface. The project needed one explicit row abstraction before it could grow
+into a multi-layer native inner FRI sequence.
+
+Alternatives rejected:
+
+- keep the native inner-layer surface as loose functions only
+- jump straight to a wider sequence API before the first row had a stable
+  boundary
+
+Impact:
+
+- the first inner FRI layer now has a single proof-facing row abstraction
+- the next T5 boundary is the bounded native inner-layer sequence
+
+Superseded by:
+
+- none

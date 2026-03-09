@@ -48,12 +48,13 @@ Implemented against this note:
 - bounded FRI `fold_line` through repeated host-orchestrated Metal fold steps
 - native `MetalLineEvaluation` and first inner-layer commitment root parity
 - native first inner-layer query and decommit parity
+- bounded native first inner-layer proof row
 - explicit CPU bridge from Metal line values into `LineEvaluation<CpuBackend>`
   retained as a bounded validation path
 
 Still outside the implemented surface:
 
-- first bounded native FRI inner-layer proof row
+- bounded native FRI inner-layer sequence
 - interpolation, evaluation, and trace-support primitives beyond the bounded
   FRI arithmetic surface
 - any truthful end-to-end proving claim
