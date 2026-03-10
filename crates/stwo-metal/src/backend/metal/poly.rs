@@ -7,6 +7,7 @@ use stwo::prover::backend::{Col, CpuBackend};
 use stwo::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use stwo::prover::poly::twiddles::TwiddleTree;
 use stwo::prover::poly::BitReversedOrder;
+use stwo_metal_sys::metal::{MetalError, U32Buffer};
 
 use super::MetalBackend;
 use crate::stwo_metal::base_field_vec::BaseFieldVec;
@@ -42,6 +43,51 @@ fn into_metal_circle_eval(
     eval: CpuCircleEvaluation<BaseField, BitReversedOrder>,
 ) -> CircleEvaluation<MetalBackend, BaseField, BitReversedOrder> {
     CircleEvaluation::new(eval.domain, BaseFieldVec::from_vec(eval.values))
+}
+
+fn point_xy(point: CirclePoint<BaseField>) -> [u32; 2] {
+    [point.x.0, point.y.0]
+}
+
+fn precompute_twiddles_native(coset: Coset) -> Result<TwiddleTree<MetalBackend>, MetalError> {
+    let mut twiddles = U32Buffer::uninitialized(coset.size())?;
+    let mut current_initial = coset.initial;
+    let mut current_step = coset.step;
+    let mut current_log_size = coset.log_size();
+    let mut offset = 0usize;
+
+    while current_log_size > 0 {
+        let level_len = 1usize << (current_log_size - 1);
+        twiddles.write_twiddle_level(
+            offset,
+            point_xy(current_initial),
+            point_xy(current_step),
+            current_log_size,
+        )?;
+        offset += level_len;
+        current_initial = current_initial.double();
+        current_step = current_step.double();
+        current_log_size -= 1;
+    }
+
+    twiddles.set(coset.size() - 1, 1);
+
+    let mut itwiddles = twiddles.clone();
+    itwiddles.invert_m31_in_place()?;
+
+    Ok(TwiddleTree {
+        root_coset: coset,
+        twiddles: twiddles
+            .to_vec()?
+            .into_iter()
+            .map(BaseField::from_u32_unchecked)
+            .collect(),
+        itwiddles: itwiddles
+            .to_vec()?
+            .into_iter()
+            .map(BaseField::from_u32_unchecked)
+            .collect(),
+    })
 }
 
 impl PolyOps for MetalBackend {
@@ -125,12 +171,8 @@ impl PolyOps for MetalBackend {
     }
 
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self> {
-        let cpu_twiddles = CpuBackend::precompute_twiddles(coset);
-        TwiddleTree {
-            root_coset: cpu_twiddles.root_coset,
-            twiddles: cpu_twiddles.twiddles,
-            itwiddles: cpu_twiddles.itwiddles,
-        }
+        precompute_twiddles_native(coset)
+            .expect("Metal twiddle precompute should produce native parity-tested twiddles")
     }
 
     fn split_at_mid(

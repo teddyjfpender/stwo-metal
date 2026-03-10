@@ -11,6 +11,8 @@ Rules:
 
 Current compile-active Metal sources wired by `build.rs`:
 
+- `fields.metal`
+- `twiddles.metal`
 - `bit_reverse.metal`
 - `poly_order.metal`
 - `fri.metal`
@@ -18,10 +20,13 @@ Current compile-active Metal sources wired by `build.rs`:
 - `quotient.metal`
 - `runtime.m`
 
-Current scaffold-only mirror files for the native hot path:
+Current parity-tested native files:
 
 - `fields.metal`
 - `twiddles.metal`
+
+Current scaffold-only mirror files for the native hot path:
+
 - `rfft.metal`
 - `ifft.metal`
 - `poly_utils.metal`

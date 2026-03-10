@@ -65,8 +65,8 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T8 first implementation slice: establish the mirrored
-native Metal subsystem for the hot path`, as tracked in
+The active tranche is `T8 second implementation slice: retire the twiddle CPU
+bridge and move into FFT/poly kernels`, as tracked in
 [`controller.md`](./controller.md) and sequenced by
 [`roadmap.md`](./roadmap.md).
 
@@ -198,13 +198,19 @@ The first active T8 supporting slices are:
 - the first T8 implementation slice is to land the structural mirror under
   `crates/stwo-metal-sys/metal` with explicit implementation-status marking
   before claiming new native support
+- `fields.metal` now contains the first compile-active reusable M31 kernel for
+  native inversion
+- `twiddles.metal` now contains the first compile-active native twiddle level
+  generator
+- `MetalBackend::precompute_twiddles` now retires the host twiddle bridge and
+  validates native twiddle and inverse-twiddle output directly against the
+  vendored CPU oracle
 
 The next required T8 boundary is:
 
-- land the mirrored native file set under `crates/stwo-metal-sys/metal`
 - keep compile-active Metal files explicit and separate from scaffold-only
   mirror files
-- begin real implementation at `fields` and `twiddles`, then move directly
-  into FFT/poly support in the declared order
+- begin real FFT/poly implementation at `rfft` and `ifft`, then move directly
+  into `poly_utils` in the declared order
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

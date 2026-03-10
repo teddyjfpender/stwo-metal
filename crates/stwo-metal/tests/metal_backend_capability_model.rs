@@ -22,6 +22,7 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
         MetalBackendSurface::BaseFieldColumnSet,
         MetalBackendSurface::BaseFieldColumnFromIterator,
         MetalBackendSurface::BaseFieldColumnBitReverse,
+        MetalBackendSurface::BaseFieldTwiddlePrecomputeNative,
         MetalBackendSurface::BaseFieldCosetToCircleDomainBitReverse,
         MetalBackendSurface::SecureFieldColumnSet,
         MetalBackendSurface::SecureFieldColumnFromIterator,

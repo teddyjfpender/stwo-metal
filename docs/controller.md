@@ -29,7 +29,7 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T8 first implementation slice: establish the mirrored native Metal subsystem for the hot path`
+- Active tranche: `T8 second implementation slice: retire the twiddle CPU bridge and move into FFT/poly kernels`
 - Objective:
   return from acceptance closure to native performance work by mirroring the
   active CUDA hot-path structure into `stwo-metal-sys/metal` and porting it in
@@ -61,6 +61,8 @@ Invariants:
 - the native performance lane is still structurally lopsided:
   `stwo-metal-sys/cuda` is a full subsystem while `stwo-metal-sys/metal`
   remains a thin frontier
+- `fields.metal` and `twiddles.metal` are now compile-active and parity-tested,
+  but `rfft` / `ifft` and the rest of the FFT/poly path are still unported
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
@@ -78,14 +80,12 @@ Invariants:
 ## Next three deliverables
 
 1. Land the mirrored native file set under
-   `crates/stwo-metal-sys/metal` for the first hot-path tranche:
-   `fields`, `twiddles`, `rfft`, `ifft`, `poly_utils`, `quotients`,
-   `fold_circle_into_line`, `fold_line`, `prefix_sum`, `mle`, and `gkr`.
-2. Keep the compile-active Metal files explicit and separate from scaffold-only
-   mirror files so the repo does not overclaim support.
-3. Start real native implementation and parity retirement at `fields` and
-   `twiddles`, then move through FFT/poly support toward the benchmark-facing
-   quotient and fold path.
+   `crates/stwo-metal-sys/metal` for the FFT/poly tranche:
+   `rfft`, `ifft`, and `poly_utils`.
+2. Keep `fields.metal` and `twiddles.metal` recorded as compile-active and
+   parity-tested so the repo does not regress to a hidden CPU twiddle bridge.
+3. Start real FFT/poly implementation at `rfft` and `ifft`, then move through
+   `poly_utils` toward the benchmark-facing quotient and fold path.
 
 ## Explicitly not doing now
 

@@ -206,6 +206,51 @@ impl U32Buffer {
         }
     }
 
+    pub fn invert_m31_in_place(&mut self) -> Result<(), MetalError> {
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::invert_m31_values_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                self.len,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
+    pub fn write_twiddle_level(
+        &mut self,
+        offset: usize,
+        initial_xy: [u32; 2],
+        step_xy: [u32; 2],
+        level_log_size: u32,
+    ) -> Result<(), MetalError> {
+        assert!(
+            level_log_size > 0,
+            "twiddle precompute requires a non-zero level_log_size"
+        );
+        let level_len = 1usize << (level_log_size - 1);
+        assert!(
+            offset + level_len <= self.len,
+            "twiddle level offset {} with level length {} exceeds buffer len {}",
+            offset,
+            level_len,
+            self.len
+        );
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::precompute_twiddle_level_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                offset,
+                initial_xy,
+                step_xy,
+                level_log_size,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
     pub fn permute_coset_to_circle_domain_bit_reversed(&self) -> Result<Self, MetalError> {
         assert!(
             self.len.is_power_of_two(),
@@ -521,6 +566,25 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_invert_m31_values_u32(
+            runtime: *mut c_void,
+            buffer: *mut c_void,
+            len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_precompute_twiddle_level_u32(
+            runtime: *mut c_void,
+            dst: *mut c_void,
+            offset: u32,
+            initial_x: u32,
+            initial_y: u32,
+            step_x: u32,
+            step_y: u32,
+            level_log_size: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_permute_coset_to_circle_domain_bit_reversed_u32(
             runtime: *mut c_void,
             src: *mut c_void,
@@ -717,6 +781,57 @@ mod ffi {
             runtime,
             buffer,
             log_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn invert_m31_values_u32(
+        runtime: *mut c_void,
+        buffer: *mut c_void,
+        len: usize,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_invert_m31_values_u32(
+            runtime,
+            buffer,
+            len.try_into()
+                .expect("Metal inversion length should fit in u32"),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn precompute_twiddle_level_u32(
+        runtime: *mut c_void,
+        dst: *mut c_void,
+        offset: usize,
+        initial_xy: [u32; 2],
+        step_xy: [u32; 2],
+        level_log_size: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_precompute_twiddle_level_u32(
+            runtime,
+            dst,
+            offset
+                .try_into()
+                .expect("Metal twiddle offset should fit in u32"),
+            initial_xy[0],
+            initial_xy[1],
+            step_xy[0],
+            step_xy[1],
+            level_log_size,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -953,6 +1068,31 @@ mod ffi {
         _runtime: *mut c_void,
         _buffer: *mut c_void,
         _log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn invert_m31_values_u32(
+        _runtime: *mut c_void,
+        _buffer: *mut c_void,
+        _len: usize,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn precompute_twiddle_level_u32(
+        _runtime: *mut c_void,
+        _dst: *mut c_void,
+        _offset: usize,
+        _initial_xy: [u32; 2],
+        _step_xy: [u32; 2],
+        _level_log_size: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

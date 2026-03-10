@@ -28,6 +28,47 @@ Superseded by:
 
 ## Entries
 
+### DEC-0045: The first compile-active native T8 replacement retires the Metal twiddle CPU bridge before FFT/poly kernels are attempted
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The first real native T8 replacement is `MetalBackend::precompute_twiddles`.
+`fields.metal` and `twiddles.metal` are now compile-active, and twiddle plus
+inverse-twiddle generation is retired from the previous CPU bridge before any
+attempt to port `rfft`, `ifft`, or the rest of the FFT/poly path.
+
+Context:
+
+The mirrored native subsystem already existed structurally, but the generic
+`PolyOps` path still depended on CPU twiddle materialization. That was the
+smallest hot-path bridge to retire first because it sits below unchanged
+upstream example proving and above the next FFT/poly tranche. Porting twiddles
+before FFT kernels keeps the next tranche honest and measurable.
+
+Alternatives rejected:
+
+- start `rfft` or `ifft` while twiddle precompute still crosses the CPU bridge
+- widen the native port to multiple FFT/poly files before the first compile-active
+  `fields` and `twiddles` replacement is parity-tested
+- leave `fields.metal` scaffold-only while claiming `twiddles.metal` support
+
+Impact:
+
+- `fields.metal` and `twiddles.metal` are now compile-active native sources
+- `MetalBackend::precompute_twiddles` now validates native output directly
+  against the vendored CPU oracle
+- the next honest T8 tranche is `rfft` / `ifft`, not more twiddle scaffolding
+
+Superseded by:
+
+- none
+
 ### DEC-0044: Native performance work returns through a mirrored Metal subsystem that follows the CUDA hot-path structure file-for-file where replacement is intended
 
 - Date: `2026-03-10`

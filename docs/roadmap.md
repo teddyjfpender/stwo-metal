@@ -497,12 +497,11 @@ Current first implementation slice:
 
 Current next slice inside T8:
 
-- convert the current thin `metal/` frontier into a mirrored native subsystem
-  with the same hot-path names as `cuda/`
-- wire the roadmap, controller, and debt register to treat that mirrored
-  subsystem as the active performance lane
-- only after the mirror exists should new native Metal implementation slices
-  claim progress on the benchmark-facing backend
+- keep the mirrored native subsystem in place and explicit
+- treat `fields.metal` and `twiddles.metal` as compile-active,
+  parity-tested replacements
+- move directly into `rfft`, `ifft`, and `poly_utils` as the next FFT/poly
+  tranche on top of the native twiddle boundary
 
 ## Sequencing rules
 
@@ -516,9 +515,8 @@ Current next slice inside T8:
 
 ## Current next three planning deliverables
 
-1. Freeze the project definition around generic backend completion and
-   unchanged upstream example proving.
-2. Define the smallest honest `ComponentProver<MetalBackend>` path for
-   framework-backed vendored upstream examples.
-3. Retire the first explicit CPU prove bridge for `wide_fibonacci` before
-   onboarding more vendored upstream example rows.
+1. Land the native `rfft` slice on top of parity-tested Metal twiddles.
+2. Land the native `ifft` slice with deterministic parity against the vendored
+   CPU backend.
+3. Move the FFT/poly tranche into `poly_utils` before widening quotient and
+   fold performance work.

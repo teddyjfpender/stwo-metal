@@ -24,6 +24,15 @@
 @implementation StwoMetalBufferBox
 @end
 
+typedef struct {
+    uint32_t initial_x;
+    uint32_t initial_y;
+    uint32_t step_x;
+    uint32_t step_y;
+    uint32_t offset;
+    uint32_t level_log_size;
+} StwoMetalTwiddleLevelParams;
+
 static void stwo_metal_write_error(char *dst, size_t dst_len, NSString *message) {
     if (dst == NULL || dst_len == 0) {
         return;
@@ -373,6 +382,134 @@ bool stwo_metal_bit_reverse_u32x4(
             error_message,
             error_message_len
         );
+    }
+}
+
+bool stwo_metal_invert_m31_values_u32(
+    void *runtime_ptr,
+    void *buffer_ptr,
+    uint32_t len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *buffer = stwo_metal_buffer_box(buffer_ptr);
+        if (buffer.len != (NSUInteger)len) {
+            stwo_metal_write_error(error_message, error_message_len, @"M31 inversion expects a destination length matching len.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"invert_m31_values_u32", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:buffer.buffer offset:0 atIndex:0];
+        [encoder setBytes:&len length:sizeof(len) atIndex:1];
+
+        MTLSize grid_size = MTLSizeMake((NSUInteger)len, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_precompute_twiddle_level_u32(
+    void *runtime_ptr,
+    void *dst_ptr,
+    uint32_t offset,
+    uint32_t initial_x,
+    uint32_t initial_y,
+    uint32_t step_x,
+    uint32_t step_y,
+    uint32_t level_log_size,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        if (level_log_size == 0) {
+            stwo_metal_write_error(error_message, error_message_len, @"Twiddle precompute expects a level_log_size greater than zero.");
+            return false;
+        }
+
+        NSUInteger level_len = ((NSUInteger)1) << (level_log_size - 1);
+        if (((NSUInteger)offset) + level_len > dst.len) {
+            stwo_metal_write_error(error_message, error_message_len, @"Twiddle precompute level exceeds the destination buffer length.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"precompute_twiddle_level_u32", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        StwoMetalTwiddleLevelParams params = {
+            .initial_x = initial_x,
+            .initial_y = initial_y,
+            .step_x = step_x,
+            .step_y = step_y,
+            .offset = offset,
+            .level_log_size = level_log_size,
+        };
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:0];
+        [encoder setBytes:&params length:sizeof(params) atIndex:1];
+
+        MTLSize grid_size = MTLSizeMake(level_len, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
     }
 }
 
