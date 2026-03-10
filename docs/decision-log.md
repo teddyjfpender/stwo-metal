@@ -28,6 +28,53 @@ Superseded by:
 
 ## Entries
 
+### DEC-0070: Benchmark declaration metadata must be read from the same registered artifact seam as prove planning
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The Metal artifact registry now owns benchmark-facing identity metadata for
+declared workloads:
+
+- workload family
+- supported benchmark operations
+
+Declared benchmark boundaries must read that metadata from the registered
+artifact instead of assuming benchmark constants and planner manifests stay in
+sync by convention.
+
+Context:
+
+After the first G2 slice, planner and workload declarations already routed
+through the new private registry and execution-plan seam, but benchmark
+declarations were still only indirectly connected through workload names and
+hardcoded benchmark constants. This kept benchmark identity outside the same
+contract the roadmap had already frozen. Moving benchmark identity into the
+artifact seam widens the contract without widening the public API.
+
+Alternatives rejected:
+
+- keep benchmark identity purely as hardcoded constants
+- create a separate benchmark registry beside the artifact registry
+- wait until full generated fast-path support before tightening benchmark
+  metadata ownership
+
+Impact:
+
+- benchmark declarations now share the same private contract boundary as prove
+  planning
+- the next honest G2 gap is broader operation and workload-stage coverage, not
+  benchmark/workload identity drift
+
+Superseded by:
+
+- none
+
 ### DEC-0069: Metal planning must flow through one artifact-registry and execution-plan seam
 
 - Date: `2026-03-10`

@@ -22,13 +22,21 @@ pub struct MetalGeneratedInventory {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalRegisteredBenchmarkOperation {
+    TraceGeneration,
+    ProveVerify,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct MetalComponentArtifact {
     pub schema_version: u16,
     pub producer: MetalProducerIdentity,
     pub component_name: &'static str,
+    pub workload_family: &'static str,
     pub support_tier: MetalSupportTier,
     pub declared_capabilities: &'static [MetalComponentCapability],
     pub required_prove_capabilities: &'static [MetalComponentCapability],
+    pub supported_benchmark_operations: &'static [MetalRegisteredBenchmarkOperation],
     pub generated_inventory: MetalGeneratedInventory,
 }
 
@@ -105,6 +113,14 @@ impl MetalArtifactRegistry {
         component_name: &'a str,
         expected_schema_version: u16,
     ) -> Result<MetalComponentArtifact, MetalArtifactLookupError<'a>> {
+        self.artifact_by_name(component_name, expected_schema_version)
+    }
+
+    pub fn artifact_by_name<'a>(
+        &self,
+        component_name: &'a str,
+        expected_schema_version: u16,
+    ) -> Result<MetalComponentArtifact, MetalArtifactLookupError<'a>> {
         self.require_schema(expected_schema_version)?;
 
         let component = self
@@ -124,9 +140,11 @@ impl MetalArtifactRegistry {
             schema_version: self.schema_version,
             producer: self.producer,
             component_name: component.component_name,
+            workload_family: component.workload_family,
             support_tier: component.support_tier,
             declared_capabilities: component.declared_capabilities,
             required_prove_capabilities: component.required_prove_capabilities,
+            supported_benchmark_operations: component.supported_benchmark_operations,
             generated_inventory: self.generated_inventory,
         }
     }
@@ -135,7 +153,8 @@ impl MetalArtifactRegistry {
 #[cfg(test)]
 mod tests {
     use super::{
-        MetalArtifactLookupError, MetalOperationKind, STWO_METAL_ARTIFACT_REGISTRY_V1,
+        MetalArtifactLookupError, MetalOperationKind, MetalRegisteredBenchmarkOperation,
+        STWO_METAL_ARTIFACT_REGISTRY_V1,
         STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
     };
     use crate::backend::metal::planner::{MetalComponentCapability, MetalSupportTier};
@@ -162,6 +181,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(artifact.component_name, "fibonacci_example");
+        assert_eq!(artifact.workload_family, "wide_fibonacci");
         assert_eq!(artifact.support_tier, MetalSupportTier::FriOnly);
         assert_eq!(
             artifact.required_prove_capabilities,
@@ -175,6 +195,13 @@ mod tests {
         assert_eq!(
             artifact.as_plan_input(MetalOperationKind::Prove).component_name,
             "fibonacci_example"
+        );
+        assert_eq!(
+            artifact.supported_benchmark_operations,
+            &[
+                MetalRegisteredBenchmarkOperation::TraceGeneration,
+                MetalRegisteredBenchmarkOperation::ProveVerify,
+            ]
         );
     }
 }

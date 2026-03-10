@@ -97,6 +97,8 @@ The first G2 slice is now landed:
 - a private `ExecutionPlan` lowering seam exists in code
 - schema mismatch and unknown-component behavior are deterministic and tested
 - the public planner and workload declarations now route through that seam
+- benchmark declarations now also validate against registry-backed workload
+  family and operation metadata
 
 ## Foundation already available
 

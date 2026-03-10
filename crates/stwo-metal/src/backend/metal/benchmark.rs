@@ -1,5 +1,9 @@
 use stwo::core::fields::m31::BaseField;
 
+use super::artifact::{
+    MetalRegisteredBenchmarkOperation, STWO_METAL_ARTIFACT_REGISTRY_V1,
+    STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
+};
 use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::witness::{
     generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
@@ -157,6 +161,30 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
     intent: MetalExecutionIntent,
     target: MetalBenchmarkTarget,
 ) -> Result<MetalWideFibonacciBenchmarkBoundary, MetalPlannerError<'static>> {
+    let artifact = STWO_METAL_ARTIFACT_REGISTRY_V1
+        .artifact_by_name(target.workload_name, STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1)
+        .map_err(|_| {
+            MetalPlannerError::UnknownComponent(super::planner::UnknownMetalComponent {
+                component_name: target.workload_name,
+                operation: super::planner::MetalOperationKind::Prove,
+            })
+        })?;
+    let benchmark_operation = match target.operation {
+        MetalBenchmarkOperation::TraceGeneration => MetalRegisteredBenchmarkOperation::TraceGeneration,
+        MetalBenchmarkOperation::ProveVerify => MetalRegisteredBenchmarkOperation::ProveVerify,
+    };
+
+    assert_eq!(
+        artifact.workload_family, target.family,
+        "declared benchmark target family must match the registered artifact family"
+    );
+    assert!(
+        artifact
+            .supported_benchmark_operations
+            .contains(&benchmark_operation),
+        "declared benchmark operation must be supported by the registered artifact"
+    );
+
     let workload_boundary = declare_exemplar_metal_workload_boundary(intent, target.workload_name)?;
 
     Ok(MetalWideFibonacciBenchmarkBoundary {

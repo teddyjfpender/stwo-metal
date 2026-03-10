@@ -40,9 +40,11 @@ Why it exists now:
 The project has now frozen the generic backend and codegen contract, including
 the required proving artifact fields, fail-closed behavior, and separation
 between generic, generated, and temporary acceptance-only paths. A first
-private registry and execution-plan seam now exists in code, but it only covers
-the current planner-manifest subset and prove-planning path; it is not yet the
-finished shared boundary for the broader backend.
+private registry and execution-plan seam now exists in code, and declared
+benchmark boundaries now read workload family and benchmark-operation metadata
+from that same seam. The contract still only covers a limited planner-manifest
+subset and the prove-planning path; it is not yet the finished shared boundary
+for the broader backend.
 
 Current containment:
 
