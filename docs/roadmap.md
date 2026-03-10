@@ -144,6 +144,8 @@ The next active work is:
   binding helper for later scheduling work
 - derive the first scheduling-oriented execution seed from that reusable
   binding helper without widening runtime policy prematurely
+- consume that scheduling seed in the first non-declarative execution helper
+  so runtime scheduling starts from one canonical seed
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

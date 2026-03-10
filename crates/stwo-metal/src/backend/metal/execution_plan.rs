@@ -80,6 +80,18 @@ pub(crate) struct RegisteredMetalExecutionBinding {
     pub supported_benchmark_operations: &'static [MetalRegisteredBenchmarkOperation],
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RegisteredMetalExecutionSeed {
+    pub component_name: &'static str,
+    pub route: MetalGeneratedRouteKind,
+    pub plan: MetalExecutionPlan,
+    pub abi_symbols: &'static [&'static str],
+    pub build_modules: &'static [&'static str],
+    pub specialization_keys: &'static [&'static str],
+    pub stage_assignments: &'static [MetalWorkloadStageAssignment],
+    pub witness_hook: Option<&'static str>,
+}
+
 impl RegisteredMetalComponent {
     pub fn lowering_input(self) -> RegisteredMetalLoweringInput {
         let inventory = self.generated_inventory();
@@ -209,6 +221,30 @@ pub(crate) fn registered_benchmark_declaration_input(
     })
 }
 
+impl RegisteredMetalExecutionBinding {
+    pub fn execution_seed(self) -> RegisteredMetalExecutionSeed {
+        RegisteredMetalExecutionSeed {
+            component_name: self.declaration_lowering.component_name,
+            route: self.declaration_route,
+            plan: self.workload_boundary.plan,
+            abi_symbols: self.declaration_lowering.abi_symbols,
+            build_modules: self.declaration_lowering.build_modules,
+            specialization_keys: self.declaration_lowering.specialization_keys,
+            stage_assignments: self.workload_boundary.stage_assignments,
+            witness_hook: self.declaration_lowering.witness_hook,
+        }
+    }
+}
+
+pub(crate) fn registered_execution_seed(
+    intent: MetalExecutionIntent,
+    component_name: &'static str,
+    declaration_route: MetalGeneratedRouteKind,
+) -> Result<RegisteredMetalExecutionSeed, MetalPlannerError<'static>> {
+    registered_execution_binding(intent, component_name, declaration_route)
+        .map(RegisteredMetalExecutionBinding::execution_seed)
+}
+
 pub(crate) fn plan_registered_metal_prove<'a>(
     intent: MetalExecutionIntent,
     component_names: &'a [&'a str],
@@ -308,7 +344,7 @@ mod tests {
     use super::{
         plan_registered_metal_component_prove, plan_registered_metal_prove,
         registered_benchmark_declaration_input, registered_execution_binding,
-        registered_generated_artifact, registered_generated_component,
+        registered_execution_seed, registered_generated_artifact, registered_generated_component,
         registered_runtime_plan_input, registered_workload_boundary_input,
     };
     use crate::backend::metal::artifact::{
@@ -522,5 +558,29 @@ mod tests {
         assert!(binding
             .supported_benchmark_operations
             .contains(&MetalRegisteredBenchmarkOperation::TraceGeneration));
+    }
+
+    #[test]
+    fn registered_execution_seed_flattens_binding_for_scheduling() {
+        let seed = registered_execution_seed(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+            MetalGeneratedRouteKind::BenchmarkTraceGeneration,
+        )
+        .unwrap();
+
+        assert_eq!(seed.component_name, "fibonacci_example");
+        assert_eq!(
+            seed.route,
+            MetalGeneratedRouteKind::BenchmarkTraceGeneration
+        );
+        assert_eq!(seed.plan, MetalExecutionPlan::MetalFriHybrid);
+        assert!(seed
+            .abi_symbols
+            .iter()
+            .all(|symbol| symbol.starts_with("metal.")));
+        assert!(seed.build_modules.contains(&"benchmark"));
+        assert_eq!(seed.specialization_keys, &["log_n_instances", "n_columns"]);
+        assert_eq!(seed.witness_hook, Some("ingest_cpu_wide_fibonacci_witness"));
     }
 }

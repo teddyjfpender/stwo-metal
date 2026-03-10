@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 sixth slice: derive the first scheduling-oriented execution seed from the
-  reusable generated binding helper without widening runtime policy`
+  `G5 seventh slice: consume the scheduling seed in the first non-declarative
+  execution helper so runtime scheduling starts from one canonical seed`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -59,8 +59,8 @@ Invariants:
   and hand-tunable within this repository
 - generated inventory now names ABI symbols and specialization keys, is
   consumed by workload and benchmark declarations, and now feeds a reusable
-  execution-binding helper, but runtime scheduling still does not consume that
-  helper directly
+  execution-binding helper plus one scheduling seed, but no non-declarative
+  execution helper consumes that seed yet
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -81,8 +81,8 @@ Invariants:
 
 ## Next three deliverables
 
-1. Derive the first scheduling-oriented execution seed from the reusable
-   execution-binding helper for runtime-facing scheduling work.
+1. Consume the scheduling seed in the first non-declarative execution helper
+   so runtime scheduling starts from one canonical seed.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 starts lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate

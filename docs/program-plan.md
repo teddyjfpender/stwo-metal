@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 sixth slice: derive the first scheduling-oriented execution seed from the
-reusable generated binding helper without widening runtime policy`
+`G5 seventh slice: consume the scheduling seed in the first non-declarative
+execution helper so runtime scheduling starts from one canonical seed`
 
 The active formal basis is:
 
@@ -158,6 +158,14 @@ The fifth G5 slice is now landed:
   execution-binding helper
 - the next honest G5 step is runtime scheduling on top of that shared binding,
   not more boundary-shape cleanup
+
+The sixth G5 slice is now landed:
+
+- one scheduling-oriented execution seed now derives from the reusable binding
+  helper
+- the benchmark declaration path consumes that seed, so the next honest G5
+  work is a non-declarative execution helper rather than more declaration
+  normalization
 
 ## G2 progress snapshot
 

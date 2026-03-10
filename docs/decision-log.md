@@ -28,6 +28,44 @@ Superseded by:
 
 ## Entries
 
+### DEC-0090: The first scheduling-oriented execution seed must be consumed before deeper runtime scheduling widens
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Once a reusable generated execution binding exists, the next runtime-facing
+step is a scheduling-oriented execution seed. That seed must be consumed by a
+real non-declarative execution helper before the project adds deeper scheduling
+policy.
+
+Context:
+
+The binding helper normalized workload and benchmark declaration, but runtime
+scheduling still had no canonical seed. Deriving the seed first keeps runtime
+policy narrow and measurable. Consuming it next prevents the seed from
+becoming passive structure.
+
+Alternatives rejected:
+
+- jump directly to broader runtime scheduling without a canonical seed
+- keep scheduling-local metadata separate from the shared binding
+- treat the scheduling seed as documentation instead of live code
+
+Impact:
+
+- G5 now has a canonical seed for later scheduling work
+- the next honest slice is the first non-declarative execution helper on top
+  of that seed
+
+Superseded by:
+
+- none
+
 ### DEC-0089: Workload and benchmark lowering must converge on one reusable execution-binding helper before scheduling widens
 
 - Date: `2026-03-10`
