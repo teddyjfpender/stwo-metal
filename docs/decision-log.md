@@ -28,6 +28,46 @@ Superseded by:
 
 ## Entries
 
+### DEC-0082: Generated registration must carry explicit ABI symbols and specialization keys, not just route eligibility
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The stable internal generated-artifact registry must record explicit ABI
+symbols and specialization keys for each registered component in addition to
+route eligibility, ABI family, build modules, and witness hooks.
+
+Context:
+
+G2 already established a truthful fail-closed artifact registry and execution
+plan seam, but the registered inventory was still too thin. It could answer
+whether a generated route existed, yet it could not state which ABI surface or
+specialization dimensions a later lowering layer would rely on. G4 starts by
+making that richer inventory explicit before generated lowering grows around
+it.
+
+Alternatives rejected:
+
+- keep route eligibility as the only generated registration contract
+- infer ABI symbols and specialization dimensions heuristically during lowering
+- create a second generated metadata table outside the registry seam
+
+Impact:
+
+- generated registration is now rich enough to support later lowering work
+  without inventing side metadata channels
+- workload and benchmark declarations can next consume one richer inventory
+  surface instead of coupling directly to manifest details
+
+Superseded by:
+
+- none
+
 ### DEC-0081: The registered acceptance bridge catalog may move into a private shared support crate while remaining non-public
 
 - Date: `2026-03-10`

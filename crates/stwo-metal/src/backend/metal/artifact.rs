@@ -22,8 +22,10 @@ pub struct MetalGeneratedInventory {
     pub manifest_version: u16,
     pub registration_key: &'static str,
     pub abi_family: &'static str,
+    pub abi_symbols: &'static [&'static str],
     pub build_modules: &'static [&'static str],
     pub witness_hook: Option<&'static str>,
+    pub specialization_keys: &'static [&'static str],
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -72,13 +74,8 @@ impl MetalComponentArtifact {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalArtifactLookupError<'a> {
-    SchemaMismatch {
-        expected: u16,
-        found: u16,
-    },
-    UnknownComponent {
-        component_name: &'a str,
-    },
+    SchemaMismatch { expected: u16, found: u16 },
+    UnknownComponent { component_name: &'a str },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -162,6 +159,15 @@ impl MetalArtifactRegistry {
         Ok(artifact)
     }
 
+    pub fn generated_inventory_by_name<'a>(
+        &self,
+        component_name: &'a str,
+        expected_schema_version: u16,
+    ) -> Result<MetalGeneratedInventory, MetalArtifactLookupError<'a>> {
+        self.artifact_by_name(component_name, expected_schema_version)
+            .map(|artifact| artifact.generated_inventory)
+    }
+
     fn component_artifact(
         &self,
         component: &GeneratedMetalPlannerComponent,
@@ -181,18 +187,17 @@ impl MetalArtifactRegistry {
         }
     }
 
-    fn generated_inventory(
-        &self,
-        entry: GeneratedMetalInventoryEntry,
-    ) -> MetalGeneratedInventory {
+    fn generated_inventory(&self, entry: GeneratedMetalInventoryEntry) -> MetalGeneratedInventory {
         MetalGeneratedInventory {
             manifest_module: "planner_manifest_v1_generated",
             manifest_lookup_fn: "STWO_METAL_PLANNER_COMPONENTS_V1.iter().find",
             manifest_version: 1,
             registration_key: entry.registration_key,
             abi_family: entry.abi_family,
+            abi_symbols: entry.abi_symbols,
             build_modules: entry.build_modules,
             witness_hook: entry.witness_hook,
+            specialization_keys: entry.specialization_keys,
         }
     }
 }
@@ -248,7 +253,9 @@ mod tests {
             ]
         );
         assert_eq!(
-            artifact.as_plan_input(MetalOperationKind::Prove).component_name,
+            artifact
+                .as_plan_input(MetalOperationKind::Prove)
+                .component_name,
             "fibonacci_example"
         );
         assert_eq!(
@@ -259,13 +266,22 @@ mod tests {
             ]
         );
         assert_eq!(artifact.stage_assignments.len(), 5);
-        assert!(
-            artifact
-                .supported_generated_routes
-                .contains(&MetalGeneratedRouteKind::RegisteredProve)
+        assert!(artifact
+            .supported_generated_routes
+            .contains(&MetalGeneratedRouteKind::RegisteredProve));
+        assert_eq!(
+            artifact.generated_inventory.registration_key,
+            "fibonacci_example"
         );
-        assert_eq!(artifact.generated_inventory.registration_key, "fibonacci_example");
         assert_eq!(artifact.generated_inventory.abi_family, "wide_fibonacci");
+        assert_eq!(
+            artifact.generated_inventory.abi_symbols,
+            &[
+                "metal.trace.wide_fibonacci.v1",
+                "metal.quotient.wide_fibonacci.v1",
+                "metal.fri.blake2s.v1",
+            ]
+        );
         assert_eq!(
             artifact.generated_inventory.manifest_lookup_fn,
             "STWO_METAL_PLANNER_COMPONENTS_V1.iter().find"
@@ -274,6 +290,10 @@ mod tests {
         assert_eq!(
             artifact.generated_inventory.witness_hook,
             Some("ingest_cpu_wide_fibonacci_witness")
+        );
+        assert_eq!(
+            artifact.generated_inventory.specialization_keys,
+            &["log_n_instances", "n_columns"]
         );
     }
 
@@ -294,5 +314,17 @@ mod tests {
                 route: MetalGeneratedRouteKind::BenchmarkProveVerify,
             }
         );
+    }
+
+    #[test]
+    fn artifact_registry_exposes_generated_inventory_without_route_lookup() {
+        let inventory = STWO_METAL_ARTIFACT_REGISTRY_V1
+            .generated_inventory_by_name("xor_example", STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1)
+            .unwrap();
+
+        assert_eq!(inventory.registration_key, "xor_example");
+        assert_eq!(inventory.abi_family, "xor");
+        assert_eq!(inventory.abi_symbols, &["metal.acceptance.simd_bridge.v1"]);
+        assert_eq!(inventory.specialization_keys, &[] as &[&str]);
     }
 }

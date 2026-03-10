@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G4 first slice: widen the generated registration surface from route planning
-into explicit ABI and specialization inventory`
+`G4 second slice: make the richer generated inventory consumable by workload
+and benchmark declarations without bypassing the shared planning seam`
 
 The active formal basis is:
 
@@ -91,6 +91,17 @@ The active formal basis is:
   metadata is missing
 - route new generated registration queries through the existing stable
   artifact-registry and execution-plan seam instead of adding side tables
+
+## G4 progress snapshot
+
+The first G4 slice is now landed:
+
+- the generated artifact registry now exposes explicit ABI symbols in addition
+  to ABI family, build modules, and witness hooks
+- the generated artifact registry now records explicit specialization keys for
+  registered components
+- that richer inventory is queryable through the same stable internal
+  registry boundary instead of requiring route lookup first
 
 ## G2 progress snapshot
 

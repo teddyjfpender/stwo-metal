@@ -8,8 +8,10 @@ use super::workload_contract::{
 pub struct GeneratedMetalInventoryEntry {
     pub registration_key: &'static str,
     pub abi_family: &'static str,
+    pub abi_symbols: &'static [&'static str],
     pub build_modules: &'static [&'static str],
     pub witness_hook: Option<&'static str>,
+    pub specialization_keys: &'static [&'static str],
 }
 
 // Generated from the current bounded Metal workload declarations.
@@ -112,17 +114,24 @@ const FIBONACCI_EXAMPLE_BUILD_MODULES: &[&str] = &[
     "fri",
     "benchmark",
 ];
-
-const POSEIDON_EXAMPLE_BUILD_MODULES: &[&str] = &[
-    "planner_manifest_v1_generated",
-    "fri",
-    "workload",
+const FIBONACCI_EXAMPLE_ABI_SYMBOLS: &[&str] = &[
+    "metal.trace.wide_fibonacci.v1",
+    "metal.quotient.wide_fibonacci.v1",
+    "metal.fri.blake2s.v1",
 ];
+const FIBONACCI_EXAMPLE_SPECIALIZATION_KEYS: &[&str] = &["log_n_instances", "n_columns"];
 
-const ACCEPTANCE_BRIDGE_BUILD_MODULES: &[&str] = &[
-    "planner_manifest_v1_generated",
-    "acceptance_bridge",
-];
+const POSEIDON_EXAMPLE_BUILD_MODULES: &[&str] =
+    &["planner_manifest_v1_generated", "fri", "workload"];
+const POSEIDON_EXAMPLE_ABI_SYMBOLS: &[&str] =
+    &["metal.poseidon.acceptance.v1", "metal.fri.blake2s.v1"];
+const POSEIDON_EXAMPLE_SPECIALIZATION_KEYS: &[&str] = &["log_size", "interaction_columns"];
+
+const ACCEPTANCE_BRIDGE_BUILD_MODULES: &[&str] =
+    &["planner_manifest_v1_generated", "acceptance_bridge"];
+const FRAMEWORK_ACCEPTANCE_ABI_SYMBOLS: &[&str] = &["metal.acceptance.framework_bridge.v1"];
+const SIMD_ACCEPTANCE_ABI_SYMBOLS: &[&str] = &["metal.acceptance.simd_bridge.v1"];
+const NO_SPECIALIZATION_KEYS: &[&str] = &[];
 
 const FIBONACCI_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
     MetalWorkloadStageAssignment {
@@ -215,7 +224,8 @@ const XOR_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
     MetalWorkloadStageAssignment {
         stage: MetalWorkloadStage::WitnessMain,
         ownership: MetalWorkloadOwnership::CpuOwned,
-        detail: "The XOR MLE traces remain upstream-owned and CPU/SIMD-prepared in the acceptance lane.",
+        detail:
+            "The XOR MLE traces remain upstream-owned and CPU/SIMD-prepared in the acceptance lane.",
     },
     MetalWorkloadStageAssignment {
         stage: MetalWorkloadStage::WitnessInteraction,
@@ -252,8 +262,10 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
         generated_inventory: GeneratedMetalInventoryEntry {
             registration_key: "fibonacci_example",
             abi_family: "wide_fibonacci",
+            abi_symbols: FIBONACCI_EXAMPLE_ABI_SYMBOLS,
             build_modules: FIBONACCI_EXAMPLE_BUILD_MODULES,
             witness_hook: Some("ingest_cpu_wide_fibonacci_witness"),
+            specialization_keys: FIBONACCI_EXAMPLE_SPECIALIZATION_KEYS,
         },
     },
     GeneratedMetalPlannerComponent {
@@ -268,8 +280,10 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
         generated_inventory: GeneratedMetalInventoryEntry {
             registration_key: "poseidon_example",
             abi_family: "poseidon",
+            abi_symbols: POSEIDON_EXAMPLE_ABI_SYMBOLS,
             build_modules: POSEIDON_EXAMPLE_BUILD_MODULES,
             witness_hook: None,
+            specialization_keys: POSEIDON_EXAMPLE_SPECIALIZATION_KEYS,
         },
     },
     GeneratedMetalPlannerComponent {
@@ -284,8 +298,10 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
         generated_inventory: GeneratedMetalInventoryEntry {
             registration_key: "state_machine_example",
             abi_family: "state_machine",
+            abi_symbols: FRAMEWORK_ACCEPTANCE_ABI_SYMBOLS,
             build_modules: ACCEPTANCE_BRIDGE_BUILD_MODULES,
             witness_hook: None,
+            specialization_keys: NO_SPECIALIZATION_KEYS,
         },
     },
     GeneratedMetalPlannerComponent {
@@ -300,8 +316,10 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
         generated_inventory: GeneratedMetalInventoryEntry {
             registration_key: "blake_example",
             abi_family: "blake",
+            abi_symbols: FRAMEWORK_ACCEPTANCE_ABI_SYMBOLS,
             build_modules: ACCEPTANCE_BRIDGE_BUILD_MODULES,
             witness_hook: None,
+            specialization_keys: NO_SPECIALIZATION_KEYS,
         },
     },
     GeneratedMetalPlannerComponent {
@@ -316,8 +334,10 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
         generated_inventory: GeneratedMetalInventoryEntry {
             registration_key: "xor_example",
             abi_family: "xor",
+            abi_symbols: SIMD_ACCEPTANCE_ABI_SYMBOLS,
             build_modules: ACCEPTANCE_BRIDGE_BUILD_MODULES,
             witness_hook: None,
+            specialization_keys: NO_SPECIALIZATION_KEYS,
         },
     },
 ];

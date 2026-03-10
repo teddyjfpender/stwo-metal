@@ -134,6 +134,8 @@ The next active work is:
 
 - widen the generated artifact registry from route-eligibility metadata into
   stable ABI and specialization inventory
+- make workload and benchmark declarations consume that richer inventory
+  through the shared planning seam rather than side lookups
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

@@ -28,6 +28,42 @@ Target retirement point:
 
 ## Active debt
 
+### TD-0026: Generated ABI and specialization inventory is registered but not yet consumed broadly enough by declarations and lowering
+
+- Status: `active`
+- Category: `generated registration adoption`
+- Introduced: `2026-03-10`
+- Owner area: `G4 generated fast-path registration`
+
+Why it exists now:
+
+The internal generated-artifact registry now records explicit ABI symbols and
+specialization keys, but workload declarations, benchmark declarations, and
+later lowering layers do not yet all consume that richer inventory through the
+shared planning seam.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/artifact.rs`
+- `crates/stwo-metal/src/backend/metal/planner_manifest_v1_generated.rs`
+- `docs/controller.md`
+- `docs/program-plan.md`
+
+Risk if left in place:
+
+The repository could claim a richer generated contract in the registry while
+still letting surrounding code reason only about route eligibility, which would
+split the contract across multiple implicit layers again.
+
+Exit condition:
+
+Workload declarations, benchmark declarations, and the first lowering slices
+consume ABI and specialization inventory through the same stable planning seam.
+
+Target retirement point:
+
+- `G5`
+
 ### TD-0024: The frozen generated-artifact contract is not yet implemented as a stable backend registry and execution-plan boundary
 
 - Status: `retired`
