@@ -30,9 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G3 third slice: consolidate the remaining acceptance-local bridges behind
-  one registered bridge catalog while keeping the framework CPU-domain bridge
-  explicit`
+  `G3 fourth slice: specify the non-public bridge laws and durable ownership
+  boundary for the now-registered acceptance bridge catalog`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -41,6 +40,8 @@ Invariants:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
   and
   [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+  and
+  [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md)
 - Current owner area:
   `acceptance integration against the stable planning seam`
 
@@ -55,9 +56,6 @@ Invariants:
 - the acceptance harness now has one checked bridge-catalog surface, but the
   durable home for that bridge law is still unresolved between a non-public
   shared boundary and an upstream-facing path
-- full acceptance-matrix verification is currently blocked by the vendored
-  Stwo snapshot requiring an older nightly feature surface than the installed
-  local toolchains provide
 - there is not yet a declared policy for how generated output becomes durable
   and hand-tunable within this repository
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
@@ -70,19 +68,21 @@ Invariants:
 - the current acceptance rows now all consume registered workload lanes and one
   checked bridge catalog, but the adapters themselves still live only in the
   acceptance harness
-- the shared planning seam is now stable enough for G3 work, but the next
-  decision is about bridge ownership and laws rather than more lane
-  registration
+- the shared planning seam is now stable enough for G3 work, and deterministic
+  cargo verification is restored on the pinned nightly after modernizing the
+  stale vendored chunking surface
+- the next decision is about bridge ownership and laws rather than more lane
+  registration or toolchain triage
 
 ## Next three deliverables
 
-1. Define the minimal non-public laws for a reusable acceptance bridge surface
+1. Freeze the minimal non-public laws for a reusable acceptance bridge surface
    so the current catalog does not drift into ad hoc test glue again.
 2. Decide whether the framework-backed bridge should move into an upstream-
    facing boundary or a non-public shared internal boundary once the vendored
    workspace conflict is resolved.
-3. Pin or refresh the vendored Stwo toolchain contract so acceptance-matrix
-   verification becomes deterministic again.
+3. Keep the restored pinned-nightly verification path explicit and narrow to
+   the smallest vendored compatibility patch set needed for G3.
 
 ## Explicitly not doing now
 

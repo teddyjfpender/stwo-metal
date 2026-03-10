@@ -766,39 +766,26 @@ Target retirement point:
 
 ### TD-0025: The vendored Stwo snapshot currently requires an older nightly feature surface than the installed local toolchains provide
 
-- Status: `active`
+- Status: `retired`
 - Category: `verification environment`
 - Introduced: `2026-03-10`
 - Owner area: `acceptance verification`
 
-Why it exists now:
+Why it existed:
 
-The current vendored Stwo snapshot still relies on nightly feature usage around
-`array_chunks` and related APIs that no longer match the installed stable or
-nightly toolchains in this repository environment. That means full
-acceptance-matrix cargo verification can fail before any local acceptance-bridge
-changes are exercised.
+The current vendored Stwo snapshot relied on nightly feature usage around
+`array_chunks` and related APIs that no longer matched the repository-pinned
+toolchain contract. That meant full acceptance-matrix cargo verification could
+fail before any local acceptance-bridge changes were exercised.
 
-Current containment:
+Resolution:
 
 - `vendor/stwo-upstream-dev-62b228e/crates/stwo`
-- local cargo test commands against `fixtures/upstream-example-acceptance`
+- `rust-toolchain.toml`
 
-Risk if left in place:
-
-Roadmap execution can continue in code and docs, but deterministic verification
-of G3 acceptance changes remains partially blocked by toolchain drift rather
-than by backend semantics.
-
-Exit condition:
-
-The repository pins a compatible nightly toolchain, refreshes the vendored Stwo
-snapshot, or patches the vendored code to compile against the supported local
-toolchain contract.
-
-Target retirement point:
-
-- `G3`
+The vendored chunking surface is now modernized enough that the pinned nightly
+again supports the private planning tests, the acceptance harness unit tests,
+and the current non-blocked acceptance example matrix.
 
 ### TD-0021: The end-to-end wide-fibonacci benchmark row is support-honest but still far from the declared `90 ms` target
 

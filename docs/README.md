@@ -38,6 +38,8 @@ is planned, controlled, reviewed, and changed.
   formal basis for T2 and T3
 - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md):
   formal basis for the generic backend, generated fast path, and acceptance-fixture split
+- [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md):
+  formal basis for the current acceptance bridge catalog and its durable ownership rules
 
 ## Rules
 

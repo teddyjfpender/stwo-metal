@@ -28,6 +28,95 @@ Superseded by:
 
 ## Entries
 
+### DEC-0080: The acceptance bridge catalog is governed by a non-public law before any durable ownership move
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md)
+
+Decision:
+
+The current acceptance bridge catalog is now governed by an explicit non-public
+law. Any future move into a shared internal boundary or an upstream-facing
+surface must preserve:
+
+- registration-first construction
+- upstream-owned workload semantics
+- explicit CPU fallback naming
+- fail-closed lane construction
+- no public API inflation before reuse is proven
+
+Context:
+
+After the third G3 slice, the acceptance harness no longer used a loose set of
+bridge helpers; it had one checked catalog. The next honest risk was that the
+catalog itself could drift into an undocumented architecture surface while the
+team debated whether the durable home belongs inside this repository or
+upstream. Freezing the law first keeps that ownership decision bounded.
+
+Alternatives rejected:
+
+- move the bridge again before the contract is written down
+- leave the catalog as undocumented acceptance-only glue
+- promote the bridge surface to a public API immediately
+
+Impact:
+
+- the bridge catalog now has explicit laws and non-goals
+- the next implementation work can focus on durable ownership instead of
+  rediscovering the contract
+
+Superseded by:
+
+- none
+
+### DEC-0079: Vendored Stwo compatibility patches may modernize stale nightly chunking idioms to preserve the pinned verification contract
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The repository may patch the vendored Stwo snapshot in small semantics-
+preserving steps when the pinned local toolchain contract drifts out of
+compatibility. For this tranche, the accepted scope was limited to replacing
+stale `array_chunks`-based chunking idioms so the existing pinned nightly could
+compile the vendored snapshot and restore deterministic G3 verification.
+
+Context:
+
+After the acceptance-bridge catalog landed, full cargo verification was still
+failing before the local changes ran because the vendored Stwo snapshot relied
+on an older nightly chunking surface than `nightly-2025-07-14` now provides.
+The repository already had a pinned nightly contract, so the smallest
+correctness-preserving step was to modernize the stale vendored chunking code
+instead of inventing a second local verification story or letting G3 proceed
+without deterministic tests.
+
+Alternatives rejected:
+
+- leave G3 verification blocked and keep documenting the toolchain drift as
+  passive debt
+- widen the acceptance tranche without restoring cargo verification first
+- make larger vendored refactors than required just to satisfy the current
+  pinned toolchain
+
+Impact:
+
+- the pinned nightly contract is working again for the current acceptance and
+  planning test surfaces
+- the next honest G3 work returns to bridge law and ownership design instead of
+  more toolchain triage
+
+Superseded by:
+
+- none
+
 ### DEC-0078: Acceptance-local bridge construction must collapse behind one checked catalog before any shared-boundary move
 
 - Date: `2026-03-10`

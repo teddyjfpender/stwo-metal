@@ -66,14 +66,14 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G3 third slice: consolidate the remaining acceptance-local bridges behind one
-registered bridge catalog while keeping the framework CPU-domain bridge
-explicit`
+`G3 fourth slice: specify the non-public bridge laws and durable ownership
+boundary for the now-registered acceptance bridge catalog`
 
 The active formal basis is:
 
 - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+- [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md)
 
 ## Current implementation obligations under G3
 
@@ -136,6 +136,15 @@ The third G3 slice is now landed:
   nested-workspace conflict in the current repository layout
 - the remaining honest gap is bridge ownership and law definition, not more
   acceptance-lane registration
+
+The verification follow-up to the third G3 slice is now landed:
+
+- the vendored Stwo snapshot now compiles again on the repository-pinned
+  nightly after replacing the stale `array_chunks` usage that had drifted out
+  of compatibility
+- the private `artifact` and `execution_plan` tests are green again
+- the acceptance harness unit tests and the current non-blocked example
+  prove/verify matrix are green again on `nightly-2025-07-14`
 
 ## Foundation already available
 

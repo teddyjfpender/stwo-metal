@@ -135,6 +135,8 @@ The next active work is:
 - move acceptance rows onto the stable workload-boundary and planning seam
 - collapse acceptance-local bridge construction behind one checked non-public
   contract before deciding where the durable shared ownership should live
+- specify the laws and fail-closed behavior that any future shared bridge home
+  must preserve before moving the catalog again
 - keep examples only as validation and benchmark inputs
 
 ## Native runtime direction

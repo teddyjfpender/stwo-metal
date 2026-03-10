@@ -134,9 +134,12 @@ fn next_grand_product_layer(layer: &Mle<SimdBackend, SecureField>) -> Layer<Simd
 
     let data = layer
         .data
-        .array_chunks()
-        .map(|&[a, b]| {
-            let (evens, odds) = a.deinterleave(b);
+        .chunks_exact(2)
+        .map(|pair| {
+            let [a, b] = pair else {
+                unreachable!("chunks_exact(2) always yields length-2 slices")
+            };
+            let (evens, odds) = a.deinterleave(*b);
             evens * odds
         })
         .collect();
