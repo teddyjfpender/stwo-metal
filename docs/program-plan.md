@@ -66,9 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 eleventh slice: re-anchor the shared prove-values staging bridge onto the
-canonical generated execution contract so the benchmark boundary stops being
-the lowest staging authority`
+`G5 twelfth slice: re-anchor the shared prove-values staging bridge below the
+public workload surface onto the canonical generated execution contract`
 
 The active formal basis is:
 
@@ -207,6 +206,15 @@ The tenth G5 slice is now landed:
   prove-values staging while keeping the main `stwo-metal` API surface stable
 - the next honest G5 work is re-anchoring that shared bridge on the lower
   generated execution contract instead of the benchmark boundary
+
+The eleventh G5 slice is now landed:
+
+- the shared prove-values staging bridge now consumes `MetalWorkloadBoundary`
+  directly instead of depending on `MetalWideFibonacciBenchmarkBoundary`
+- the benchmark lane is now only a caller of that bridge, not the authority
+  for the prove-values staging contract
+- the next honest G5 work is moving that bridge below the public workload
+  surface and onto the lower generated execution contract itself
 
 ## G2 progress snapshot
 

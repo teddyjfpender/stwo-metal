@@ -5,7 +5,7 @@ use stwo::core::pcs::TreeVec;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::{CommitmentSchemeProver, ComponentProver, ComponentProvers};
 use stwo_metal::{
-    MetalBackend, MetalExecutionPlan, MetalWideFibonacciBenchmarkBoundary, MetalWorkloadOwnership,
+    MetalBackend, MetalExecutionPlan, MetalWorkloadBoundary, MetalWorkloadOwnership,
     MetalWorkloadStage,
 };
 
@@ -15,9 +15,7 @@ pub struct WideFibonacciProveValuesStaging {
     pub sample_points: TreeVec<Vec<Vec<stwo::core::circle::CirclePoint<SecureField>>>>,
 }
 
-fn assert_wide_fibonacci_prove_values_boundary(boundary: &MetalWideFibonacciBenchmarkBoundary) {
-    let workload_boundary = boundary.workload_boundary();
-
+fn assert_wide_fibonacci_prove_values_boundary(workload_boundary: &MetalWorkloadBoundary) {
     assert!(
         matches!(
             workload_boundary.plan(),
@@ -38,12 +36,12 @@ fn assert_wide_fibonacci_prove_values_boundary(boundary: &MetalWideFibonacciBenc
 }
 
 pub fn stage_wide_fibonacci_prove_values(
-    benchmark_boundary: &MetalWideFibonacciBenchmarkBoundary,
+    workload_boundary: &MetalWorkloadBoundary,
     components: &[&dyn ComponentProver<MetalBackend>],
     channel: &mut Blake2sChannel,
     commitment_scheme: &CommitmentSchemeProver<'_, MetalBackend, Blake2sMerkleChannel>,
 ) -> WideFibonacciProveValuesStaging {
-    assert_wide_fibonacci_prove_values_boundary(benchmark_boundary);
+    assert_wide_fibonacci_prove_values_boundary(workload_boundary);
 
     let component_provers = ComponentProvers {
         components: components.to_vec(),
@@ -81,28 +79,17 @@ pub fn stage_wide_fibonacci_prove_values(
 
 #[cfg(test)]
 mod tests {
-    use stwo_metal::{
-        declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkOperation,
-        MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalExecutionIntent,
-    };
+    use stwo_metal::{declare_exemplar_metal_workload_boundary, MetalExecutionIntent};
 
     use super::assert_wide_fibonacci_prove_values_boundary;
 
     #[test]
-    fn wide_fibonacci_boundary_satisfies_prove_values_staging_contract() {
-        let target = MetalBenchmarkTarget {
-            benchmark_id: "wide_fibonacci_prove_verify_contract_test_v1",
-            workload_name: "fibonacci_example",
-            family: "wide_fibonacci",
-            operation: MetalBenchmarkOperation::ProveVerify,
-            log_n_instances: 6,
-            n_columns: 8,
-            reference_platform: MetalBenchmarkReferencePlatform::Rtx4090Cuda,
-            reference_elapsed_ms: 90.0,
-        };
-        let boundary =
-            declare_wide_fibonacci_benchmark_boundary(MetalExecutionIntent::PreferMetal, target)
-                .unwrap();
+    fn wide_fibonacci_workload_boundary_satisfies_prove_values_staging_contract() {
+        let boundary = declare_exemplar_metal_workload_boundary(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+        )
+        .unwrap();
 
         assert_wide_fibonacci_prove_values_boundary(&boundary);
     }

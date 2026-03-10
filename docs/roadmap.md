@@ -154,6 +154,8 @@ The next active work is:
   boundary instead of leaving it owned by benchmark fixtures
 - re-anchor the shared prove-values staging bridge on the lower generated
   execution contract instead of the benchmark boundary
+- move that shared prove-values staging bridge below the public workload
+  surface so generated runtime authority remains private and linear
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

@@ -28,6 +28,46 @@ Superseded by:
 
 ## Entries
 
+### DEC-0095: The shared prove-values bridge must stop at workload boundary only temporarily
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Re-anchoring the shared prove-values bridge from benchmark boundary to
+`MetalWorkloadBoundary` is the right intermediate step, but it is not the end
+state. The next slice must move that bridge below the public workload surface
+onto the lower generated execution contract.
+
+Context:
+
+The tenth G5 slice moved prove-values staging into a private shared support
+crate. The next safest semantics-preserving step was to remove the benchmark
+boundary dependency and consume the lower workload boundary instead. That keeps
+the benchmark row as a caller only, but the bridge still depends on a public
+surface that sits above the canonical generated seed/binding seam.
+
+Alternatives rejected:
+
+- leave the shared prove-values bridge anchored on the benchmark boundary
+- treat `MetalWorkloadBoundary` as the final prove-values staging authority
+- widen the public `stwo-metal` API immediately with a deeper prove-values
+  staging contract
+
+Impact:
+
+- prove-values staging is no longer benchmark-boundary owned
+- the next honest G5 slice is lowering the bridge beneath the public workload
+  surface onto the generated execution contract
+
+Superseded by:
+
+- none
+
 ### DEC-0094: The first shared PCS/prove-values bridge must move out of the fixture before it moves down
 
 - Date: `2026-03-10`

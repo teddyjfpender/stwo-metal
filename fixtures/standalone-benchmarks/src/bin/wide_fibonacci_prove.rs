@@ -787,7 +787,7 @@ fn prove_with_breakdown(
     let composition_commit_ms = composition_commit_start.elapsed().as_secs_f64() * 1000.0;
 
     let prove_values_stage = stage_wide_fibonacci_prove_values(
-        benchmark_boundary,
+        benchmark_boundary.workload_boundary(),
         components,
         channel,
         &commitment_scheme,
