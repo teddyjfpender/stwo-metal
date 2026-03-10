@@ -30,10 +30,9 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G2 first slice: freeze the internal artifact-registry surface,
-  execution-plan surface, and fail-closed dispatch contract so the backend is
-  defined by generic and generated Stwo proving artifacts rather than by
-  examples or benchmark-local seams`
+  `G2 second slice: widen the new internal artifact-registry and
+  execution-plan seam from exemplar prove planning into the broader backend
+  registration path without widening the public API`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -48,11 +47,12 @@ Invariants:
 ## Current blockers
 
 - there is not yet a stable internal artifact-registry boundary for
-  Stwo/codegen-produced proving artifacts
-- there is not yet a stable execution-plan boundary that lowers one proving
-  artifact into backend-owned work
-- generic and generated lanes are now specified, but not yet encoded as stable
-  backend planning surfaces
+  Stwo/codegen-produced proving artifacts beyond the current planner-manifest
+  subset
+- there is not yet a stable execution-plan boundary for operations beyond the
+  current prove-planning path
+- generic and generated lanes are now encoded as a private planning seam, but
+  not yet adopted broadly enough to count as the finished G2 surface
 - internal Rust vocabulary is still CUDA-first in many places
 - unchanged upstream `wide_fibonacci`, `state_machine`, `blake`, and `xor`
   example rows now prove and verify through `MetalBackend` in the acceptance
@@ -71,13 +71,14 @@ Invariants:
 
 ## Next three deliverables
 
-1. Define the internal artifact-registry boundary, including schema versioning,
-   compatibility checks, and generated inventory ownership.
-2. Define the execution-plan boundary that lowers one proving artifact into
-   trace, evaluation, lookup, quotient, FRI, and commitment work without
-   exposing runtime policy to callers.
+1. Widen the artifact registry from the current planner-manifest subset to a
+   richer generated inventory boundary with explicit producer metadata and
+   operation coverage.
+2. Push more existing declaration surfaces through the execution-plan boundary
+   so planner, workload, and benchmark routing share the same fail-closed seam.
 3. Keep acceptance-local adapters, bounded CPU fallbacks, and unsupported
-   generated-component behavior explicit until the new shared boundaries exist.
+   generated-component behavior explicit until the new shared boundaries fully
+   replace the old ad hoc paths.
 
 ## Explicitly not doing now
 

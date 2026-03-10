@@ -28,6 +28,59 @@ Superseded by:
 
 ## Entries
 
+### DEC-0069: Metal planning must flow through one artifact-registry and execution-plan seam
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The Metal backend now has one mandatory private planning seam for registered
+component proving:
+
+- `ArtifactRegistry`
+  - schema/version gate
+  - producer metadata
+  - generated manifest ownership
+  - unknown-component rejection
+- `ExecutionPlan`
+  - lowering from registered artifact input to backend prove planning
+  - fail-closed unsupported-component behavior
+
+Existing planner and workload declaration entry points must route through that
+seam rather than reaching into generated manifests directly.
+
+Context:
+
+The generic/codegen contract had been frozen in docs, but the code still used a
+thin direct manifest lookup path. That left the architecture truthful on paper
+but not yet in the implementation. The first G2 code slice landed a private
+registry and lowering layer, kept the public planner API stable, and moved the
+existing Metal planner/workload declarations onto that shared path with
+deterministic tests for schema mismatch and unknown-component failure.
+
+Alternatives rejected:
+
+- keep the current manifest lookup helpers as the long-term planning surface
+- expose a new broad public planning API before the internal boundary settled
+- defer the registry/lowering seam until after more benchmark or example work
+
+Impact:
+
+- the architecture contract is now partially implemented rather than purely
+  documented
+- future generated-inventory and execution-planning work has one internal seam
+  to extend
+- the active G2 work shifts from “define the seam” to “widen and adopt the
+  seam”
+
+Superseded by:
+
+- none
+
 ### DEC-0068: Superseded milestone sequencing must live in one archive, not in the active planning docs
 
 - Date: `2026-03-10`

@@ -39,9 +39,10 @@ Why it exists now:
 
 The project has now frozen the generic backend and codegen contract, including
 the required proving artifact fields, fail-closed behavior, and separation
-between generic, generated, and temporary acceptance-only paths. That contract
-still exists only in process docs and design notes; it has not yet been
-implemented as stable shared backend code.
+between generic, generated, and temporary acceptance-only paths. A first
+private registry and execution-plan seam now exists in code, but it only covers
+the current planner-manifest subset and prove-planning path; it is not yet the
+finished shared boundary for the broader backend.
 
 Current containment:
 
@@ -49,18 +50,20 @@ Current containment:
 - `docs/roadmap.md`
 - `docs/program-plan.md`
 - `docs/controller.md`
+- `crates/stwo-metal/src/backend/metal/artifact.rs`
+- `crates/stwo-metal/src/backend/metal/execution_plan.rs`
 
 Risk if left in place:
 
-The project could continue to accumulate useful performance or acceptance work
-without actually converging on the producer/consumer boundary it now claims to
-target.
+The project could now overstate the progress of the contract implementation:
+the seam exists, but if it is not widened and adopted broadly, the backend
+could drift back into mixed planning paths.
 
 Exit condition:
 
 `stwo-metal` owns a stable internal artifact-registry boundary and a stable
-execution-plan boundary with explicit schema/version checks and documented
-unsupported-component behavior.
+execution-plan boundary across the broader backend registration path, with
+explicit schema/version checks and documented unsupported-component behavior.
 
 Target retirement point:
 

@@ -132,9 +132,10 @@ not “more benchmark-local seams.”
 
 The next active work is:
 
-- define the stable internal artifact-registry surface
-- define the stable execution-plan surface
-- bind current Metal runtime/kernel ownership to those surfaces
+- widen the new private artifact-registry surface beyond the current
+  planner-manifest subset
+- widen the new private execution-plan surface beyond prove planning
+- bind more existing Metal runtime/kernel ownership to those surfaces
 - keep examples only as validation and benchmark inputs
 
 ## Native runtime direction

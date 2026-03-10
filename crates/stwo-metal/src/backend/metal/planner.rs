@@ -1,4 +1,4 @@
-use super::planner_manifest_v1_generated::planner_input_for_prove;
+use super::execution_plan::plan_registered_metal_prove;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalExecutionIntent {
@@ -113,20 +113,7 @@ pub fn plan_exemplar_metal_prove_by_name<'a>(
     intent: MetalExecutionIntent,
     component_names: &'a [&'a str],
 ) -> Result<MetalExecutionPlan, MetalPlannerError<'a>> {
-    let inputs = component_names
-        .iter()
-        .map(|component_name| {
-            planner_input_for_prove(component_name).ok_or(MetalPlannerError::UnknownComponent(
-                UnknownMetalComponent {
-                    component_name,
-                    operation: MetalOperationKind::Prove,
-                },
-            ))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    plan_metal_operation(intent, MetalOperationKind::Prove, &inputs)
-        .map_err(MetalPlannerError::Unsupported)
+    plan_registered_metal_prove(intent, component_names).map(|plan| plan.plan)
 }
 
 #[cfg(test)]

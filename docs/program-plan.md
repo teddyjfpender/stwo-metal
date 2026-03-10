@@ -66,10 +66,9 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G2 first slice: define the stable internal artifact-registry surface,
-execution-plan surface, and explicit fail-closed dispatch contract so examples
-remain only the acceptance matrix and benchmarks stop acting as the API source
-of truth`
+`G2 second slice: widen the new private artifact-registry and execution-plan
+seam beyond exemplar prove planning so more of the backend routes through one
+shared fail-closed boundary`
 
 The active formal basis is:
 
@@ -78,13 +77,26 @@ The active formal basis is:
 
 ## Current implementation obligations under G2
 
-- define the internal Rust representation of the producer artifact
-- define schema/version compatibility checks
-- define the generated inventory and registration manifest boundary
-- define the execution-plan lowering boundary from artifact to backend work
-- define unsupported-component behavior and test it
+- widen the internal Rust representation of the producer artifact beyond the
+  current planner-manifest subset
+- extend schema/version compatibility checks across the broader registration
+  path
+- widen the generated inventory and registration manifest boundary so it can
+  carry more than current exemplar prove metadata
+- extend the execution-plan lowering boundary from prove planning toward the
+  broader backend work graph
+- keep unsupported-component behavior and tests explicit as the seam expands
 - keep acceptance-local adapters and bounded CPU fallbacks explicit until G3 and
   G7 retire them
+
+## G2 progress snapshot
+
+The first G2 slice is now landed:
+
+- a private `ArtifactRegistry` boundary exists in code
+- a private `ExecutionPlan` lowering seam exists in code
+- schema mismatch and unknown-component behavior are deterministic and tested
+- the public planner and workload declarations now route through that seam
 
 ## Foundation already available
 

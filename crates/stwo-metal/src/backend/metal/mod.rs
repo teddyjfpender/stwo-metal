@@ -1,8 +1,10 @@
+mod artifact;
 mod accumulation;
 mod backend;
 mod benchmark;
 mod blake2s;
 mod capability;
+mod execution_plan;
 mod column;
 mod commitment_slice;
 mod first_layer;
