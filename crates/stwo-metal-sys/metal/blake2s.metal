@@ -151,11 +151,101 @@ static inline void stwo_metal_blake2s_finalize(
     }
 }
 
+static inline void stwo_metal_blake2s_init_words(thread uint *state_words) {
+    state_words[0] = STWO_METAL_BLAKE2S_IV[0] ^ 0x01010020u;
+    state_words[1] = STWO_METAL_BLAKE2S_IV[1];
+    state_words[2] = STWO_METAL_BLAKE2S_IV[2];
+    state_words[3] = STWO_METAL_BLAKE2S_IV[3];
+    state_words[4] = STWO_METAL_BLAKE2S_IV[4];
+    state_words[5] = STWO_METAL_BLAKE2S_IV[5];
+    state_words[6] = STWO_METAL_BLAKE2S_IV[6];
+    state_words[7] = STWO_METAL_BLAKE2S_IV[7];
+}
+
+static inline void stwo_metal_blake2s_compress_words(
+    thread uint *state_words,
+    thread const uchar *block,
+    uint total_bytes,
+    uint last_block
+) {
+    uint m[16];
+    for (uint i = 0; i < 16u; ++i) {
+        uint base = 4u * i;
+        m[i] =
+            ((uint)block[base + 0u]) |
+            (((uint)block[base + 1u]) << 8u) |
+            (((uint)block[base + 2u]) << 16u) |
+            (((uint)block[base + 3u]) << 24u);
+    }
+
+    uint v[16];
+    for (uint i = 0; i < 8u; ++i) {
+        v[i] = state_words[i];
+        v[i + 8u] = STWO_METAL_BLAKE2S_IV[i];
+    }
+    v[12] ^= total_bytes;
+    v[14] ^= last_block;
+
+    for (uint round = 0; round < 10u; ++round) {
+        stwo_metal_blake2s_g(v, m, round, 0u, v[0], v[4], v[8], v[12]);
+        stwo_metal_blake2s_g(v, m, round, 1u, v[1], v[5], v[9], v[13]);
+        stwo_metal_blake2s_g(v, m, round, 2u, v[2], v[6], v[10], v[14]);
+        stwo_metal_blake2s_g(v, m, round, 3u, v[3], v[7], v[11], v[15]);
+        stwo_metal_blake2s_g(v, m, round, 4u, v[0], v[5], v[10], v[15]);
+        stwo_metal_blake2s_g(v, m, round, 5u, v[1], v[6], v[11], v[12]);
+        stwo_metal_blake2s_g(v, m, round, 6u, v[2], v[7], v[8], v[13]);
+        stwo_metal_blake2s_g(v, m, round, 7u, v[3], v[4], v[9], v[14]);
+    }
+
+    for (uint i = 0; i < 8u; ++i) {
+        state_words[i] ^= v[i] ^ v[i + 8u];
+    }
+}
+
 static inline uint stwo_metal_lifted_column_index(uint lifted_index, uint log_ratio) {
     if (log_ratio == 0u) {
         return lifted_index;
     }
     return ((lifted_index >> (log_ratio + 1u)) << 1u) + (lifted_index & 1u);
+}
+
+static inline device const uint *stwo_metal_select_leaf_column(
+    uint column_index,
+    device const uint *column0,
+    device const uint *column1,
+    device const uint *column2,
+    device const uint *column3,
+    device const uint *column4,
+    device const uint *column5,
+    device const uint *column6,
+    device const uint *column7,
+    device const uint *column8,
+    device const uint *column9,
+    device const uint *column10,
+    device const uint *column11,
+    device const uint *column12,
+    device const uint *column13,
+    device const uint *column14,
+    device const uint *column15
+) {
+    switch (column_index) {
+        case 0u: return column0;
+        case 1u: return column1;
+        case 2u: return column2;
+        case 3u: return column3;
+        case 4u: return column4;
+        case 5u: return column5;
+        case 6u: return column6;
+        case 7u: return column7;
+        case 8u: return column8;
+        case 9u: return column9;
+        case 10u: return column10;
+        case 11u: return column11;
+        case 12u: return column12;
+        case 13u: return column13;
+        case 14u: return column14;
+        default: return column15;
+    }
 }
 
 kernel void blake2s_build_leaves_lifted_u32(
@@ -189,4 +279,93 @@ kernel void blake2s_build_leaves_lifted_u32(
     }
 
     stwo_metal_blake2s_finalize(state, dst, row_index);
+}
+
+kernel void blake2s_build_leaves_lifted_wide_chunk_u32(
+    device const uint *column0 [[buffer(0)]],
+    device const uint *column1 [[buffer(1)]],
+    device const uint *column2 [[buffer(2)]],
+    device const uint *column3 [[buffer(3)]],
+    device const uint *column4 [[buffer(4)]],
+    device const uint *column5 [[buffer(5)]],
+    device const uint *column6 [[buffer(6)]],
+    device const uint *column7 [[buffer(7)]],
+    device const uint *column8 [[buffer(8)]],
+    device const uint *column9 [[buffer(9)]],
+    device const uint *column10 [[buffer(10)]],
+    device const uint *column11 [[buffer(11)]],
+    device const uint *column12 [[buffer(12)]],
+    device const uint *column13 [[buffer(13)]],
+    device const uint *column14 [[buffer(14)]],
+    device const uint *column15 [[buffer(15)]],
+    device uint *state_words [[buffer(16)]],
+    device uint *dst [[buffer(17)]],
+    constant uint *column_log_sizes [[buffer(18)]],
+    constant uint &n_columns [[buffer(19)]],
+    constant uint &lifting_log_size [[buffer(20)]],
+    constant uint &processed_bytes_before [[buffer(21)]],
+    constant uint &is_first_chunk [[buffer(22)]],
+    constant uint &is_final_chunk [[buffer(23)]],
+    uint row_index [[thread_position_in_grid]]
+) {
+    uint row_count = 1u << lifting_log_size;
+    if (row_index >= row_count) {
+        return;
+    }
+
+    thread uint state[8];
+    if (is_first_chunk != 0u) {
+        stwo_metal_blake2s_init_words(state);
+    } else {
+        for (uint i = 0; i < 8u; ++i) {
+            state[i] = state_words[row_index * 8u + i];
+        }
+    }
+
+    uchar block[64];
+    for (uint i = 0; i < 64u; ++i) {
+        block[i] = 0u;
+    }
+
+    for (uint column_index = 0u; column_index < n_columns; ++column_index) {
+        device const uint *column = stwo_metal_select_leaf_column(
+            column_index,
+            column0,
+            column1,
+            column2,
+            column3,
+            column4,
+            column5,
+            column6,
+            column7,
+            column8,
+            column9,
+            column10,
+            column11,
+            column12,
+            column13,
+            column14,
+            column15
+        );
+        uint column_log_size = column_log_sizes[column_index];
+        uint source_index =
+            stwo_metal_lifted_column_index(row_index, lifting_log_size - column_log_size);
+        uint value = column[source_index];
+        uint byte_offset = column_index * 4u;
+        block[byte_offset + 0u] = (uchar)(value & 0xFFu);
+        block[byte_offset + 1u] = (uchar)((value >> 8u) & 0xFFu);
+        block[byte_offset + 2u] = (uchar)((value >> 16u) & 0xFFu);
+        block[byte_offset + 3u] = (uchar)((value >> 24u) & 0xFFu);
+    }
+
+    uint total_bytes = processed_bytes_before + n_columns * 4u;
+    uint last_block = is_final_chunk != 0u ? 0xFFFFFFFFu : 0u;
+    stwo_metal_blake2s_compress_words(state, block, total_bytes, last_block);
+
+    for (uint i = 0; i < 8u; ++i) {
+        state_words[row_index * 8u + i] = state[i];
+        if (is_final_chunk != 0u) {
+            dst[row_index * 8u + i] = state[i];
+        }
+    }
 }

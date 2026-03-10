@@ -65,10 +65,10 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T8 seventeenth implementation slice: grouped PCS
-prove-values scheduling, cached Metal coefficient staging, and bounded lifted
-Blake2s leaf hashing are benchmark-active, so the next work is the remaining
-prove-values wall, large-tree commitment cost, and bounded PolyOps fallback`,
+The active tranche is `T8 eighteenth implementation slice: direct wide-tree
+Metal Blake2s leaf hashing and lower-churn quotient grouping are
+benchmark-active, so the next work is the remaining prove-values wall,
+composition-generation overhead, and bounded PolyOps fallback`,
 as tracked in
 [`controller.md`](./controller.md) and sequenced by
 [`roadmap.md`](./roadmap.md).
@@ -260,13 +260,13 @@ The first active T8 supporting slices are:
   override is set for diagnostics
 - the current best measured production-grade Apple Silicon end-to-end
   benchmark result is now recorded:
-  `wide_fibonacci_prove_verify_v1 = 1521.303625 ms`, with
-  `prove_ms = 1520.994583` and `verify_ms = 0.309042`
+  `wide_fibonacci_prove_verify_v1 = 1456.654041 ms`, with
+  `prove_ms = 1456.38` and `verify_ms = 0.274041`
 - the dominant prove-stage costs in that row are now measured explicitly:
-  `prove_core_prove_values_ms = 893.510667`,
-  `trace_commit_ms = 307.475084`,
-  `prove_core_composition_generation_ms = 138.558583`, and
-  `trace_commit_merkle_ms = 147.948042`
+  `prove_core_prove_values_ms = 885.230166`,
+  `trace_commit_ms = 225.42575000000002`,
+  `prove_core_composition_generation_ms = 149.119209`, and
+  `trace_commit_merkle_ms = 48.477041`
 - the standalone Metal benchmark fixture now enables the `parallel` proving
   surface, and the first measured parallel row reported `threads = 14`
 - compared with the current `log_n_instances = 20` reference rows, the
@@ -279,9 +279,9 @@ The first active T8 supporting slices are:
   same request set
 - the benchmark-active large-domain batch point-evaluation path now reuses
   flattened Metal coefficient staging across repeated point-query groups
-- the bounded native lifted Blake2s leaf kernel is now available for standard
-  Blake2s trees up to eight columns, leaving only the large trace tree on the
-  host fallback path
+- direct wide-tree Metal Blake2s leaf hashing now processes standard Blake2s
+  trees in 16-column blocks directly from Metal column buffers, removing the
+  previous trace-tree flatten-and-stage leaf path
 
 The next required T8 boundary is:
 
@@ -291,6 +291,7 @@ The next required T8 boundary is:
   `wide_fibonacci_prove_verify_v1` row
 - make the next benchmark-facing structural win the remaining grouped
   prove-values work above the now-native point-evaluation lane, with
-  large-tree trace commitment now the next measured cost behind it
+  composition generation and upper commitment orchestration now the next
+  measured costs behind it
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

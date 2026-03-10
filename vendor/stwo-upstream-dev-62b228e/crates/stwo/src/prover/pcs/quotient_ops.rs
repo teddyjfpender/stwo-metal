@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::iter::zip;
 use std::time::Instant;
 
@@ -108,19 +109,27 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     //   ∑_k (# of distinct sample points per log size k).
     //
     let accumulate_numerators_start = Instant::now();
-    zip(
+    let mut grouped_by_log_size: BTreeMap<
+        u32,
+        (
+            Vec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
+            Vec<&Vec<(PointSample, SecureField)>>,
+        ),
+    > = BTreeMap::new();
+    for (column, samples_with_randomness) in zip(
         columns.iter().flatten(),
         samples_with_randomness.iter().flatten(),
-    )
-    .sorted_by_key(|(c, _)| c.domain.log_size())
-    .group_by(|(c, _)| c.domain.log_size())
-    .into_iter()
-    .for_each(|(_, tuples)| {
-        let (columns, samples_with_randomness): (Vec<_>, Vec<_>) = tuples.unzip();
-        // TODO: slice.
+    ) {
+        let entry = grouped_by_log_size
+            .entry(column.domain.log_size())
+            .or_insert_with(|| (Vec::new(), Vec::new()));
+        entry.0.push(column);
+        entry.1.push(samples_with_randomness);
+    }
+    for (_, (columns, samples_with_randomness)) in grouped_by_log_size {
         let sample_batches = ColumnSampleBatch::new_vec(&samples_with_randomness);
-        B::accumulate_numerators(&columns, &sample_batches, &mut accumulated_numerators_vec)
-    });
+        B::accumulate_numerators(&columns, &sample_batches, &mut accumulated_numerators_vec);
+    }
     emit_timing(
         "accumulate_numerators",
         accumulate_numerators_start.elapsed().as_secs_f64() * 1000.0,
@@ -164,7 +173,8 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     );
 
     let combine_start = Instant::now();
-    let quotients = B::compute_quotients_and_combine(accumulations_per_sample_point, lifting_log_size);
+    let quotients =
+        B::compute_quotients_and_combine(accumulations_per_sample_point, lifting_log_size);
     emit_timing(
         "compute_quotients_and_combine",
         combine_start.elapsed().as_secs_f64() * 1000.0,

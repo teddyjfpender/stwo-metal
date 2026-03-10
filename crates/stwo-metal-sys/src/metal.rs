@@ -1251,6 +1251,61 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    pub fn blake2s_build_leaves_lifted_wide(
+        columns: &[&Self],
+        column_log_sizes: &[u32],
+        lifting_log_size: u32,
+    ) -> Result<Self, MetalError> {
+        assert!(
+            !columns.is_empty(),
+            "wide lifted Blake2s leaves require at least one source column"
+        );
+        assert_eq!(
+            columns.len(),
+            column_log_sizes.len(),
+            "wide lifted Blake2s leaves require one log size per source column"
+        );
+        let row_count = 1usize << lifting_log_size;
+        let runtime = shared_runtime()?;
+        let state = Self::zeroed(row_count * 8)?;
+        let dst = Self::uninitialized(row_count * 8)?;
+        let mut processed_bytes_before = 0u32;
+
+        for (chunk_index, (column_chunk, log_size_chunk)) in columns
+            .chunks(16)
+            .zip(column_log_sizes.chunks(16))
+            .enumerate()
+        {
+            let mut column_ptrs = [std::ptr::null_mut(); 16];
+            for (slot, column) in column_chunk.iter().enumerate() {
+                column_ptrs[slot] = column.raw.as_ptr();
+            }
+            let is_first_chunk = chunk_index == 0;
+            let is_final_chunk = chunk_index + 1 == columns.len().div_ceil(16);
+            unsafe {
+                ffi::blake2s_build_leaves_lifted_wide_chunk_u32(
+                    runtime.raw.as_ptr(),
+                    column_ptrs.as_ptr(),
+                    state.raw.as_ptr(),
+                    dst.raw.as_ptr(),
+                    log_size_chunk.as_ptr(),
+                    column_chunk
+                        .len()
+                        .try_into()
+                        .expect("wide lifted Blake2s chunk column count should fit in u32"),
+                    lifting_log_size,
+                    processed_bytes_before,
+                    is_first_chunk,
+                    is_final_chunk,
+                    error_buffer_mut_ptr,
+                )?;
+            }
+            processed_bytes_before += u32::try_from(column_chunk.len() * 4)
+                .expect("wide lifted Blake2s processed byte count should fit in u32");
+        }
+
+        Ok(dst)
+    }
 }
 
 impl Clone for U32Buffer {
@@ -1722,6 +1777,20 @@ mod ffi {
             dst: *mut c_void,
             n_columns: u32,
             lifting_log_size: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_blake2s_build_leaves_lifted_wide_chunk_u32(
+            runtime: *mut c_void,
+            column_buffers: *const *mut c_void,
+            state: *mut c_void,
+            dst: *mut c_void,
+            column_log_sizes: *const u32,
+            n_columns: u32,
+            lifting_log_size: u32,
+            processed_bytes_before: u32,
+            is_first_chunk: u32,
+            is_final_chunk: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -2726,6 +2795,40 @@ mod ffi {
             dst,
             n_columns,
             lifting_log_size,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn blake2s_build_leaves_lifted_wide_chunk_u32(
+        runtime: *mut c_void,
+        column_buffers: *const *mut c_void,
+        state: *mut c_void,
+        dst: *mut c_void,
+        column_log_sizes: *const u32,
+        n_columns: u32,
+        lifting_log_size: u32,
+        processed_bytes_before: u32,
+        is_first_chunk: bool,
+        is_final_chunk: bool,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_blake2s_build_leaves_lifted_wide_chunk_u32(
+            runtime,
+            column_buffers,
+            state,
+            dst,
+            column_log_sizes,
+            n_columns,
+            lifting_log_size,
+            processed_bytes_before,
+            is_first_chunk as u32,
+            is_final_chunk as u32,
             error_ptr(&mut error),
             error.len(),
         ) {

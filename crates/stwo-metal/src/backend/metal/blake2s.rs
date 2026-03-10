@@ -71,6 +71,28 @@ fn build_leaves_native_standard(
     Some(decode_packed_blake2s_hashes(packed_hashes.to_vec().ok()?))
 }
 
+fn build_leaves_native_wide(
+    columns: &[&MetalBaseFieldVec],
+    lifting_log_size: u32,
+) -> Option<Vec<Blake2sHash>> {
+    if columns.is_empty() {
+        return None;
+    }
+
+    let column_buffers = columns.iter().map(|column| &column.buffer).collect_vec();
+    let column_log_sizes = columns
+        .iter()
+        .map(|column| column.len().ilog2())
+        .collect_vec();
+    let packed_hashes = U32Buffer::blake2s_build_leaves_lifted_wide(
+        &column_buffers,
+        &column_log_sizes,
+        lifting_log_size,
+    )
+    .ok()?;
+    Some(decode_packed_blake2s_hashes(packed_hashes.to_vec().ok()?))
+}
+
 impl ColumnOps<Blake2sHash> for MetalBackend {
     type Column = Vec<Blake2sHash>;
 
@@ -86,6 +108,19 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         let profile_merkle = std::env::var_os("STWO_METAL_PROFILE_MERKLE").is_some();
         let build_leaves_start = Instant::now();
         if !IS_M31_OUTPUT {
+            if columns.len() > 8 {
+                if let Some(leaves) = build_leaves_native_wide(columns, lifting_log_size) {
+                    if profile_merkle {
+                        eprintln!(
+                            "metal_merkle_timing phase=build_leaves columns={} lifting_log_size={} ms={}",
+                            columns.len(),
+                            lifting_log_size,
+                            build_leaves_start.elapsed().as_secs_f64() * 1000.0
+                        );
+                    }
+                    return leaves;
+                }
+            }
             if let Some(leaves) = build_leaves_native_standard(columns, lifting_log_size) {
                 if profile_merkle {
                     eprintln!(

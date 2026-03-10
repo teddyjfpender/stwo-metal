@@ -61,6 +61,29 @@ fn metal_blake2s_merkle_cpu_bridge_matches_cpu_for_both_blake2s_hash_modes() {
 }
 
 #[test]
+fn metal_blake2s_merkle_native_wide_leaf_path_matches_cpu() {
+    require_metal_runtime();
+
+    let cpu_columns = (0..32usize)
+        .map(|column_index| base_column(1 << 8, 17 + (column_index as u32) * 257))
+        .collect::<Vec<_>>();
+    let metal_columns = cpu_columns
+        .iter()
+        .cloned()
+        .map(MetalBaseFieldVec::from_vec)
+        .collect::<Vec<_>>();
+    let cpu_column_refs = cpu_columns.iter().collect::<Vec<_>>();
+    let metal_column_refs = metal_columns.iter().collect::<Vec<_>>();
+
+    let expected =
+        <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(&cpu_column_refs, 8);
+    let actual =
+        <MetalBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(&metal_column_refs, 8);
+
+    assert_eq!(actual, expected);
+}
+
+#[test]
 fn metal_blake2s_grind_cpu_bridge_matches_cpu() {
     require_metal_runtime();
 

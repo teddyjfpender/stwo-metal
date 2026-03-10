@@ -2779,6 +2779,101 @@ bool stwo_metal_blake2s_build_leaves_lifted_u32(
     }
 }
 
+bool stwo_metal_blake2s_build_leaves_lifted_wide_chunk_u32(
+    void *runtime_ptr,
+    void *const *column_buffers_ptr,
+    void *state_ptr,
+    void *dst_ptr,
+    const uint32_t *column_log_sizes,
+    uint32_t n_columns,
+    uint32_t lifting_log_size,
+    uint32_t processed_bytes_before,
+    uint32_t is_first_chunk,
+    uint32_t is_final_chunk,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        if (n_columns == 0 || n_columns > 16u) {
+            stwo_metal_write_error(error_message, error_message_len, @"Wide lifted Blake2s chunking requires between one and sixteen source columns per dispatch.");
+            return false;
+        }
+        if (column_buffers_ptr == NULL || column_log_sizes == NULL) {
+            stwo_metal_write_error(error_message, error_message_len, @"Wide lifted Blake2s chunking requires source-column buffers and per-column log sizes.");
+            return false;
+        }
+
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *state = stwo_metal_buffer_box(state_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        NSUInteger row_count = ((NSUInteger)1) << lifting_log_size;
+        if (state.len != row_count * 8u || dst.len != row_count * 8u) {
+            stwo_metal_write_error(error_message, error_message_len, @"Wide lifted Blake2s chunking expects state and destination buffers with eight words per lifted row.");
+            return false;
+        }
+
+        StwoMetalBufferBox *column_boxes[16] = { nil };
+        for (uint32_t i = 0; i < n_columns; ++i) {
+            if (column_buffers_ptr[i] == NULL) {
+                stwo_metal_write_error(error_message, error_message_len, @"Wide lifted Blake2s chunking received a null source column buffer.");
+                return false;
+            }
+            column_boxes[i] = stwo_metal_buffer_box(column_buffers_ptr[i]);
+            NSUInteger expected_len = ((NSUInteger)1) << column_log_sizes[i];
+            if (column_boxes[i].len != expected_len || column_log_sizes[i] > lifting_log_size) {
+                stwo_metal_write_error(error_message, error_message_len, @"Wide lifted Blake2s chunking requires each source column length to match its log size and not exceed the lifting size.");
+                return false;
+            }
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, @"blake2s_build_leaves_lifted_wide_chunk_u32", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        for (uint32_t i = 0; i < 16u; ++i) {
+            id<MTLBuffer> buffer = i < n_columns ? column_boxes[i].buffer : nil;
+            [encoder setBuffer:buffer offset:0 atIndex:i];
+        }
+        [encoder setBuffer:state.buffer offset:0 atIndex:16];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:17];
+        [encoder setBytes:column_log_sizes length:n_columns * sizeof(uint32_t) atIndex:18];
+        [encoder setBytes:&n_columns length:sizeof(n_columns) atIndex:19];
+        [encoder setBytes:&lifting_log_size length:sizeof(lifting_log_size) atIndex:20];
+        [encoder setBytes:&processed_bytes_before length:sizeof(processed_bytes_before) atIndex:21];
+        [encoder setBytes:&is_first_chunk length:sizeof(is_first_chunk) atIndex:22];
+        [encoder setBytes:&is_final_chunk length:sizeof(is_final_chunk) atIndex:23];
+
+        MTLSize grid_size = MTLSizeMake(row_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_generate_wide_fibonacci_trace_u32(
     void *runtime_ptr,
     void *input_a_ptr,

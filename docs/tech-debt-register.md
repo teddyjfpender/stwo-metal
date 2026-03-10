@@ -735,14 +735,13 @@ benchmark-boundary debt is retired. The benchmark contract is now explicit:
 non-plan benchmark measurements must use `cargo_profile = release` and
 `STWO_METAL_MODE=metal-prod` unless an override is set for diagnostics. Even
 under that production-grade contract, the row is still far from the declared
-north star: best measured `1521.303625 ms` total, with
-`prove_ms = 1520.994583` and
-`verify_ms = 0.309042`, at `log_n_instances = 20`, `n_columns = 100`,
+north star: best measured `1456.654041 ms` total, with `prove_ms = 1456.38`
+and `verify_ms = 0.274041`, at `log_n_instances = 20`, `n_columns = 100`,
 `warmups = 0`, `samples = 1`, and `threads = 14`. The dominant measured costs
-are now `prove_core_prove_values_ms = 893.510667`,
-`trace_commit_ms = 307.475084`,
-`prove_core_composition_generation_ms = 138.558583`, and
-`trace_commit_merkle_ms = 147.948042`.
+are now `prove_core_prove_values_ms = 885.230166`,
+`trace_commit_ms = 225.42575000000002`,
+`prove_core_composition_generation_ms = 149.119209`, and
+`trace_commit_merkle_ms = 48.477041`.
 
 Current containment:
 
@@ -765,7 +764,7 @@ The project could confuse benchmark-boundary closure with performance closure,
 or it could optimize the wrong layer without using the measured phase
 breakdown. That would make the `90 ms` reference goal look arbitrary instead of
 turning it into a disciplined optimization program. The row is also still
-about `1.09x` slower than the current `log_n_instances = 20` SIMD reference
+about `1.05x` slower than the current `log_n_instances = 20` SIMD reference
 (`1390 ms`) and far from the historical GPU row (`87 ms`).
 
 Exit condition:
@@ -773,12 +772,12 @@ Exit condition:
 The end-to-end `wide_fibonacci_prove_verify_v1` row has repeatable benchmark
 measurements in the declared environment and no longer spends the majority of
 its time in the currently dominant grouped PCS sampled-value,
-composition-generation, and remaining host-owned commitment stages, with
-progress evaluated against the recorded phase breakdown rather than against
+composition-generation, and remaining upper commitment stages, with progress
+evaluated against the recorded phase breakdown rather than against
 file-presence heuristics. The native point-evaluation lane, grouped sampled
-value scheduler, and bounded standard-tree Blake2s leaf kernel are now landed,
-so the next expected structural retirements are the remaining prove-values work
-above that lane and the large-tree host-owned commitment/hash path.
+value scheduler, and direct wide-tree standard Blake2s leaf path are now
+landed, so the next expected structural retirements are the remaining
+prove-values work above that lane and the upper commitment/hash path.
 
 Target retirement point:
 
@@ -823,19 +822,17 @@ Target retirement point:
 
 ### TD-0023: Lifted Blake2s leaf construction is still host-owned and dominates current commitment cost
 
-- Status: `active`
+- Status: `retired`
 - Category: `host-owned hash path`
 - Introduced: `2026-03-10`
 - Owner area: `T8 benchmark optimization`
 
-Why it exists now:
+Why it existed:
 
-The benchmark row is now close to SIMD, and the backend now includes a bounded
-native Blake2s leaf kernel for standard trees up to eight columns. But the
-current Apple Silicon profile still shows the large trace-tree lifted
-`build_leaves` path as a substantial host-owned commitment cost because that
-wide tree still falls back to Rust orchestration rather than a GPU-side hash
-pipeline or an equivalent lower-overhead host path.
+The benchmark row had reached the point where large lifted Blake2s leaf
+construction on the wide trace tree was still a first-order commitment cost.
+The bounded Metal leaf kernel only covered small standard trees, so the
+benchmark-critical wide tree still paid a flatten-and-stage host path.
 
 Current containment:
 
@@ -846,17 +843,13 @@ Current containment:
 
 Risk if left in place:
 
-The project can keep improving arithmetic and still stall near SIMD parity
-because a large remaining commitment wall sits outside the native polynomial
-and FRI lanes. That would bias effort toward the wrong kernels while the
-measured trace-tree leaf-hash path remains a first-order host bottleneck.
+The project would have kept chasing arithmetic wins while a first-order
+commitment wall remained outside the native polynomial and FRI lanes.
 
 Exit condition:
 
 The large-tree lifted Blake2s leaf path is no longer a first-order trace
-commitment cost on the production `wide_fibonacci_prove_verify_v1` row, either
-because it is replaced by a lower-overhead implementation or because measured
-evidence shows another stage has become dominant.
+commitment cost on the production `wide_fibonacci_prove_verify_v1` row.
 
 Target retirement point:
 

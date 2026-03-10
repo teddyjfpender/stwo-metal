@@ -28,6 +28,62 @@ Superseded by:
 
 ## Entries
 
+### DEC-0066: Standard Blake2s lifted trace leaves must hash directly from Metal column buffers in 16-column blocks
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The standard Blake2s lifted leaf path for wide trees now treats direct
+Metal-buffer hashing as a hard benchmark boundary:
+
+- standard Blake2s lifted leaves must no longer flatten wide trace trees into a
+  staged buffer before hashing
+- wide trees now hash directly from Metal column buffers in 16-column chunks,
+  which aligns each dispatch with one 64-byte Blake2s compression block
+- the grouped quotient side of `prove_values` now avoids the extra
+  sort-and-group churn pass before `ColumnSampleBatch` construction
+
+Context:
+
+After grouped PCS sample filling and cached point-evaluation staging landed, the
+remaining commitment wall was still the large trace-tree leaf path. The bounded
+Metal Blake2s leaf kernel only covered small standard trees, so the real
+`wide_fibonacci` trace tree still paid a wide flatten-and-stage tax before
+hashing. Once the direct wide-tree path was added and the quotient grouping pass
+was tightened, the best measured production row moved to
+`wide_fibonacci_prove_verify_v1 = 1456.654041 ms`, with
+`prove_ms = 1456.38`, `verify_ms = 0.274041`,
+`prove_core_prove_values_ms = 885.230166`,
+`trace_commit_ms = 225.42575000000002`, and
+`trace_commit_merkle_ms = 48.477041`.
+
+Alternatives rejected:
+
+- keep widening the old flattened-leaf path instead of replacing it with a
+  direct Metal-buffer boundary
+- move immediately to a fully GPU-side upper Merkle tree while the first-order
+  leaf staging tax was still present
+- leave the quotient-side `prove_values` regrouping churn in place while
+  claiming the next prove-values wall was purely arithmetic
+
+Impact:
+
+- the best measured end-to-end row is now about `1.05x` slower than the SIMD
+  `log20` reference instead of `1.09x` slower
+- `trace_commit_merkle_ms` is no longer a first-order benchmark wall on the
+  measured wide-fibonacci row
+- the next honest optimization target is the remaining `prove_values` wall and
+  the composition-generation / upper commitment orchestration around it
+
+Superseded by:
+
+- none
+
 ### DEC-0065: PCS sampled-value scheduling and large-domain point-evaluation staging must stay grouped and Metal-backed
 
 - Date: `2026-03-10`
@@ -47,9 +103,8 @@ Metal-backed staging as hard constraints:
 - large-domain `batch_eval_at_point` must reuse flattened Metal coefficient
   staging across repeated point-query groups instead of reflattening the same
   coefficient sets on every grouped call
-- the large-tree lifted Blake2s leaf path may still fall back to the host, but
-  bounded standard Blake2s leaf construction now has an explicit Metal kernel
-  and the host fallback must avoid avoidable per-chunk allocation churn
+- bounded standard Blake2s leaf construction now has an explicit Metal kernel
+  and large standard Blake2s trees are the next direct Metal-buffer target
 
 Context:
 
@@ -88,7 +143,8 @@ Impact:
 - `prove_core_prove_values_ms` dropped materially without changing proof
   semantics or widening the public API
 - the next honest walls are the remaining grouped prove-values work above PCS
-  and the still-host-owned large-tree lifted commitment path
+  and the still-wide standard-tree leaf staging that is now the next direct
+  Metal-buffer target
 
 Superseded by:
 
