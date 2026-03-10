@@ -150,6 +150,10 @@ The next active work is:
   helper instead of letting later runtime helpers rebuild route metadata
 - derive the first prove-values staging helper from that same canonical
   generated seed or binding instead of recomposing PCS staging metadata
+- lift the first prove-values staging helper into a shared PCS-facing lowering
+  boundary instead of leaving it owned by benchmark fixtures
+- re-anchor the shared prove-values staging bridge on the lower generated
+  execution contract instead of the benchmark boundary
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

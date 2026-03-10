@@ -28,6 +28,89 @@ Superseded by:
 
 ## Entries
 
+### DEC-0094: The first shared PCS/prove-values bridge must move out of the fixture before it moves down
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Once the first prove-values staging helper exists in a live benchmark row, the
+next step is to move it out of the fixture into a private shared support
+boundary before re-anchoring it further down onto the generated execution
+contract.
+
+Context:
+
+The ninth G5 slice allowed the wide-fibonacci benchmark to prove and verify
+through one benchmark-backed prove-values staging helper. That removed the
+local recomposition inside the fixture, but the helper still lived in the
+benchmark binary. Moving it into a private shared support crate keeps the main
+`stwo-metal` API minimal while making the next downward refactor possible.
+
+Alternatives rejected:
+
+- leave the prove-values staging helper inside the benchmark fixture
+- widen the public `stwo-metal` API with a benchmark-specific prove-values
+  staging contract
+- jump directly to lower generated bindings while the helper still belongs to a
+  fixture
+
+Impact:
+
+- the first shared PCS/prove-values staging bridge now exists outside the
+  benchmark fixture
+- the next honest G5 slice is re-anchoring that bridge on the lower generated
+  execution contract
+
+Superseded by:
+
+- none
+
+### DEC-0093: The first prove-values staging helper may land in the benchmark lane, but the next step must lift it out
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The first live prove-values staging helper may land in the wide-fibonacci
+benchmark lane so long as it consumes the generated benchmark boundary and the
+next tranche lifts that helper into a shared PCS-facing lowering boundary.
+
+Context:
+
+After execution seeds took over witness, evaluation, and quotient staging, the
+next honest runtime seam was prove-values. The only live path that could
+consume the generated contract immediately was the wide-fibonacci benchmark
+fixture, because generic vendored PCS code does not depend on `stwo-metal`.
+Landing the helper there is acceptable as a transitional G5 step, but leaving
+it there would let fixture-owned staging become architectural again.
+
+Alternatives rejected:
+
+- delay prove-values staging work until a fully shared PCS boundary exists
+- keep recomposing prove-values staging entirely inside the benchmark prove
+  path
+- treat the benchmark-local helper as a permanent endpoint
+
+Impact:
+
+- one live benchmark row now uses the generated boundary for trace generation
+  and prove-values staging
+- the next honest G5 slice is lifting that helper into a shared PCS-facing
+  lowering boundary
+
+Superseded by:
+
+- none
+
 ### DEC-0092: Execution seeds must own workload staging truth before PCS staging grows
 
 - Date: `2026-03-10`

@@ -1,12 +1,13 @@
-use serde::Serialize;
 #[cfg(feature = "metal-runtime")]
 use std::time::Instant;
-#[cfg(feature = "metal-runtime")]
-use stwo::core::air::Component;
+
+use serde::Serialize;
 #[cfg(feature = "metal-runtime")]
 use stwo::core::air::accumulation::PointEvaluationAccumulator;
 #[cfg(feature = "metal-runtime")]
-use stwo::core::channel::{Blake2sChannel, Channel, MerkleChannel};
+use stwo::core::air::Component;
+#[cfg(feature = "metal-runtime")]
+use stwo::core::channel::{Blake2sChannel, Channel};
 #[cfg(feature = "metal-runtime")]
 use stwo::core::constraints::coset_vanishing;
 #[cfg(feature = "metal-runtime")]
@@ -16,8 +17,6 @@ use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 #[cfg(feature = "metal-runtime")]
 use stwo::core::fields::FieldExpOps;
 #[cfg(feature = "metal-runtime")]
-use stwo::core::pcs::utils::get_lifting_log_size;
-#[cfg(feature = "metal-runtime")]
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
 #[cfg(feature = "metal-runtime")]
 use stwo::core::poly::circle::CanonicCoset;
@@ -26,9 +25,9 @@ use stwo::core::proof::{StarkProof, StarkProofSizeBreakdown};
 #[cfg(feature = "metal-runtime")]
 use stwo::core::utils::MaybeOwned;
 #[cfg(feature = "metal-runtime")]
-use stwo::core::verifier::{verify, PREPROCESSED_TRACE_IDX};
-#[cfg(feature = "metal-runtime")]
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+#[cfg(feature = "metal-runtime")]
+use stwo::core::verifier::{verify, PREPROCESSED_TRACE_IDX};
 #[cfg(feature = "metal-runtime")]
 use stwo::prover::poly::circle::CircleEvaluation;
 #[cfg(feature = "metal-runtime")]
@@ -44,16 +43,19 @@ use stwo::prover::{
 };
 #[cfg(feature = "metal-runtime")]
 use stwo_metal::{
-    accumulate_wide_fibonacci_quotients, declare_exemplar_metal_workload_boundary, MetalBackend,
-    MetalExecutionIntent, MetalWideFibonacciQuotientRequest,
+    accumulate_wide_fibonacci_quotients, declare_wide_fibonacci_benchmark_boundary, MetalBackend,
+    MetalBenchmarkOperation, MetalBenchmarkReferencePlatform, MetalBenchmarkTarget,
+    MetalExecutionIntent, MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientRequest,
     MetalWideFibonacciTrace,
 };
+#[cfg(feature = "metal-runtime")]
+use stwo_metal_benchmark_bridge::stage_wide_fibonacci_prove_values;
+#[cfg(feature = "metal-runtime")]
+use stwo_metal_standalone_benchmarks::support::summarize;
 use stwo_metal_standalone_benchmarks::support::{
     enforce_metal_benchmark_contract, env_flag, env_or, env_u32, env_usize, epoch_ms,
     required_env_path, runner_metadata, write_json, RunnerMetadata, SummaryStats,
 };
-#[cfg(feature = "metal-runtime")]
-use stwo_metal_standalone_benchmarks::support::summarize;
 
 const BENCHMARK_ID: &str = "wide_fibonacci_prove_verify_v1";
 const RESULT_SCHEMA_VERSION: u32 = 1;
@@ -63,6 +65,24 @@ const DEFAULT_WARMUPS: usize = 1;
 const DEFAULT_SAMPLES: usize = 5;
 #[cfg(feature = "metal-runtime")]
 const MAIN_TRACE_IDX: usize = 1;
+
+#[cfg(feature = "metal-runtime")]
+fn benchmark_target(
+    log_n_instances: u32,
+    n_columns: usize,
+    operation: MetalBenchmarkOperation,
+) -> MetalBenchmarkTarget {
+    MetalBenchmarkTarget {
+        benchmark_id: BENCHMARK_ID,
+        workload_name: "fibonacci_example",
+        family: "wide_fibonacci",
+        operation,
+        log_n_instances,
+        n_columns: n_columns as u32,
+        reference_platform: MetalBenchmarkReferencePlatform::Rtx4090Cuda,
+        reference_elapsed_ms: 90.0,
+    }
+}
 
 #[derive(Serialize)]
 struct BenchmarkResult {
@@ -242,7 +262,12 @@ fn main() {
                 .collect::<Vec<_>>();
 
             for _ in 0..warmups {
-                let _ = run_one_sample(&input_a_host, &input_b_host, log_n_instances, n_columns as usize);
+                let _ = run_one_sample(
+                    &input_a_host,
+                    &input_b_host,
+                    log_n_instances,
+                    n_columns as usize,
+                );
             }
 
             let mut sample_results = Vec::with_capacity(samples);
@@ -351,12 +376,13 @@ fn main() {
                         setup_and_preprocessed_commit_ms: setup_samples_ms.clone(),
                         trace_generation_ms: trace_generation_samples_ms.clone(),
                         trace_commit_ms: trace_commit_samples_ms.clone(),
-                        trace_commit_interpolation_ms: trace_commit_interpolation_samples_ms.clone(),
+                        trace_commit_interpolation_ms: trace_commit_interpolation_samples_ms
+                            .clone(),
                         trace_commit_extension_ms: trace_commit_extension_samples_ms.clone(),
                         trace_commit_merkle_ms: trace_commit_merkle_samples_ms.clone(),
                         prove_core_ms: prove_core_samples_ms.clone(),
-                        prove_core_composition_generation_ms: prove_core_composition_generation_samples_ms
-                            .clone(),
+                        prove_core_composition_generation_ms:
+                            prove_core_composition_generation_samples_ms.clone(),
                         prove_core_composition_commit_ms: prove_core_composition_commit_samples_ms
                             .clone(),
                         prove_core_prove_values_ms: prove_core_prove_values_samples_ms.clone(),
@@ -366,7 +392,9 @@ fn main() {
                         setup_and_preprocessed_commit_ms: summarize(&setup_samples_ms),
                         trace_generation_ms: summarize(&trace_generation_samples_ms),
                         trace_commit_ms: summarize(&trace_commit_samples_ms),
-                        trace_commit_interpolation_ms: summarize(&trace_commit_interpolation_samples_ms),
+                        trace_commit_interpolation_ms: summarize(
+                            &trace_commit_interpolation_samples_ms,
+                        ),
                         trace_commit_extension_ms: summarize(&trace_commit_extension_samples_ms),
                         trace_commit_merkle_ms: summarize(&trace_commit_merkle_samples_ms),
                         prove_core_ms: summarize(&prove_core_samples_ms),
@@ -399,7 +427,10 @@ struct WideFibonacciBenchmarkComponent {
 #[cfg(feature = "metal-runtime")]
 impl WideFibonacciBenchmarkComponent {
     fn new(log_n_rows: u32, n_columns: usize) -> Self {
-        assert!(n_columns >= 3, "wide fibonacci benchmark requires at least 3 columns");
+        assert!(
+            n_columns >= 3,
+            "wide fibonacci benchmark requires at least 3 columns"
+        );
         Self {
             log_n_rows,
             n_columns,
@@ -486,9 +517,10 @@ impl ComponentProver<MetalBackend> for WideFibonacciBenchmarkComponent {
             "wide fibonacci benchmark trace width drifted"
         );
 
-        if trace_columns.iter().any(|poly| poly.coeffs.is_none()) && trace_columns
-            .iter()
-            .any(|poly| poly.evals.domain != eval_domain)
+        if trace_columns.iter().any(|poly| poly.coeffs.is_none())
+            && trace_columns
+                .iter()
+                .any(|poly| poly.evals.domain != eval_domain)
         {
             panic!(
                 "wide fibonacci benchmark requires stored trace coefficients for eval-domain extension"
@@ -532,7 +564,9 @@ impl ComponentProver<MetalBackend> for WideFibonacciBenchmarkComponent {
             domain_log_size: trace_domain.log_size(),
             eval_domain_log_size: eval_domain.log_size(),
         })
-        .expect("wide-fibonacci quotient accumulation should succeed through the native Metal path");
+        .expect(
+            "wide-fibonacci quotient accumulation should succeed through the native Metal path",
+        );
         let quotient_columns = quotients.into_coordinate_base_columns();
         for (dst, src) in accum.col.columns.iter_mut().zip(quotient_columns) {
             *dst = src;
@@ -648,6 +682,16 @@ fn prove_wide_fibonacci_blake(
     assert_eq!(input_a_host.len(), input_len);
     assert_eq!(input_b_host.len(), input_len);
 
+    let benchmark_boundary = declare_wide_fibonacci_benchmark_boundary(
+        MetalExecutionIntent::PreferMetal,
+        benchmark_target(
+            log_n_instances,
+            n_columns,
+            MetalBenchmarkOperation::ProveVerify,
+        ),
+    )
+    .expect("wide-fibonacci prove benchmark boundary should be declared");
+
     let setup_start = Instant::now();
     let twiddles = MetalBackend::precompute_twiddles(
         CanonicCoset::new(log_n_instances + 1 + config.fri_config.log_blowup_factor)
@@ -667,8 +711,13 @@ fn prove_wide_fibonacci_blake(
     let setup_and_preprocessed_commit_ms = setup_start.elapsed().as_secs_f64() * 1000.0;
 
     let trace_generation_start = Instant::now();
-    let (trace, sentinel) =
-        generate_wide_fibonacci_trace_evaluations(input_a_host, input_b_host, log_n_instances, n_columns);
+    let (trace, sentinel) = generate_wide_fibonacci_trace_evaluations(
+        &benchmark_boundary,
+        input_a_host,
+        input_b_host,
+        log_n_instances,
+        n_columns,
+    );
     let trace_generation_ms = trace_generation_start.elapsed().as_secs_f64() * 1000.0;
 
     let trace_commit_start = Instant::now();
@@ -678,13 +727,13 @@ fn prove_wide_fibonacci_blake(
 
     let component = WideFibonacciBenchmarkComponent::new(log_n_instances, n_columns);
     let prove_core_start = Instant::now();
-    let (proof, prove_core_breakdown) =
-        prove_with_breakdown::<MetalBackend, Blake2sMerkleChannel>(
-            &[&component],
-            prover_channel,
-            commitment_scheme,
-        )
-        .expect("wide fibonacci prove should succeed");
+    let (proof, prove_core_breakdown) = prove_with_breakdown(
+        &benchmark_boundary,
+        &[&component],
+        prover_channel,
+        commitment_scheme,
+    )
+    .expect("wide fibonacci prove should succeed");
     let prove_core_ms = prove_core_start.elapsed().as_secs_f64() * 1000.0;
 
     (
@@ -708,11 +757,12 @@ fn prove_wide_fibonacci_blake(
 }
 
 #[cfg(feature = "metal-runtime")]
-fn prove_with_breakdown<B: stwo::prover::backend::BackendForChannel<MC>, MC: MerkleChannel>(
-    components: &[&dyn ComponentProver<B>],
-    channel: &mut MC::C,
-    mut commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
-) -> Result<(StarkProof<MC::H>, ProveCoreBreakdown), ProvingError> {
+fn prove_with_breakdown(
+    benchmark_boundary: &MetalWideFibonacciBenchmarkBoundary,
+    components: &[&dyn ComponentProver<MetalBackend>],
+    channel: &mut Blake2sChannel,
+    mut commitment_scheme: CommitmentSchemeProver<'_, MetalBackend, Blake2sMerkleChannel>,
+) -> Result<(StarkProof<Blake2sMerkleHasher>, ProveCoreBreakdown), ProvingError> {
     let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
         .polynomials
         .len();
@@ -736,39 +786,34 @@ fn prove_with_breakdown<B: stwo::prover::backend::BackendForChannel<MC>, MC: Mer
     tree_builder.commit(channel);
     let composition_commit_ms = composition_commit_start.elapsed().as_secs_f64() * 1000.0;
 
-    let oods_point = stwo::core::circle::CirclePoint::<SecureField>::get_random_point(channel);
-    let split_composition_log_size = commitment_scheme
-        .trees
-        .last()
-        .unwrap()
-        .commitment
-        .layers
-        .len() as u32
-        - 1;
-    let lifting_log_size =
-        get_lifting_log_size(&commitment_scheme.config, split_composition_log_size);
-    let max_log_degree_bound =
-        lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
-
-    let mut sample_points =
-        component_provers
-            .components()
-            .mask_points(oods_point, max_log_degree_bound, false);
-    sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
+    let prove_values_stage = stage_wide_fibonacci_prove_values(
+        benchmark_boundary,
+        components,
+        channel,
+        &commitment_scheme,
+    );
 
     let prove_values_start = Instant::now();
-    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
+    let commitment_scheme_proof =
+        commitment_scheme.prove_values(prove_values_stage.sample_points, channel);
     let prove_values_ms = prove_values_start.elapsed().as_secs_f64() * 1000.0;
     let proof = StarkProof(commitment_scheme_proof.proof);
 
     let sanity_check_start = Instant::now();
-    if extract_composition_oods_eval(&proof, oods_point, max_log_degree_bound).unwrap()
-        != component_provers.components().eval_composition_polynomial_at_point(
-            oods_point,
-            &proof.sampled_values,
-            random_coeff,
-            max_log_degree_bound,
-        )
+    if extract_composition_oods_eval(
+        &proof,
+        prove_values_stage.oods_point,
+        prove_values_stage.max_log_degree_bound,
+    )
+    .unwrap()
+        != component_provers
+            .components()
+            .eval_composition_polynomial_at_point(
+                prove_values_stage.oods_point,
+                &proof.sampled_values,
+                random_coeff,
+                prove_values_stage.max_log_degree_bound,
+            )
     {
         return Err(ProvingError::ConstraintsNotSatisfied);
     }
@@ -880,15 +925,30 @@ fn verify_wide_fibonacci_blake(
     proof: &StarkProof<Blake2sMerkleHasher>,
 ) -> Result<(), stwo::core::verifier::VerificationError> {
     let verifier_channel = &mut Blake2sChannel::default();
-    let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+    let commitment_scheme =
+        &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
     let sizes = component.trace_log_degree_bounds();
-    commitment_scheme.commit(proof.commitments[PREPROCESSED_TRACE_IDX], &sizes[PREPROCESSED_TRACE_IDX], verifier_channel);
-    commitment_scheme.commit(proof.commitments[MAIN_TRACE_IDX], &sizes[MAIN_TRACE_IDX], verifier_channel);
-    verify(&[component as &dyn Component], verifier_channel, commitment_scheme, proof.clone())
+    commitment_scheme.commit(
+        proof.commitments[PREPROCESSED_TRACE_IDX],
+        &sizes[PREPROCESSED_TRACE_IDX],
+        verifier_channel,
+    );
+    commitment_scheme.commit(
+        proof.commitments[MAIN_TRACE_IDX],
+        &sizes[MAIN_TRACE_IDX],
+        verifier_channel,
+    );
+    verify(
+        &[component as &dyn Component],
+        verifier_channel,
+        commitment_scheme,
+        proof.clone(),
+    )
 }
 
 #[cfg(feature = "metal-runtime")]
 fn generate_wide_fibonacci_trace_evaluations(
+    benchmark_boundary: &MetalWideFibonacciBenchmarkBoundary,
     input_a_host: &[BaseField],
     input_b_host: &[BaseField],
     log_n_instances: u32,
@@ -898,12 +958,8 @@ fn generate_wide_fibonacci_trace_evaluations(
     WideFibonacciSentinel,
 ) {
     let input_len = 1usize << log_n_instances;
-    let boundary = declare_exemplar_metal_workload_boundary(
-        MetalExecutionIntent::PreferMetal,
-        "fibonacci_example",
-    )
-    .expect("wide-fibonacci prove workload boundary should be declared");
-    let witness_inputs = boundary
+    let witness_inputs = benchmark_boundary
+        .workload_boundary()
         .ingest_cpu_wide_fibonacci_witness(input_a_host, input_b_host, n_columns as u32)
         .expect("wide-fibonacci prove witness handoff should be accepted");
     let trace = witness_inputs

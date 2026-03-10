@@ -66,9 +66,9 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 ninth slice: derive the first prove-values staging helper from the
-canonical generated execution seed so PCS runtime lowering stops composing
-staging metadata locally`
+`G5 eleventh slice: re-anchor the shared prove-values staging bridge onto the
+canonical generated execution contract so the benchmark boundary stops being
+the lowest staging authority`
 
 The active formal basis is:
 
@@ -187,6 +187,26 @@ The eighth G5 slice is now landed:
   that runtime metadata
 - the next honest G5 work is the first prove-values staging helper above those
   handoffs
+
+The ninth G5 slice is now landed:
+
+- the wide-fibonacci prove benchmark now declares one generated benchmark
+  boundary up front and uses it for both trace generation and prove-values
+  staging
+- the first live prove-values staging helper now exists above the workload
+  handoff layer instead of recomposing its runtime contract entirely inside the
+  prove path
+- the next honest G5 work is lifting that helper into a shared PCS-facing
+  lowering boundary so fixture code stops owning it
+
+The tenth G5 slice is now landed:
+
+- the first prove-values staging helper now lives in a private shared support
+  crate instead of inside the benchmark fixture itself
+- the wide-fibonacci benchmark row now consumes that shared bridge for
+  prove-values staging while keeping the main `stwo-metal` API surface stable
+- the next honest G5 work is re-anchoring that shared bridge on the lower
+  generated execution contract instead of the benchmark boundary
 
 ## G2 progress snapshot
 

@@ -30,9 +30,9 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 ninth slice: derive the first prove-values staging helper from the
-  canonical generated execution seed so PCS runtime lowering stops composing
-  staging metadata locally`
+  `G5 eleventh slice: re-anchor the shared prove-values staging bridge onto the
+  canonical generated execution contract so the benchmark boundary stops being
+  the lowest staging authority`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -61,8 +61,9 @@ Invariants:
 - generated inventory now names ABI symbols and specialization keys, is
   consumed by workload and benchmark declarations, and now feeds a reusable
   execution-binding helper plus one scheduling seed and shared witness,
-  evaluation, and quotient staging helpers, but PCS prove-values lowering
-  still composes staging metadata locally
+  evaluation, quotient, and prove-values staging helpers, but the shared
+  prove-values bridge still anchors itself on the benchmark boundary instead of
+  directly on the lower generated execution contract
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -83,9 +84,9 @@ Invariants:
 
 ## Next three deliverables
 
-1. Derive the first prove-values staging helper from the canonical execution
-   seed or execution binding so PCS runtime lowering stops rebuilding
-   generated metadata locally.
+1. Re-anchor the shared prove-values staging bridge on the canonical
+   execution seed or binding so lower generated runtime authority stays
+   linear.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate
