@@ -30,9 +30,9 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 fourth slice: consume the shared workload-boundary lowering input in the
-  benchmark declaration path and keep benchmark routing attached to the same
-  generated seam`
+  `G5 fifth slice: lower the shared generated boundary inputs into one
+  reusable execution-binding helper for the next runtime-facing scheduling
+  work`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -59,9 +59,9 @@ Invariants:
 - there is not yet a declared policy for how generated output becomes durable
   and hand-tunable within this repository
 - generated inventory now names ABI symbols and specialization keys, is
-  consumed by workload and benchmark declarations, and now feeds workload-
-  boundary lowering through one broader execution helper, but benchmark
-  declaration still composes its route validation around that helper
+  consumed by workload and benchmark declarations, and now feeds shared
+  workload and benchmark boundary inputs, but those inputs are not yet packaged
+  as one reusable execution-binding helper for runtime-facing scheduling
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -82,9 +82,8 @@ Invariants:
 
 ## Next three deliverables
 
-1. Consume the shared workload-boundary lowering input in the benchmark
-   declaration path so benchmark routing stays attached to the same generated
-   seam.
+1. Lower the shared workload and benchmark boundary inputs into one reusable
+   execution-binding helper for runtime-facing scheduling work.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 starts lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate

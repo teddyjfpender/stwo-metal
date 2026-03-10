@@ -28,6 +28,47 @@ Superseded by:
 
 ## Entries
 
+### DEC-0088: Benchmark declaration must consume the shared generated boundary input instead of composing route state independently
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Once workload-boundary declaration consumes a shared generated boundary input,
+benchmark declaration must consume a sibling shared benchmark-boundary input
+from the same seam instead of mixing direct registration lookups with a
+separately composed workload boundary.
+
+Context:
+
+After the third G5 slice, workload-boundary declaration was normalized, but
+benchmark declaration still sat one level above it and risked drifting back
+into hybrid local composition. Normalizing benchmark declaration next keeps the
+generated lowering path linear and points the next honest work toward reusable
+execution bindings.
+
+Alternatives rejected:
+
+- leave benchmark declaration as a mixed direct-registration and boundary call
+- skip straight to deeper scheduling work before normalizing benchmark
+  declaration
+- add a benchmark-only metadata table outside the shared seam
+
+Impact:
+
+- workload and benchmark declaration now both consume shared generated boundary
+  inputs
+- the next honest G5 step is a reusable execution-binding helper for runtime
+  scheduling
+
+Superseded by:
+
+- none
+
 ### DEC-0087: Workload-boundary declaration must consume one shared lowering input before benchmark lowering widens
 
 - Date: `2026-03-10`

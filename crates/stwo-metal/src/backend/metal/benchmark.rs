@@ -1,7 +1,7 @@
 use stwo::core::fields::m31::BaseField;
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
-use super::execution_plan::registered_generated_component;
+use super::execution_plan::registered_benchmark_declaration_input;
 use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::witness::{
     generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
@@ -157,15 +157,14 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
     intent: MetalExecutionIntent,
     target: MetalBenchmarkTarget,
 ) -> Result<MetalWideFibonacciBenchmarkBoundary, MetalPlannerError<'static>> {
-    let registration = registered_generated_component(
-        target.workload_name,
-        match target.operation {
-            MetalBenchmarkOperation::TraceGeneration => {
-                MetalGeneratedRouteKind::BenchmarkTraceGeneration
-            }
-            MetalBenchmarkOperation::ProveVerify => MetalGeneratedRouteKind::BenchmarkProveVerify,
-        },
-    )?;
+    let benchmark_route = match target.operation {
+        MetalBenchmarkOperation::TraceGeneration => {
+            MetalGeneratedRouteKind::BenchmarkTraceGeneration
+        }
+        MetalBenchmarkOperation::ProveVerify => MetalGeneratedRouteKind::BenchmarkProveVerify,
+    };
+    let declaration_input =
+        registered_benchmark_declaration_input(intent, target.workload_name, benchmark_route)?;
     let benchmark_operation = match target.operation {
         MetalBenchmarkOperation::TraceGeneration => {
             MetalRegisteredBenchmarkOperation::TraceGeneration
@@ -173,24 +172,40 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
         MetalBenchmarkOperation::ProveVerify => MetalRegisteredBenchmarkOperation::ProveVerify,
     };
 
-    assert_eq!(registration.artifact.workload_family, target.family);
-    assert!(registration
-        .artifact
+    assert_eq!(
+        declaration_input.workload_boundary.lowering.workload_family,
+        target.family
+    );
+    assert_eq!(declaration_input.lowering.workload_family, target.family);
+    assert!(declaration_input
+        .lowering
+        .abi_symbols
+        .iter()
+        .all(|symbol| symbol.starts_with("metal.")));
+    assert!(declaration_input
         .supported_benchmark_operations
         .contains(&benchmark_operation));
-    assert_eq!(
-        registration.generated_inventory().registration_key,
-        target.workload_name
-    );
-    assert_eq!(registration.generated_inventory().abi_family, target.family);
-
+    assert!(declaration_input
+        .workload_boundary
+        .generated_inventory
+        .specialization_keys
+        .contains(&"log_n_instances"));
+    assert!(declaration_input
+        .workload_boundary
+        .generated_inventory
+        .specialization_keys
+        .contains(&"n_columns"));
     let workload_boundary = declare_exemplar_metal_workload_boundary(intent, target.workload_name)?;
     let inventory = workload_boundary.generated_inventory();
 
-    assert_eq!(inventory.registration_key, target.workload_name);
-    assert_eq!(inventory.abi_family, target.family);
-    assert!(inventory.specialization_keys.contains(&"log_n_instances"));
-    assert!(inventory.specialization_keys.contains(&"n_columns"));
+    assert_eq!(
+        declaration_input.workload_boundary.generated_inventory,
+        inventory
+    );
+    assert_eq!(
+        declaration_input.workload_boundary.plan,
+        workload_boundary.plan()
+    );
 
     Ok(MetalWideFibonacciBenchmarkBoundary {
         workload_boundary,

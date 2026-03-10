@@ -140,6 +140,8 @@ The next active work is:
   oriented execution helper beyond prove-plan selection
 - keep the benchmark declaration path attached to that same generated seam
   instead of composing route validation around it separately
+- package the shared generated boundary inputs into one reusable execution-
+  binding helper for later scheduling work
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

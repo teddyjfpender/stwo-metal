@@ -66,9 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 fourth slice: consume the shared workload-boundary lowering input in the
-benchmark declaration path and keep benchmark routing attached to the same
-generated seam`
+`G5 fifth slice: lower the shared generated boundary inputs into one reusable
+execution-binding helper for the next runtime-facing scheduling work`
 
 The active formal basis is:
 
@@ -145,6 +144,13 @@ The third G5 slice is now landed:
   inputs
 - the first broader lowering-oriented execution helper now uses the same
   generated seam instead of rebuilding route state locally
+
+The fourth G5 slice is now landed:
+
+- benchmark declaration now consumes one shared benchmark-boundary input
+  derived from the same generated seam as workload-boundary declaration
+- benchmark routing no longer mixes direct registration lookup with
+  independently composed workload-boundary state
 
 ## G2 progress snapshot
 
