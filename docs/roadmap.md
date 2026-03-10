@@ -142,6 +142,8 @@ The next active work is:
   instead of composing route validation around it separately
 - package the shared generated boundary inputs into one reusable execution-
   binding helper for later scheduling work
+- derive the first scheduling-oriented execution seed from that reusable
+  binding helper without widening runtime policy prematurely
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

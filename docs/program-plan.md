@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 fifth slice: lower the shared generated boundary inputs into one reusable
-execution-binding helper for the next runtime-facing scheduling work`
+`G5 sixth slice: derive the first scheduling-oriented execution seed from the
+reusable generated binding helper without widening runtime policy`
 
 The active formal basis is:
 
@@ -151,6 +151,13 @@ The fourth G5 slice is now landed:
   derived from the same generated seam as workload-boundary declaration
 - benchmark routing no longer mixes direct registration lookup with
   independently composed workload-boundary state
+
+The fifth G5 slice is now landed:
+
+- workload and benchmark declaration now share one reusable generated
+  execution-binding helper
+- the next honest G5 step is runtime scheduling on top of that shared binding,
+  not more boundary-shape cleanup
 
 ## G2 progress snapshot
 

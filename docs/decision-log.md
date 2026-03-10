@@ -28,6 +28,43 @@ Superseded by:
 
 ## Entries
 
+### DEC-0089: Workload and benchmark lowering must converge on one reusable execution-binding helper before scheduling widens
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+After workload-boundary and benchmark-boundary declaration are normalized, the
+next shared abstraction is one reusable execution-binding helper. Runtime
+scheduling must grow from that helper instead of from parallel boundary shapes.
+
+Context:
+
+The previous G5 slices normalized prove planning, workload boundaries, and
+benchmark declarations separately. Without one shared binding helper, the next
+runtime-facing work would risk reintroducing duplicated route and inventory
+handling under a different name. The binding helper now closes that gap.
+
+Alternatives rejected:
+
+- keep workload and benchmark lowering on separate boundary helper types
+- start runtime scheduling before the shared binding exists
+- introduce a second scheduling-local metadata surface
+
+Impact:
+
+- G5 now has one reusable generated binding shared across declaration paths
+- the next honest work is the first scheduling-oriented helper on top of that
+  binding
+
+Superseded by:
+
+- none
+
 ### DEC-0088: Benchmark declaration must consume the shared generated boundary input instead of composing route state independently
 
 - Date: `2026-03-10`

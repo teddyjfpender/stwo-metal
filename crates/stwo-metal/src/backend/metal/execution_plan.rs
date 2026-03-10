@@ -72,6 +72,14 @@ pub(crate) struct RegisteredMetalBenchmarkDeclarationInput {
     pub supported_benchmark_operations: &'static [MetalRegisteredBenchmarkOperation],
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RegisteredMetalExecutionBinding {
+    pub workload_boundary: RegisteredMetalWorkloadBoundaryInput,
+    pub declaration_lowering: RegisteredMetalLoweringInput,
+    pub declaration_route: MetalGeneratedRouteKind,
+    pub supported_benchmark_operations: &'static [MetalRegisteredBenchmarkOperation],
+}
+
 impl RegisteredMetalComponent {
     pub fn lowering_input(self) -> RegisteredMetalLoweringInput {
         let inventory = self.generated_inventory();
@@ -156,32 +164,48 @@ pub(crate) fn registered_workload_boundary_input(
     })
 }
 
-pub(crate) fn registered_benchmark_declaration_input(
+pub(crate) fn registered_execution_binding(
     intent: MetalExecutionIntent,
     component_name: &'static str,
-    route: MetalGeneratedRouteKind,
-) -> Result<RegisteredMetalBenchmarkDeclarationInput, MetalPlannerError<'static>> {
-    let benchmark_registration = registered_generated_component(component_name, route)?;
+    declaration_route: MetalGeneratedRouteKind,
+) -> Result<RegisteredMetalExecutionBinding, MetalPlannerError<'static>> {
+    let declaration_registration =
+        registered_generated_component(component_name, declaration_route)?;
     let workload_boundary = registered_workload_boundary_input(intent, component_name)?;
 
     assert_eq!(
-        benchmark_registration
+        declaration_registration
             .generated_inventory()
             .registration_key,
         workload_boundary.generated_inventory.registration_key
     );
     assert_eq!(
-        benchmark_registration.generated_inventory().abi_family,
+        declaration_registration.generated_inventory().abi_family,
         workload_boundary.generated_inventory.abi_family
     );
 
-    Ok(RegisteredMetalBenchmarkDeclarationInput {
+    Ok(RegisteredMetalExecutionBinding {
         workload_boundary,
-        lowering: benchmark_registration.lowering_input(),
-        benchmark_route: route,
-        supported_benchmark_operations: benchmark_registration
+        declaration_lowering: declaration_registration.lowering_input(),
+        declaration_route,
+        supported_benchmark_operations: declaration_registration
             .artifact
             .supported_benchmark_operations,
+    })
+}
+
+pub(crate) fn registered_benchmark_declaration_input(
+    intent: MetalExecutionIntent,
+    component_name: &'static str,
+    route: MetalGeneratedRouteKind,
+) -> Result<RegisteredMetalBenchmarkDeclarationInput, MetalPlannerError<'static>> {
+    let binding = registered_execution_binding(intent, component_name, route)?;
+
+    Ok(RegisteredMetalBenchmarkDeclarationInput {
+        workload_boundary: binding.workload_boundary,
+        lowering: binding.declaration_lowering,
+        benchmark_route: route,
+        supported_benchmark_operations: binding.supported_benchmark_operations,
     })
 }
 
@@ -283,9 +307,9 @@ pub(crate) fn plan_registered_metal_operation<'a>(
 mod tests {
     use super::{
         plan_registered_metal_component_prove, plan_registered_metal_prove,
-        registered_benchmark_declaration_input, registered_generated_artifact,
-        registered_generated_component, registered_runtime_plan_input,
-        registered_workload_boundary_input,
+        registered_benchmark_declaration_input, registered_execution_binding,
+        registered_generated_artifact, registered_generated_component,
+        registered_runtime_plan_input, registered_workload_boundary_input,
     };
     use crate::backend::metal::artifact::{
         MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation,
@@ -472,5 +496,31 @@ mod tests {
             benchmark_input.workload_boundary.plan,
             MetalExecutionPlan::MetalFriHybrid
         );
+    }
+
+    #[test]
+    fn registered_execution_binding_packages_shared_boundary_inputs() {
+        let binding = registered_execution_binding(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+            MetalGeneratedRouteKind::BenchmarkTraceGeneration,
+        )
+        .unwrap();
+
+        assert_eq!(
+            binding.workload_boundary.plan,
+            MetalExecutionPlan::MetalFriHybrid
+        );
+        assert_eq!(
+            binding.declaration_lowering.component_name,
+            "fibonacci_example"
+        );
+        assert_eq!(
+            binding.declaration_route,
+            MetalGeneratedRouteKind::BenchmarkTraceGeneration
+        );
+        assert!(binding
+            .supported_benchmark_operations
+            .contains(&MetalRegisteredBenchmarkOperation::TraceGeneration));
     }
 }

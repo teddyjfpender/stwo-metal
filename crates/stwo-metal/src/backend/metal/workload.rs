@@ -7,8 +7,8 @@ use stwo::prover::fri::FriDecommitResult;
 use stwo::prover::poly::circle::SecureEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 
-use super::artifact::MetalGeneratedInventory;
-use super::execution_plan::registered_workload_boundary_input;
+use super::artifact::{MetalGeneratedInventory, MetalGeneratedRouteKind};
+use super::execution_plan::registered_execution_binding;
 use super::planner::{MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError};
 use super::subpath::MetalFriBlake2sSubpath;
 use super::witness::{
@@ -323,7 +323,12 @@ pub fn declare_exemplar_metal_workload_boundary(
     intent: MetalExecutionIntent,
     workload_name: &'static str,
 ) -> Result<MetalWorkloadBoundary, MetalPlannerError<'static>> {
-    let boundary_input = registered_workload_boundary_input(intent, workload_name)?;
+    let binding = registered_execution_binding(
+        intent,
+        workload_name,
+        MetalGeneratedRouteKind::WorkloadBoundary,
+    )?;
+    let boundary_input = binding.workload_boundary;
 
     Ok(MetalWorkloadBoundary {
         workload_name,
