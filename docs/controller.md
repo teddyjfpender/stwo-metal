@@ -30,8 +30,9 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 third slice: use the canonical runtime-planning input in the first
-  lowering-oriented execution helper beyond prove-plan selection`
+  `G5 fourth slice: consume the shared workload-boundary lowering input in the
+  benchmark declaration path and keep benchmark routing attached to the same
+  generated seam`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -58,9 +59,9 @@ Invariants:
 - there is not yet a declared policy for how generated output becomes durable
   and hand-tunable within this repository
 - generated inventory now names ABI symbols and specialization keys, is
-  consumed by workload and benchmark declarations, and now feeds one canonical
-  runtime-planning helper, but no broader lowering-oriented execution helper
-  consumes that unit yet
+  consumed by workload and benchmark declarations, and now feeds workload-
+  boundary lowering through one broader execution helper, but benchmark
+  declaration still composes its route validation around that helper
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -81,8 +82,9 @@ Invariants:
 
 ## Next three deliverables
 
-1. Use the canonical runtime-planning input in the first lowering-oriented
-   execution helper beyond prove-plan selection.
+1. Consume the shared workload-boundary lowering input in the benchmark
+   declaration path so benchmark routing stays attached to the same generated
+   seam.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 starts lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate

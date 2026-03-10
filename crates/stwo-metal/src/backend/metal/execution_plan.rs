@@ -10,6 +10,7 @@ use super::planner::{
     plan_metal_operation, MetalComponentPlanInput, MetalExecutionIntent, MetalExecutionPlan,
     MetalOperationKind, MetalPlannerError, UnknownMetalComponent, UnsupportedGeneratedMetalRoute,
 };
+use super::workload_contract::MetalWorkloadStageAssignment;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RegisteredMetalExecutionPlan {
@@ -53,6 +54,14 @@ pub(crate) struct RegisteredMetalRuntimePlanInput {
     pub lowering: RegisteredMetalLoweringInput,
     pub operation: MetalOperationKind,
     pub plan_input: MetalComponentPlanInput<'static>,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RegisteredMetalWorkloadBoundaryInput {
+    pub lowering: RegisteredMetalLoweringInput,
+    pub plan: MetalExecutionPlan,
+    pub stage_assignments: &'static [MetalWorkloadStageAssignment],
+    pub generated_inventory: MetalGeneratedInventory,
 }
 
 impl RegisteredMetalComponent {
@@ -115,6 +124,28 @@ pub(crate) fn registered_runtime_plan_input<'a>(
 ) -> Result<RegisteredMetalRuntimePlanInput, MetalPlannerError<'a>> {
     registered_generated_component(component_name, route)
         .map(|registration| registration.runtime_plan_input(operation))
+}
+
+pub(crate) fn registered_workload_boundary_input(
+    intent: MetalExecutionIntent,
+    component_name: &'static str,
+) -> Result<RegisteredMetalWorkloadBoundaryInput, MetalPlannerError<'static>> {
+    let boundary_registration =
+        registered_generated_component(component_name, MetalGeneratedRouteKind::WorkloadBoundary)?;
+    let runtime_input = registered_runtime_plan_input(
+        component_name,
+        MetalGeneratedRouteKind::RegisteredProve,
+        MetalOperationKind::Prove,
+    )?;
+    let plan = plan_metal_operation(intent, runtime_input.operation, &[runtime_input.plan_input])
+        .map_err(MetalPlannerError::Unsupported)?;
+
+    Ok(RegisteredMetalWorkloadBoundaryInput {
+        lowering: boundary_registration.lowering_input(),
+        plan,
+        stage_assignments: boundary_registration.artifact.stage_assignments,
+        generated_inventory: boundary_registration.generated_inventory(),
+    })
 }
 
 pub(crate) fn plan_registered_metal_prove<'a>(
@@ -216,7 +247,7 @@ mod tests {
     use super::{
         plan_registered_metal_component_prove, plan_registered_metal_prove,
         registered_generated_artifact, registered_generated_component,
-        registered_runtime_plan_input,
+        registered_runtime_plan_input, registered_workload_boundary_input,
     };
     use crate::backend::metal::artifact::MetalGeneratedRouteKind;
     use crate::backend::metal::planner::{
@@ -338,5 +369,30 @@ mod tests {
             runtime_input.lowering.specialization_keys,
             &["log_n_instances", "n_columns"]
         );
+    }
+
+    #[test]
+    fn registered_workload_boundary_input_consumes_lowering_and_runtime_inputs() {
+        let boundary_input = registered_workload_boundary_input(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+        )
+        .unwrap();
+
+        assert_eq!(boundary_input.lowering.component_name, "fibonacci_example");
+        assert_eq!(
+            boundary_input.lowering.route,
+            MetalGeneratedRouteKind::WorkloadBoundary
+        );
+        assert_eq!(boundary_input.plan, MetalExecutionPlan::MetalFriHybrid);
+        assert_eq!(
+            boundary_input.generated_inventory.registration_key,
+            "fibonacci_example"
+        );
+        assert_eq!(
+            boundary_input.generated_inventory.specialization_keys,
+            &["log_n_instances", "n_columns"]
+        );
+        assert_eq!(boundary_input.stage_assignments.len(), 5);
     }
 }

@@ -28,6 +28,44 @@ Superseded by:
 
 ## Entries
 
+### DEC-0087: Workload-boundary declaration must consume one shared lowering input before benchmark lowering widens
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The first broader lowering-oriented execution helper beyond prove-plan
+selection is workload-boundary declaration, and it must consume one shared
+workload-boundary lowering input derived from the canonical runtime-planning
+and lowering inputs.
+
+Context:
+
+After prove-plan selection consumed the canonical runtime-planning input, the
+next risk was that workload-boundary declaration would still reconstruct route
+state locally. Using one shared boundary input keeps G5 linear and makes the
+next honest seam clearly the benchmark declaration path above it.
+
+Alternatives rejected:
+
+- let workload-boundary declaration keep composing registrations directly
+- jump straight to benchmark lowering without normalizing workload-boundary
+  declaration first
+- invent a second workload-local lowering table
+
+Impact:
+
+- G5 now has one broader execution helper consuming the shared generated seam
+- the next honest execution-lowering work moves to benchmark declaration
+
+Superseded by:
+
+- none
+
 ### DEC-0086: Prove-plan selection must consume the canonical runtime-planning input
 
 - Date: `2026-03-10`

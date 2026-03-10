@@ -66,8 +66,9 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 third slice: use the canonical runtime-planning input in the first
-lowering-oriented execution helper beyond prove-plan selection`
+`G5 fourth slice: consume the shared workload-boundary lowering input in the
+benchmark declaration path and keep benchmark routing attached to the same
+generated seam`
 
 The active formal basis is:
 
@@ -136,6 +137,14 @@ The second G5 slice is now landed:
   registration input directly
 - prove-plan selection no longer bypasses the lowering input by jumping
   straight from registrations to raw component plan inputs
+
+The third G5 slice is now landed:
+
+- workload-boundary declaration now consumes one shared workload-boundary
+  lowering input derived from the canonical lowering and runtime-planning
+  inputs
+- the first broader lowering-oriented execution helper now uses the same
+  generated seam instead of rebuilding route state locally
 
 ## G2 progress snapshot
 

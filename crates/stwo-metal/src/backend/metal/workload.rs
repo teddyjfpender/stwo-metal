@@ -7,10 +7,8 @@ use stwo::prover::fri::FriDecommitResult;
 use stwo::prover::poly::circle::SecureEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 
-use super::artifact::{MetalGeneratedInventory, MetalGeneratedRouteKind};
-use super::execution_plan::{
-    plan_registered_metal_component_prove, registered_generated_component,
-};
+use super::artifact::MetalGeneratedInventory;
+use super::execution_plan::registered_workload_boundary_input;
 use super::planner::{MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError};
 use super::subpath::MetalFriBlake2sSubpath;
 use super::witness::{
@@ -325,15 +323,13 @@ pub fn declare_exemplar_metal_workload_boundary(
     intent: MetalExecutionIntent,
     workload_name: &'static str,
 ) -> Result<MetalWorkloadBoundary, MetalPlannerError<'static>> {
-    let registration =
-        registered_generated_component(workload_name, MetalGeneratedRouteKind::WorkloadBoundary)?;
-    let plan = plan_registered_metal_component_prove(intent, workload_name)?.plan;
+    let boundary_input = registered_workload_boundary_input(intent, workload_name)?;
 
     Ok(MetalWorkloadBoundary {
         workload_name,
-        plan,
-        stage_assignments: registration.artifact.stage_assignments,
-        generated_inventory: registration.generated_inventory(),
+        plan: boundary_input.plan,
+        stage_assignments: boundary_input.stage_assignments,
+        generated_inventory: boundary_input.generated_inventory,
     })
 }
 
