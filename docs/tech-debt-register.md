@@ -671,6 +671,47 @@ Target retirement point:
 
 - `T7`
 
+### TD-0020: Acceptance-local Metal adapters still need retirement into a cleaner shared boundary
+
+- Status: `active`
+- Category: `boundary consolidation`
+- Introduced: `2026-03-10`
+- Owner area: `post-T7 backend hardening`
+
+Why it exists now:
+
+The acceptance harness now has two local proving adapters: one for vendored
+`FrameworkComponent` rows and one for vendored `ComponentProver<SimdBackend>`
+rows. Those adapters were the smallest correctness-preserving way to prove the
+named non-blocked upstream examples through `MetalBackend`, but they are still
+test-local boundaries rather than a cleaner shared internal proving surface.
+
+Current containment:
+
+- `fixtures/upstream-example-acceptance/src/lib.rs`
+- `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
+- `fixtures/upstream-example-acceptance/tests/state_machine_prove_verify.rs`
+- `fixtures/upstream-example-acceptance/tests/blake_prove_verify.rs`
+- `fixtures/upstream-example-acceptance/tests/xor_mle_eval_prove_verify.rs`
+
+Risk if left in place:
+
+The project could return to native performance work with a correct backend but
+keep example-backed proving dependent on test-local adapter glue, which would
+blur the boundary between acceptance scaffolding and the durable proving
+architecture.
+
+Exit condition:
+
+The current acceptance-local adapters are either retired into a shared
+non-public boundary with explicit laws and ownership, replaced by an
+upstream-facing proving path, or removed in favor of native Metal proving
+surfaces that no longer require them.
+
+Target retirement point:
+
+- `T8`
+
 ### TD-0018: Poseidon acceptance is blocked by a vendored lifted-protocol AIR-degree limit
 
 - Status: `active`

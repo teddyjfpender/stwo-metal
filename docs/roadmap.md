@@ -40,6 +40,16 @@ The primary product definition is:
 
 The architecture driver is backend completeness, not custom benchmark rows.
 
+The current native-port driver after example-backed acceptance is:
+
+- mirror the relevant `stwo-metal-sys/cuda` structure into
+  `stwo-metal-sys/metal`
+- port hot-path native files in a documented sequence
+- keep Metal file names and logical boundaries aligned with the CUDA source so
+  parity, benchmarking, and review stay legible
+- mark each mirrored Metal file as `scaffolded`, `parity-tested`, or
+  `benchmark-active` rather than implying support just by file presence
+
 ## Benchmark north star
 
 The first explicit benchmark objective is:
@@ -165,6 +175,58 @@ Practical rule:
 - if a bounded Metal cut lacks a deterministic unit test against the vendored
   CPU path, it is not ready
 
+## Native port roadmap
+
+The native runtime work now returns to the copied CUDA subsystem directly.
+
+Primary mirroring rule:
+
+- for the active performance tranche, create and maintain matching Metal file
+  names beside the CUDA source wherever a native Metal replacement is intended
+- preserve conceptual module boundaries and naming even if the Metal
+  implementation differs internally
+- do not mark a mirrored file as complete until it has deterministic parity
+  evidence against the vendored CPU path and, where relevant, benchmark
+  evidence against the current CUDA-backed historical reference
+
+Active mirrored hot-path set:
+
+- `fields`
+- `twiddles`
+- `rfft`
+- `ifft`
+- `poly_utils`
+- `quotients`
+- `fold_circle_into_line`
+- `fold_line`
+- `prefix_sum`
+- `mle`
+- `gkr`
+
+Port order for the next native tranche:
+
+1. `fields`
+2. `twiddles`
+3. `rfft`
+4. `ifft`
+5. `poly_utils`
+6. `quotients`
+7. `fold_circle_into_line`
+8. `fold_line`
+9. `prefix_sum`
+10. `mle`
+11. `gkr`
+
+Why this order:
+
+- it follows the benchmark-critical proving path from field storage and domain
+  material through FFT/poly machinery into quotient and fold operations, then
+  into lookup-heavy proving support
+- it keeps the earliest performance work tied to the widest reusable native
+  surfaces rather than to workload-specific kernels
+- it mirrors the CUDA subsystem in the same order a reviewer will use to check
+  semantic equivalence
+
 ## Milestone map
 
 | Order | Milestone | Status | Exit condition |
@@ -178,6 +240,7 @@ Practical rule:
 | T5a | Rebaseline around generic backend completion and unchanged upstream examples | `completed` | roadmap, controller, plan, and done criteria treat upstream example proving as the primary deliverable |
 | T6 | Restore one truthful end-to-end supported workload | `planned` | one declared workload proves end to end on Metal with matching semantics and declared measurement |
 | T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `in_progress` | the accepted upstream example set proves and verifies through `MetalBackend` without workload-specific rewrites |
+| T8 | Mirror and port the native CUDA hot path into Metal for benchmark-grade performance work | `in_progress` | the selected native `cuda/` hot-path files exist under `metal/` with tracked status, deterministic parity retirement criteria, and implementation work advancing in the declared order |
 
 ## Milestone detail
 
@@ -411,6 +474,35 @@ Current next slice inside T7:
 - only after those bridge-retirement slices meaningfully widen shared proving
   support should T7 be marked complete-for-current-vendor or widened to a new
   accepted example set
+
+### T8: Mirror and port the native CUDA hot path into Metal for benchmark-grade performance work
+
+Required outputs:
+
+- the active CUDA hot-path files have matching names under
+  `crates/stwo-metal-sys/metal`
+- each mirrored Metal file has an explicit implementation status
+- the port order is declared and tracked rather than inferred from whichever
+  file was touched most recently
+- parity and benchmark retirement criteria are explicit before each native file
+  graduates from scaffold to support claim
+
+Current first implementation slice:
+
+- add the structural mirror for the first hot-path set under
+  `crates/stwo-metal-sys/metal`
+- keep the current compile-active Metal set explicit
+- begin file-by-file implementation in the declared order starting at
+  `fields`, then `twiddles`, then FFT/poly support
+
+Current next slice inside T8:
+
+- convert the current thin `metal/` frontier into a mirrored native subsystem
+  with the same hot-path names as `cuda/`
+- wire the roadmap, controller, and debt register to treat that mirrored
+  subsystem as the active performance lane
+- only after the mirror exists should new native Metal implementation slices
+  claim progress on the benchmark-facing backend
 
 ## Sequencing rules
 

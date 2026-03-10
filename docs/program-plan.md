@@ -49,6 +49,7 @@ than the architectural source of truth.
 | T5a | Rebaseline around generic backend completion and unchanged upstream examples | `completed` | planning documents and done criteria are corrected to the backend-first goal |
 | T6 | Restore one truthful end-to-end supported workload | `planned` | one declared workload runs end to end on the Metal path with matching semantics |
 | T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `in_progress` | the accepted upstream example set proves and verifies through `MetalBackend` |
+| T8 | Mirror and port the native CUDA hot path into Metal for benchmark-grade performance work | `in_progress` | the selected native hot-path files exist under `metal/`, are status-tracked, and are being ported in the declared order |
 
 ## Immediate sequencing rules
 
@@ -64,8 +65,8 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T7 tenth implementation slice: close lookup-heavy and
-mixed-component upstream example rows`, as tracked in
+The active tranche is `T8 first implementation slice: establish the mirrored
+native Metal subsystem for the hot path`, as tracked in
 [`controller.md`](./controller.md) and sequenced by
 [`roadmap.md`](./roadmap.md).
 
@@ -184,18 +185,26 @@ The first completed T7 supporting slices are:
   generic SIMD-component adapter, each kept explicit and local to the
   acceptance layer
 
-The next required T7 boundary is:
+The first active T8 supporting slices are:
 
-- decide whether the acceptance-local adapters should remain local, move into a
-  shared non-public helper boundary, or be superseded by an upstream-facing
-  refactor
-- record T7 honestly as complete for all named non-blocked rows in the current
-  vendored snapshot
-- keep `poseidon` explicitly classified as an upstream protocol blocker in the
-  current vendored snapshot rather than a pending Metal-backend slice
-- keep the next blocker explicit:
-  vendored upstream `FrameworkComponent` still only implements
-  `ComponentProver` for `CpuBackend` and `SimdBackend`, so the current
-  adapter remains a named CPU-domain bridge
-- keep any vendored protocol limitations, such as unsupported AIR degree
-  shapes, separated from true Metal-backend gaps
+- the native port now returns to the copied `stwo-metal-sys/cuda` subsystem as
+  the primary performance source of truth for native boundary shape
+- the active mirrored hot-path set is explicitly declared:
+  `fields`, `twiddles`, `rfft`, `ifft`, `poly_utils`, `quotients`,
+  `fold_circle_into_line`, `fold_line`, `prefix_sum`, `mle`, and `gkr`
+- the declared port order now follows the benchmark-critical proving path from
+  field storage and twiddles through FFT/poly, quotient, fold, and lookup/GKR
+  support
+- the first T8 implementation slice is to land the structural mirror under
+  `crates/stwo-metal-sys/metal` with explicit implementation-status marking
+  before claiming new native support
+
+The next required T8 boundary is:
+
+- land the mirrored native file set under `crates/stwo-metal-sys/metal`
+- keep compile-active Metal files explicit and separate from scaffold-only
+  mirror files
+- begin real implementation at `fields` and `twiddles`, then move directly
+  into FFT/poly support in the declared order
+- keep the adapter-retirement debt explicit while the project focuses on
+  native performance work

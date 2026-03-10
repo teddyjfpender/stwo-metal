@@ -17,6 +17,9 @@ Work is done only when the code, contract, and process state agree.
       remain planned, and which hosts are expected to pass parity tests.
 - [ ] Any explicit host-prepared bridge used by a Metal slice is named in the
       docs and tracked as debt instead of being treated as implicit support.
+- [ ] If a native Metal file is added only as part of a mirrored scaffold, its
+      status is recorded explicitly so file presence is not confused with
+      compile-active support.
 - [ ] Any declared workload boundary states witness, quotient, PCS, and FRI
       ownership explicitly instead of hiding hybrid execution behind one label.
 - [ ] If the slice claims progress toward upstream-example support, it states

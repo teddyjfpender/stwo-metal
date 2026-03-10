@@ -29,11 +29,11 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T7 tenth implementation slice: close lookup-heavy and mixed-component upstream example rows`
+- Active tranche: `T8 first implementation slice: establish the mirrored native Metal subsystem for the hot path`
 - Objective:
-  close the named upstream-example acceptance matrix for all non-blocked rows
-  while keeping the remaining acceptance-local bridges explicit, local, and
-  auditable
+  return from acceptance closure to native performance work by mirroring the
+  active CUDA hot-path structure into `stwo-metal-sys/metal` and porting it in
+  the declared order
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - Current owner area:
@@ -58,6 +58,9 @@ Invariants:
 - the example-backed acceptance harness now covers single-trace, multi-tree,
   lookup-heavy, and mixed-component rows, but those bridges are still
   acceptance-local rather than stable shared boundaries
+- the native performance lane is still structurally lopsided:
+  `stwo-metal-sys/cuda` is a full subsystem while `stwo-metal-sys/metal`
+  remains a thin frontier
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
@@ -68,18 +71,21 @@ Invariants:
 - the only named upstream-example row still open in the current target set is
   `poseidon`, and that row is blocked by the vendored lifted protocol rather
   than by a known Metal-backend gap
+- the next performance blocker is native implementation depth, not acceptance
+  coverage: the hot path still lives mostly in copied CUDA source under
+  `stwo-metal-sys/cuda`
 
 ## Next three deliverables
 
-1. Decide whether the current acceptance-local framework and SIMD-component
-   adapters should remain local, move into a shared non-public helper
-   boundary, or be superseded by an upstream-facing refactor.
-2. Record the current T7 truth explicitly: all named rows except `poseidon`
-   now prove and verify through `MetalBackend`, and `poseidon` remains an
-   upstream protocol blocker.
-3. Re-enter benchmark and performance work from the backend-first posture,
-   with `wide_fibonacci` as the primary performance row rather than the
-   architectural source of truth.
+1. Land the mirrored native file set under
+   `crates/stwo-metal-sys/metal` for the first hot-path tranche:
+   `fields`, `twiddles`, `rfft`, `ifft`, `poly_utils`, `quotients`,
+   `fold_circle_into_line`, `fold_line`, `prefix_sum`, `mle`, and `gkr`.
+2. Keep the compile-active Metal files explicit and separate from scaffold-only
+   mirror files so the repo does not overclaim support.
+3. Start real native implementation and parity retirement at `fields` and
+   `twiddles`, then move through FFT/poly support toward the benchmark-facing
+   quotient and fold path.
 
 ## Explicitly not doing now
 

@@ -28,6 +28,54 @@ Superseded by:
 
 ## Entries
 
+### DEC-0044: Native performance work returns through a mirrored Metal subsystem that follows the CUDA hot-path structure file-for-file where replacement is intended
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+Now that the named non-blocked upstream examples prove and verify through
+`MetalBackend`, the project returns to native performance work by mirroring the
+active CUDA hot-path structure under `crates/stwo-metal-sys/metal`. The next
+native tranche uses the same conceptual file names for the intended Metal
+replacements, starting with `fields`, `twiddles`, `rfft`, `ifft`,
+`poly_utils`, `quotients`, `fold_circle_into_line`, `fold_line`,
+`prefix_sum`, `mle`, and `gkr`.
+
+Context:
+
+The acceptance milestone answered the architectural question: `stwo-metal` can
+already prove real Stwo rows through backend substitution. The next bottleneck
+is native implementation depth. The copied CUDA subsystem is large and already
+organizes the hot path into reviewable files, while the current Metal subtree
+is still a thin frontier. Mirroring those hot-path names is the cleanest way
+to make parity review, benchmark planning, and file-by-file port tracking
+explicit.
+
+Alternatives rejected:
+
+- continue growing the Metal subtree opportunistically without matching the
+  CUDA source boundaries
+- return to benchmark work without first making the native subsystem shape
+  explicit
+- treat the existing thin Metal frontier as sufficient structure for the next
+  performance tranche
+
+Impact:
+
+- `T8` becomes the active native-port milestone
+- the roadmap now declares a specific mirrored hot-path set and port order
+- scaffolded Metal files are acceptable, but only if their status stays
+  explicit and they are not confused with compile-active support
+
+Superseded by:
+
+- none
+
 ### DEC-0043: Mixed-component upstream rows may use an acceptance-local SIMD-component Metal bridge when the framework-backed row already remains explicit
 
 - Date: `2026-03-09`
