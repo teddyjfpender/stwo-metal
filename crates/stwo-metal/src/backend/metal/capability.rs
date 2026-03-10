@@ -148,14 +148,15 @@ pub const fn metal_backend_surface_status(
         MetalBackendSurface::AccumulationOpsCpuBridge
         | MetalBackendSurface::QuotientOpsCpuBridge
         | MetalBackendSurface::FriOpsCpuBridge
-        | MetalBackendSurface::GkrOpsCpuBridge
         | MetalBackendSurface::Blake2sHashColumnCpuBridge
         | MetalBackendSurface::Blake2sMerkleOpsLiftedCpuBridge
         | MetalBackendSurface::Blake2sGrindCpuBridge
         | MetalBackendSurface::Blake2sBackendForChannelCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
-        MetalBackendSurface::MleOpsCpuBridge => MetalBackendSurfaceStatus::Supported,
+        MetalBackendSurface::MleOpsCpuBridge | MetalBackendSurface::GkrOpsCpuBridge => {
+            MetalBackendSurfaceStatus::Supported
+        }
         MetalBackendSurface::QuotientAccumulate => MetalBackendSurfaceStatus::UnsupportedPlanned,
     }
 }
@@ -190,7 +191,7 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
             "Legacy capability name retained for API stability: `MleOps::fix_first_variable` is now implemented through native Metal kernels over Metal-owned multilinear-evaluation storage, and the old explicit CPU bridge is retired."
         }
         MetalBackendSurface::GkrOpsCpuBridge => {
-            "The `GkrOps` boundary now uses native Metal eq-eval generation and next-layer construction over Metal-owned lookup storage, while `sum_as_poly_in_first_variable` remains an explicit CPU bridge over the oracle-evaluation boundary."
+            "Legacy capability name retained for API stability: `GkrOps` now uses native Metal eq-eval generation, next-layer construction, and oracle sum evaluation over Metal-owned lookup storage; the remaining host work is bounded polynomial reconstruction from two already-materialized secure-field values."
         }
         MetalBackendSurface::Blake2sHashColumnCpuBridge => {
             "The `ColumnOps<Blake2sHash>` boundary is supported through an explicit CPU bridge over host-owned Blake2s hash columns."

@@ -158,8 +158,9 @@ The first completed T7 supporting slices are:
 - deterministic parity tests now lock the `FriOps` trait surface itself, not
   just the earlier bounded free-function FRI helpers
 - lookup bridge tranche landed:
-  `MetalBackend` now implements `MleOps` and `GkrOps` through explicit CPU
-  bridges over Metal-owned multilinear and lookup-layer storage
+  `MetalBackend` now implements `MleOps` natively and `GkrOps` through native
+  multilinear plus bounded lookup-oracle kernels, with only bounded host-side
+  polynomial reconstruction left after the native oracle sums
 - `MetalBackend` now explicitly implements the Stwo `Backend` trait
 - Blake2s channel tranche landed:
   `MetalBackend` now implements the Blake2s `BackendForChannel` surface through
@@ -222,11 +223,12 @@ The first active T8 supporting slices are:
   base-field and secure-field multilinear evaluations
 - the explicit `MleOps` CPU bridge is now retired, with deterministic parity
   over both edge-size and normal-size multilinear evaluations
-- `gkr.metal` now carries compile-active native eq-eval generation and next-layer
-  construction for `GrandProduct`, `LogUpGeneric`, `LogUpMultiplicities`, and
-  `LogUpSingles`
-- the remaining `GkrOps` CPU bridge is now explicitly narrowed to
-  `sum_as_poly_in_first_variable`
+- `gkr.metal` now carries compile-active native eq-eval generation, next-layer
+  construction, and bounded oracle-sum evaluation for `GrandProduct`,
+  `LogUpGeneric`, `LogUpMultiplicities`, and `LogUpSingles`
+- the previous `GkrOps` oracle CPU bridge is retired; the remaining host work
+  is bounded polynomial reconstruction from native `eval_at_0` and
+  `eval_at_2`
 - `prefix_sum.metal` now carries compile-active native inclusive prefix-sum
   support for bit-reversed circle-domain base-field columns
 - `PORTING_STATUS.md` no longer has any scaffold-only mirrored hot-path files
@@ -235,9 +237,9 @@ The next required T8 boundary is:
 
 - keep the completed mirrored hot-path set explicit and parity-tested while it
   begins carrying benchmark-active work
-- decide which remaining explicit CPU bridge is the next benchmark-facing
+- decide which broader explicit CPU bridge is the next benchmark-facing
   bottleneck after mirror completion
-- keep the remaining `GkrOps` oracle-evaluation bridge explicit while
-  `gkr.metal` owns eq-evals and next-layer generation
+- keep the remaining `FriOps`, `PolyOps`, and Blake2s proving bridges explicit
+  while the benchmark-facing replacement slice is chosen
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

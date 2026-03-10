@@ -494,6 +494,120 @@ impl U32Buffer {
         Ok((next_numerators, next_denominators))
     }
 
+    pub fn gkr_sum_grand_product(
+        eq_evals: &Self,
+        input_layer: &Self,
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
+        assert_eq!(
+            input_layer.len,
+            eq_evals.len * 4,
+            "GKR grand-product sum requires four secure-field evaluations per eq-eval term"
+        );
+        let n_terms = eq_evals.len / 4;
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::gkr_sum_grand_product_u32x4(
+                runtime.raw.as_ptr(),
+                eq_evals.raw.as_ptr(),
+                input_layer.raw.as_ptr(),
+                n_terms
+                    .try_into()
+                    .expect("GKR grand-product term count should fit in u32"),
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
+    pub fn gkr_sum_logup_generic(
+        eq_evals: &Self,
+        numerators: &Self,
+        denominators: &Self,
+        lambda_limbs: [u32; 4],
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
+        assert_eq!(
+            numerators.len, denominators.len,
+            "GKR generic sum requires matching numerator and denominator lengths"
+        );
+        assert_eq!(
+            numerators.len,
+            eq_evals.len * 4,
+            "GKR generic sum requires four secure-field numerator evaluations per eq-eval term"
+        );
+        let n_terms = eq_evals.len / 4;
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::gkr_sum_logup_generic_u32x4(
+                runtime.raw.as_ptr(),
+                eq_evals.raw.as_ptr(),
+                numerators.raw.as_ptr(),
+                denominators.raw.as_ptr(),
+                n_terms
+                    .try_into()
+                    .expect("GKR generic term count should fit in u32"),
+                lambda_limbs,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
+    pub fn gkr_sum_logup_multiplicities(
+        eq_evals: &Self,
+        numerators: &Self,
+        denominators: &Self,
+        lambda_limbs: [u32; 4],
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
+        assert_eq!(
+            denominators.len,
+            eq_evals.len * 4,
+            "GKR multiplicities sum requires four denominator evaluations per eq-eval term"
+        );
+        assert_eq!(
+            numerators.len, eq_evals.len,
+            "GKR multiplicities sum requires four base-field numerators per eq-eval term"
+        );
+        let n_terms = eq_evals.len / 4;
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::gkr_sum_logup_multiplicities_u32(
+                runtime.raw.as_ptr(),
+                eq_evals.raw.as_ptr(),
+                numerators.raw.as_ptr(),
+                denominators.raw.as_ptr(),
+                n_terms
+                    .try_into()
+                    .expect("GKR multiplicities term count should fit in u32"),
+                lambda_limbs,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
+    pub fn gkr_sum_logup_singles(
+        eq_evals: &Self,
+        denominators: &Self,
+        lambda_limbs: [u32; 4],
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
+        assert_eq!(
+            denominators.len,
+            eq_evals.len * 4,
+            "GKR singles sum requires four denominator evaluations per eq-eval term"
+        );
+        let n_terms = eq_evals.len / 4;
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::gkr_sum_logup_singles_u32x4(
+                runtime.raw.as_ptr(),
+                eq_evals.raw.as_ptr(),
+                denominators.raw.as_ptr(),
+                n_terms
+                    .try_into()
+                    .expect("GKR singles term count should fit in u32"),
+                lambda_limbs,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
     pub fn inclusive_prefix_sum_bit_rev_circle_domain_in_place(
         &mut self,
     ) -> Result<(), MetalError> {
@@ -924,6 +1038,51 @@ mod ffi {
             next_numerators: *mut c_void,
             next_denominators: *mut c_void,
             input_log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_gkr_sum_grand_product_u32x4(
+            runtime: *mut c_void,
+            eq_evals: *mut c_void,
+            input_layer: *mut c_void,
+            n_terms: u32,
+            eval_at_0_limbs: *mut u32,
+            eval_at_2_limbs: *mut u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_gkr_sum_logup_generic_u32x4(
+            runtime: *mut c_void,
+            eq_evals: *mut c_void,
+            numerators: *mut c_void,
+            denominators: *mut c_void,
+            n_terms: u32,
+            lambda_limbs: *const u32,
+            eval_at_0_limbs: *mut u32,
+            eval_at_2_limbs: *mut u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_gkr_sum_logup_multiplicities_u32(
+            runtime: *mut c_void,
+            eq_evals: *mut c_void,
+            numerators: *mut c_void,
+            denominators: *mut c_void,
+            n_terms: u32,
+            lambda_limbs: *const u32,
+            eval_at_0_limbs: *mut u32,
+            eval_at_2_limbs: *mut u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_gkr_sum_logup_singles_u32x4(
+            runtime: *mut c_void,
+            eq_evals: *mut c_void,
+            denominators: *mut c_void,
+            n_terms: u32,
+            lambda_limbs: *const u32,
+            eval_at_0_limbs: *mut u32,
+            eval_at_2_limbs: *mut u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -1428,6 +1587,120 @@ mod ffi {
         }
     }
 
+    pub unsafe fn gkr_sum_grand_product_u32x4(
+        runtime: *mut c_void,
+        eq_evals: *mut c_void,
+        input_layer: *mut c_void,
+        n_terms: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let mut eval_at_0 = [0u32; 4];
+        let mut eval_at_2 = [0u32; 4];
+        if stwo_metal_gkr_sum_grand_product_u32x4(
+            runtime,
+            eq_evals,
+            input_layer,
+            n_terms,
+            eval_at_0.as_mut_ptr(),
+            eval_at_2.as_mut_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok((eval_at_0, eval_at_2))
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn gkr_sum_logup_generic_u32x4(
+        runtime: *mut c_void,
+        eq_evals: *mut c_void,
+        numerators: *mut c_void,
+        denominators: *mut c_void,
+        n_terms: u32,
+        lambda_limbs: [u32; 4],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let mut eval_at_0 = [0u32; 4];
+        let mut eval_at_2 = [0u32; 4];
+        if stwo_metal_gkr_sum_logup_generic_u32x4(
+            runtime,
+            eq_evals,
+            numerators,
+            denominators,
+            n_terms,
+            lambda_limbs.as_ptr(),
+            eval_at_0.as_mut_ptr(),
+            eval_at_2.as_mut_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok((eval_at_0, eval_at_2))
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn gkr_sum_logup_multiplicities_u32(
+        runtime: *mut c_void,
+        eq_evals: *mut c_void,
+        numerators: *mut c_void,
+        denominators: *mut c_void,
+        n_terms: u32,
+        lambda_limbs: [u32; 4],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let mut eval_at_0 = [0u32; 4];
+        let mut eval_at_2 = [0u32; 4];
+        if stwo_metal_gkr_sum_logup_multiplicities_u32(
+            runtime,
+            eq_evals,
+            numerators,
+            denominators,
+            n_terms,
+            lambda_limbs.as_ptr(),
+            eval_at_0.as_mut_ptr(),
+            eval_at_2.as_mut_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok((eval_at_0, eval_at_2))
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn gkr_sum_logup_singles_u32x4(
+        runtime: *mut c_void,
+        eq_evals: *mut c_void,
+        denominators: *mut c_void,
+        n_terms: u32,
+        lambda_limbs: [u32; 4],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let mut eval_at_0 = [0u32; 4];
+        let mut eval_at_2 = [0u32; 4];
+        if stwo_metal_gkr_sum_logup_singles_u32x4(
+            runtime,
+            eq_evals,
+            denominators,
+            n_terms,
+            lambda_limbs.as_ptr(),
+            eval_at_0.as_mut_ptr(),
+            eval_at_2.as_mut_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok((eval_at_0, eval_at_2))
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn inclusive_prefix_sum_bit_rev_circle_domain_u32(
         runtime: *mut c_void,
         buffer: *mut c_void,
@@ -1809,6 +2082,59 @@ mod ffi {
         _input_log_len: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn gkr_sum_grand_product_u32x4(
+        _runtime: *mut c_void,
+        _eq_evals: *mut c_void,
+        _input_layer: *mut c_void,
+        _n_terms: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn gkr_sum_logup_generic_u32x4(
+        _runtime: *mut c_void,
+        _eq_evals: *mut c_void,
+        _numerators: *mut c_void,
+        _denominators: *mut c_void,
+        _n_terms: u32,
+        _lambda_limbs: [u32; 4],
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn gkr_sum_logup_multiplicities_u32(
+        _runtime: *mut c_void,
+        _eq_evals: *mut c_void,
+        _numerators: *mut c_void,
+        _denominators: *mut c_void,
+        _n_terms: u32,
+        _lambda_limbs: [u32; 4],
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn gkr_sum_logup_singles_u32x4(
+        _runtime: *mut c_void,
+        _eq_evals: *mut c_void,
+        _denominators: *mut c_void,
+        _n_terms: u32,
+        _lambda_limbs: [u32; 4],
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<([u32; 4], [u32; 4]), MetalError> {
         Err(MetalError::new(
             "Metal support was not linked into stwo-metal-sys.",
         ))

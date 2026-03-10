@@ -194,6 +194,55 @@ impl SecureFieldVec {
             Self::from_buffer(next_denominators),
         )
     }
+
+    pub fn gkr_sum_grand_product(
+        eq_evals: &Self,
+        input_layer: &Self,
+    ) -> (SecureField, SecureField) {
+        let (eval_at_0, eval_at_2) =
+            U32Buffer::gkr_sum_grand_product(&eq_evals.buffer, &input_layer.buffer)
+                .expect("Metal GKR grand-product sum should succeed");
+        (
+            SecureField::from_u32_unchecked(eval_at_0[0], eval_at_0[1], eval_at_0[2], eval_at_0[3]),
+            SecureField::from_u32_unchecked(eval_at_2[0], eval_at_2[1], eval_at_2[2], eval_at_2[3]),
+        )
+    }
+
+    pub fn gkr_sum_logup_generic(
+        eq_evals: &Self,
+        numerators: &Self,
+        denominators: &Self,
+        lambda: SecureField,
+    ) -> (SecureField, SecureField) {
+        let (eval_at_0, eval_at_2) = U32Buffer::gkr_sum_logup_generic(
+            &eq_evals.buffer,
+            &numerators.buffer,
+            &denominators.buffer,
+            lambda.to_m31_array().map(|limb| limb.0),
+        )
+        .expect("Metal GKR generic sum should succeed");
+        (
+            SecureField::from_u32_unchecked(eval_at_0[0], eval_at_0[1], eval_at_0[2], eval_at_0[3]),
+            SecureField::from_u32_unchecked(eval_at_2[0], eval_at_2[1], eval_at_2[2], eval_at_2[3]),
+        )
+    }
+
+    pub fn gkr_sum_logup_singles(
+        eq_evals: &Self,
+        denominators: &Self,
+        lambda: SecureField,
+    ) -> (SecureField, SecureField) {
+        let (eval_at_0, eval_at_2) = U32Buffer::gkr_sum_logup_singles(
+            &eq_evals.buffer,
+            &denominators.buffer,
+            lambda.to_m31_array().map(|limb| limb.0),
+        )
+        .expect("Metal GKR singles sum should succeed");
+        (
+            SecureField::from_u32_unchecked(eval_at_0[0], eval_at_0[1], eval_at_0[2], eval_at_0[3]),
+            SecureField::from_u32_unchecked(eval_at_2[0], eval_at_2[1], eval_at_2[2], eval_at_2[3]),
+        )
+    }
 }
 
 impl Clone for SecureFieldVec {

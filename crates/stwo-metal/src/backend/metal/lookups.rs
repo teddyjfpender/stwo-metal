@@ -1,8 +1,10 @@
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
-use stwo::prover::backend::CpuBackend;
-use stwo::prover::lookups::gkr_prover::{GkrMultivariatePolyOracle, GkrOps, Layer};
+use stwo::prover::lookups::gkr_prover::{
+    correct_sum_as_poly_in_first_variable, GkrMultivariatePolyOracle, GkrOps, Layer,
+};
 use stwo::prover::lookups::mle::{Mle, MleOps};
+use stwo::prover::lookups::sumcheck::MultivariatePolyOracle;
 use stwo::prover::lookups::utils::UnivariatePoly;
 
 use super::MetalBackend;
@@ -86,6 +88,47 @@ impl GkrOps for MetalBackend {
         h: &GkrMultivariatePolyOracle<'_, Self>,
         claim: SecureField,
     ) -> UnivariatePoly<SecureField> {
-        CpuBackend::sum_as_poly_in_first_variable(&h.to_cpu(), claim)
+        let n_variables = h.n_variables();
+        assert!(
+            n_variables > 0,
+            "GKR sum polynomial requires at least one variable"
+        );
+        let eq_evals = h.eq_evals.as_ref();
+        let y = eq_evals.y();
+
+        let (mut eval_at_0, mut eval_at_2) = match &h.input_layer {
+            Layer::GrandProduct(col) => {
+                SecureFieldVec::gkr_sum_grand_product(eq_evals, &col.clone().into_evals())
+            }
+            Layer::LogUpGeneric {
+                numerators,
+                denominators,
+            } => SecureFieldVec::gkr_sum_logup_generic(
+                eq_evals,
+                &numerators.clone().into_evals(),
+                &denominators.clone().into_evals(),
+                h.lambda,
+            ),
+            Layer::LogUpMultiplicities {
+                numerators,
+                denominators,
+            } => numerators
+                .clone()
+                .into_evals()
+                .gkr_sum_logup_multiplicities(
+                    eq_evals,
+                    &denominators.clone().into_evals(),
+                    h.lambda,
+                ),
+            Layer::LogUpSingles { denominators } => SecureFieldVec::gkr_sum_logup_singles(
+                eq_evals,
+                &denominators.clone().into_evals(),
+                h.lambda,
+            ),
+        };
+
+        eval_at_0 *= h.eq_fixed_var_correction;
+        eval_at_2 *= h.eq_fixed_var_correction;
+        correct_sum_as_poly_in_first_variable(eval_at_0, eval_at_2, claim, y, n_variables)
     }
 }

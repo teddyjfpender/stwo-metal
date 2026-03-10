@@ -72,6 +72,51 @@ Superseded by:
 
 - none
 
+### DEC-0049: The mirrored `gkr.metal` tranche retires the remaining native GKR oracle CPU bridge before benchmark activation
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`gkr.metal` now owns the bounded oracle-sum evaluation used by
+`GkrOps::sum_as_poly_in_first_variable` for `GrandProduct`, `LogUpGeneric`,
+`LogUpMultiplicities`, and `LogUpSingles`. The Metal runtime computes the
+native `eval_at_0` and `eval_at_2` values, and the host only performs the
+bounded `correct_sum_as_poly_in_first_variable` reconstruction step.
+
+Context:
+
+After the mirrored hot-path set became compile-active and parity-tested, the
+largest remaining lookup-side CPU bridge was the oracle evaluation inside
+`GkrOps`. That bridge was also close enough to the wide-fibonacci proving path
+to matter for honest benchmark activation, so it was the right next retirement
+step before turning attention to broader `FriOps` and `PolyOps` surfaces.
+
+Alternatives rejected:
+
+- leave `sum_as_poly_in_first_variable` on the CPU while claiming lookup
+  mirroring was effectively complete
+- move straight to benchmark activation without first retiring the last native
+  GKR oracle walk over Metal-owned columns
+- widen the change into a full `FriOps` or Blake2s bridge tranche before the
+  smaller GKR retirement was parity-locked
+
+Impact:
+
+- `GkrOps` no longer performs CPU oracle evaluation over Metal-owned columns
+- `gkr.metal` now covers native eq-eval generation, next-layer construction,
+  and bounded oracle-sum evaluation
+- the next measured bridge candidates are broader `FriOps`, `PolyOps`, and
+  Blake2s lifted hashing surfaces
+
+Superseded by:
+
+- none
+
 ### DEC-0048: The next mirrored lookup tranche retires native MLE completely and narrows GKR to the remaining oracle-evaluation bridge
 
 - Date: `2026-03-10`

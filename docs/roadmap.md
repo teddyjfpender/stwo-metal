@@ -456,8 +456,9 @@ Current next slice inside T7:
   repacks Metal-owned secure columns into the bounded Metal fold kernels and
   keeps `decompose` on the vendored CPU backend
 - the lookup bridge tranche is now landed:
-  `MetalBackend` implements `MleOps` and `GkrOps` through explicit CPU bridges
-  over Metal-owned multilinear and lookup-layer storage
+  `MetalBackend` implements `MleOps` natively and `GkrOps` through native
+  multilinear and bounded lookup-oracle kernels, with only bounded host-side
+  polynomial reconstruction left after the native oracle sums
 - the Blake2s channel bridge tranche is now landed:
   `MetalBackend` implements the Blake2s `BackendForChannel` surface through
   explicit CPU-bridge Merkle and proof-of-work boundaries
@@ -507,9 +508,8 @@ Current next slice inside T8:
   `fold_line.metal` as the active native proving lane after the FFT core
 - treat `mle.metal` as compile-active and parity-tested, with the previous
   `MleOps` CPU bridge retired
-- treat `gkr.metal` as compile-active and parity-tested for eq-eval generation
-  plus next-layer construction, while keeping the remaining
-  `sum_as_poly_in_first_variable` bridge explicit
+- treat `gkr.metal` as compile-active and parity-tested for eq-eval generation,
+  next-layer construction, and bounded oracle-sum evaluation
 - treat `prefix_sum.metal` as compile-active and parity-tested support rather
   than leaving any mirrored hot-path file scaffold-only
 - with the mirrored hot-path set complete, move the next T8 decision to
@@ -531,5 +531,5 @@ Current next slice inside T8:
    measurement against the wide-fibonacci north star.
 2. Keep the mirrored native `mle`, `gkr`, and `prefix_sum` slices parity-tested
    and support-honest in the capability model and docs.
-3. Choose the next remaining explicit CPU bridge to retire after mirror
+3. Choose the next broader explicit CPU bridge to retire after mirror
    completion, starting from the measured bottleneck rather than file presence.

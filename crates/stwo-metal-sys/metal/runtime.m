@@ -92,6 +92,45 @@ static NSUInteger stwo_metal_threads_per_group(id<MTLComputePipelineState> pipel
     return MIN((NSUInteger)256, MAX(threadgroup_width, max_threads));
 }
 
+static id<MTLBuffer> stwo_metal_encode_qm31_pair_reduction(
+    id<MTLCommandBuffer> command_buffer,
+    id<MTLComputePipelineState> pipeline,
+    id<MTLBuffer> current,
+    id<MTLBuffer> temp,
+    uint32_t len,
+    char *error_message,
+    size_t error_message_len
+) {
+    uint32_t current_len = len;
+    id<MTLBuffer> current_buffer = current;
+    id<MTLBuffer> temp_buffer = temp;
+
+    while (current_len > 1u) {
+        uint32_t next_len = current_len >> 1u;
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return nil;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:current_buffer offset:0 atIndex:0];
+        [encoder setBuffer:temp_buffer offset:0 atIndex:1];
+        [encoder setBytes:&next_len length:sizeof(next_len) atIndex:2];
+        MTLSize grid_size = MTLSizeMake(next_len, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        id<MTLBuffer> swap = current_buffer;
+        current_buffer = temp_buffer;
+        temp_buffer = swap;
+        current_len = next_len;
+    }
+
+    return current_buffer;
+}
+
 static bool stwo_metal_dispatch_unary_u32_kernel(
     StwoMetalRuntimeBox *runtime,
     NSString *kernel_name,
@@ -1181,6 +1220,354 @@ bool stwo_metal_gkr_next_logup_singles_layer_u32x4(
             return false;
         }
 
+        return true;
+    }
+}
+
+bool stwo_metal_gkr_sum_grand_product_u32x4(
+    void *runtime_ptr,
+    void *eq_evals_ptr,
+    void *input_layer_ptr,
+    uint32_t n_terms,
+    uint32_t *eval_at_0_limbs,
+    uint32_t *eval_at_2_limbs,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *eq_evals = stwo_metal_buffer_box(eq_evals_ptr);
+        StwoMetalBufferBox *input_layer = stwo_metal_buffer_box(input_layer_ptr);
+        if (eq_evals.len != (NSUInteger)(n_terms * 4u) || input_layer.len != (NSUInteger)(n_terms * 16u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR grand-product sum expects n_terms eq-evals and 4*n_terms secure-field input evaluations.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> terms_pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_sum_grand_product_terms_u32x4", error_message, error_message_len);
+        id<MTLComputePipelineState> reduce_pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_sum_reduce_pairs_u32x4", error_message, error_message_len);
+        if (terms_pipeline == nil || reduce_pipeline == nil) {
+            return false;
+        }
+
+        NSUInteger term_bytes = (NSUInteger)(n_terms * 4u) * sizeof(uint32_t);
+        id<MTLBuffer> eval0_terms = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> eval2_terms = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> temp0 = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> temp2 = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        if (eval0_terms == nil || eval2_terms == nil || temp0 == nil || temp2 == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal GKR sum scratch buffers.");
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+        [encoder setComputePipelineState:terms_pipeline];
+        [encoder setBuffer:eq_evals.buffer offset:0 atIndex:0];
+        [encoder setBuffer:input_layer.buffer offset:0 atIndex:1];
+        [encoder setBuffer:eval0_terms offset:0 atIndex:2];
+        [encoder setBuffer:eval2_terms offset:0 atIndex:3];
+        [encoder setBytes:&n_terms length:sizeof(n_terms) atIndex:4];
+        MTLSize grid_size = MTLSizeMake(n_terms, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(terms_pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        id<MTLBuffer> final_eval0 = stwo_metal_encode_qm31_pair_reduction(
+            command_buffer, reduce_pipeline, eval0_terms, temp0, n_terms, error_message, error_message_len);
+        if (final_eval0 == nil) {
+            return false;
+        }
+        id<MTLBuffer> final_eval2 = stwo_metal_encode_qm31_pair_reduction(
+            command_buffer, reduce_pipeline, eval2_terms, temp2, n_terms, error_message, error_message_len);
+        if (final_eval2 == nil) {
+            return false;
+        }
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        memcpy(eval_at_0_limbs, final_eval0.contents, sizeof(uint32_t) * 4u);
+        memcpy(eval_at_2_limbs, final_eval2.contents, sizeof(uint32_t) * 4u);
+        return true;
+    }
+}
+
+bool stwo_metal_gkr_sum_logup_generic_u32x4(
+    void *runtime_ptr,
+    void *eq_evals_ptr,
+    void *numerators_ptr,
+    void *denominators_ptr,
+    uint32_t n_terms,
+    const uint32_t *lambda_limbs,
+    uint32_t *eval_at_0_limbs,
+    uint32_t *eval_at_2_limbs,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *eq_evals = stwo_metal_buffer_box(eq_evals_ptr);
+        StwoMetalBufferBox *numerators = stwo_metal_buffer_box(numerators_ptr);
+        StwoMetalBufferBox *denominators = stwo_metal_buffer_box(denominators_ptr);
+        if (eq_evals.len != (NSUInteger)(n_terms * 4u) ||
+            numerators.len != (NSUInteger)(n_terms * 16u) ||
+            denominators.len != (NSUInteger)(n_terms * 16u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR generic sum expects n_terms eq-evals and 4*n_terms secure-field numerator and denominator evaluations.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> terms_pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_sum_logup_generic_terms_u32x4", error_message, error_message_len);
+        id<MTLComputePipelineState> reduce_pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_sum_reduce_pairs_u32x4", error_message, error_message_len);
+        if (terms_pipeline == nil || reduce_pipeline == nil) {
+            return false;
+        }
+
+        NSUInteger term_bytes = (NSUInteger)(n_terms * 4u) * sizeof(uint32_t);
+        id<MTLBuffer> eval0_terms = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> eval2_terms = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> temp0 = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> temp2 = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        if (eval0_terms == nil || eval2_terms == nil || temp0 == nil || temp2 == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal GKR sum scratch buffers.");
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+        [encoder setComputePipelineState:terms_pipeline];
+        [encoder setBuffer:eq_evals.buffer offset:0 atIndex:0];
+        [encoder setBuffer:numerators.buffer offset:0 atIndex:1];
+        [encoder setBuffer:denominators.buffer offset:0 atIndex:2];
+        [encoder setBuffer:eval0_terms offset:0 atIndex:3];
+        [encoder setBuffer:eval2_terms offset:0 atIndex:4];
+        [encoder setBytes:lambda_limbs length:sizeof(uint32_t) * 4u atIndex:5];
+        [encoder setBytes:&n_terms length:sizeof(n_terms) atIndex:6];
+        MTLSize grid_size = MTLSizeMake(n_terms, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(terms_pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        id<MTLBuffer> final_eval0 = stwo_metal_encode_qm31_pair_reduction(
+            command_buffer, reduce_pipeline, eval0_terms, temp0, n_terms, error_message, error_message_len);
+        if (final_eval0 == nil) {
+            return false;
+        }
+        id<MTLBuffer> final_eval2 = stwo_metal_encode_qm31_pair_reduction(
+            command_buffer, reduce_pipeline, eval2_terms, temp2, n_terms, error_message, error_message_len);
+        if (final_eval2 == nil) {
+            return false;
+        }
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        memcpy(eval_at_0_limbs, final_eval0.contents, sizeof(uint32_t) * 4u);
+        memcpy(eval_at_2_limbs, final_eval2.contents, sizeof(uint32_t) * 4u);
+        return true;
+    }
+}
+
+bool stwo_metal_gkr_sum_logup_multiplicities_u32(
+    void *runtime_ptr,
+    void *eq_evals_ptr,
+    void *numerators_ptr,
+    void *denominators_ptr,
+    uint32_t n_terms,
+    const uint32_t *lambda_limbs,
+    uint32_t *eval_at_0_limbs,
+    uint32_t *eval_at_2_limbs,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *eq_evals = stwo_metal_buffer_box(eq_evals_ptr);
+        StwoMetalBufferBox *numerators = stwo_metal_buffer_box(numerators_ptr);
+        StwoMetalBufferBox *denominators = stwo_metal_buffer_box(denominators_ptr);
+        if (eq_evals.len != (NSUInteger)(n_terms * 4u) ||
+            numerators.len != (NSUInteger)(n_terms * 4u) ||
+            denominators.len != (NSUInteger)(n_terms * 16u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR multiplicities sum expects n_terms eq-evals, 4*n_terms base-field numerators, and 4*n_terms secure-field denominators.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> terms_pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_sum_logup_multiplicities_terms_u32", error_message, error_message_len);
+        id<MTLComputePipelineState> reduce_pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_sum_reduce_pairs_u32x4", error_message, error_message_len);
+        if (terms_pipeline == nil || reduce_pipeline == nil) {
+            return false;
+        }
+
+        NSUInteger term_bytes = (NSUInteger)(n_terms * 4u) * sizeof(uint32_t);
+        id<MTLBuffer> eval0_terms = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> eval2_terms = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> temp0 = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> temp2 = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        if (eval0_terms == nil || eval2_terms == nil || temp0 == nil || temp2 == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal GKR sum scratch buffers.");
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+        [encoder setComputePipelineState:terms_pipeline];
+        [encoder setBuffer:eq_evals.buffer offset:0 atIndex:0];
+        [encoder setBuffer:numerators.buffer offset:0 atIndex:1];
+        [encoder setBuffer:denominators.buffer offset:0 atIndex:2];
+        [encoder setBuffer:eval0_terms offset:0 atIndex:3];
+        [encoder setBuffer:eval2_terms offset:0 atIndex:4];
+        [encoder setBytes:lambda_limbs length:sizeof(uint32_t) * 4u atIndex:5];
+        [encoder setBytes:&n_terms length:sizeof(n_terms) atIndex:6];
+        MTLSize grid_size = MTLSizeMake(n_terms, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(terms_pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        id<MTLBuffer> final_eval0 = stwo_metal_encode_qm31_pair_reduction(
+            command_buffer, reduce_pipeline, eval0_terms, temp0, n_terms, error_message, error_message_len);
+        if (final_eval0 == nil) {
+            return false;
+        }
+        id<MTLBuffer> final_eval2 = stwo_metal_encode_qm31_pair_reduction(
+            command_buffer, reduce_pipeline, eval2_terms, temp2, n_terms, error_message, error_message_len);
+        if (final_eval2 == nil) {
+            return false;
+        }
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        memcpy(eval_at_0_limbs, final_eval0.contents, sizeof(uint32_t) * 4u);
+        memcpy(eval_at_2_limbs, final_eval2.contents, sizeof(uint32_t) * 4u);
+        return true;
+    }
+}
+
+bool stwo_metal_gkr_sum_logup_singles_u32x4(
+    void *runtime_ptr,
+    void *eq_evals_ptr,
+    void *denominators_ptr,
+    uint32_t n_terms,
+    const uint32_t *lambda_limbs,
+    uint32_t *eval_at_0_limbs,
+    uint32_t *eval_at_2_limbs,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *eq_evals = stwo_metal_buffer_box(eq_evals_ptr);
+        StwoMetalBufferBox *denominators = stwo_metal_buffer_box(denominators_ptr);
+        if (eq_evals.len != (NSUInteger)(n_terms * 4u) || denominators.len != (NSUInteger)(n_terms * 16u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR singles sum expects n_terms eq-evals and 4*n_terms secure-field denominators.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> terms_pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_sum_logup_singles_terms_u32x4", error_message, error_message_len);
+        id<MTLComputePipelineState> reduce_pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_sum_reduce_pairs_u32x4", error_message, error_message_len);
+        if (terms_pipeline == nil || reduce_pipeline == nil) {
+            return false;
+        }
+
+        NSUInteger term_bytes = (NSUInteger)(n_terms * 4u) * sizeof(uint32_t);
+        id<MTLBuffer> eval0_terms = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> eval2_terms = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> temp0 = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> temp2 = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        if (eval0_terms == nil || eval2_terms == nil || temp0 == nil || temp2 == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal GKR sum scratch buffers.");
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+        [encoder setComputePipelineState:terms_pipeline];
+        [encoder setBuffer:eq_evals.buffer offset:0 atIndex:0];
+        [encoder setBuffer:denominators.buffer offset:0 atIndex:1];
+        [encoder setBuffer:eval0_terms offset:0 atIndex:2];
+        [encoder setBuffer:eval2_terms offset:0 atIndex:3];
+        [encoder setBytes:lambda_limbs length:sizeof(uint32_t) * 4u atIndex:4];
+        [encoder setBytes:&n_terms length:sizeof(n_terms) atIndex:5];
+        MTLSize grid_size = MTLSizeMake(n_terms, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(terms_pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        id<MTLBuffer> final_eval0 = stwo_metal_encode_qm31_pair_reduction(
+            command_buffer, reduce_pipeline, eval0_terms, temp0, n_terms, error_message, error_message_len);
+        if (final_eval0 == nil) {
+            return false;
+        }
+        id<MTLBuffer> final_eval2 = stwo_metal_encode_qm31_pair_reduction(
+            command_buffer, reduce_pipeline, eval2_terms, temp2, n_terms, error_message, error_message_len);
+        if (final_eval2 == nil) {
+            return false;
+        }
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        memcpy(eval_at_0_limbs, final_eval0.contents, sizeof(uint32_t) * 4u);
+        memcpy(eval_at_2_limbs, final_eval2.contents, sizeof(uint32_t) * 4u);
         return true;
     }
 }

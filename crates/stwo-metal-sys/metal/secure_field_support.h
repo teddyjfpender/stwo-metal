@@ -40,6 +40,10 @@ static inline StwoMetalQm31 stwo_metal_qm31_mul_base(StwoMetalQm31 value, uint s
     };
 }
 
+static inline StwoMetalQm31 stwo_metal_qm31_double(StwoMetalQm31 value) {
+    return stwo_metal_qm31_add(value, value);
+}
+
 static inline StwoMetalQm31 stwo_metal_qm31_mul(StwoMetalQm31 lhs, StwoMetalQm31 rhs) {
     uint a0 = lhs.a;
     uint a1 = lhs.b;

@@ -120,6 +120,25 @@ impl BaseFieldVec {
             .expect("Metal BaseFieldVec prefix sum should succeed");
     }
 
+    pub fn gkr_sum_logup_multiplicities(
+        &self,
+        eq_evals: &SecureFieldVec,
+        denominators: &SecureFieldVec,
+        lambda: SecureField,
+    ) -> (SecureField, SecureField) {
+        let (eval_at_0, eval_at_2) = U32Buffer::gkr_sum_logup_multiplicities(
+            &eq_evals.buffer,
+            &self.buffer,
+            &denominators.buffer,
+            lambda.to_m31_array().map(|limb| limb.0),
+        )
+        .expect("Metal GKR multiplicities sum should succeed");
+        (
+            SecureField::from_u32_unchecked(eval_at_0[0], eval_at_0[1], eval_at_0[2], eval_at_0[3]),
+            SecureField::from_u32_unchecked(eval_at_2[0], eval_at_2[1], eval_at_2[2], eval_at_2[3]),
+        )
+    }
+
     pub fn extend(&mut self, other: &Self) {
         let new_size = self.size + other.size;
         let mut new_vec = Self::new_uninitialized(new_size);

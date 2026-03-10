@@ -287,7 +287,7 @@ fn metal_mle_ops_native_matches_cpu_for_fix_first_variable() {
 }
 
 #[test]
-fn metal_gkr_ops_cpu_bridge_matches_cpu_for_eq_evals_and_next_layer() {
+fn metal_gkr_ops_native_matches_cpu_for_eq_evals_and_next_layer() {
     require_metal_runtime();
 
     let y = secure_values(5, 31);
@@ -320,7 +320,7 @@ fn metal_gkr_ops_cpu_bridge_matches_cpu_for_eq_evals_and_next_layer() {
 }
 
 #[test]
-fn metal_gkr_ops_cpu_bridge_matches_cpu_for_sum_as_poly_in_first_variable() {
+fn metal_gkr_ops_native_matches_cpu_for_sum_as_poly_in_first_variable() {
     require_metal_runtime();
 
     let y = secure_values(4, 503);
