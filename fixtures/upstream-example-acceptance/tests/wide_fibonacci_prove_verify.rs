@@ -10,8 +10,7 @@ use stwo_metal::{
     MetalRuntimeSupport,
 };
 use stwo_metal_upstream_example_acceptance::{
-    acceptance_bridge_catalog,
-    prove_and_verify_single_trace_component_via_backend_blake2s,
+    acceptance_bridge_catalog, prove_and_verify_single_trace_component_via_backend_blake2s,
     prove_and_verify_single_trace_component_via_cpu_blake2s,
 };
 

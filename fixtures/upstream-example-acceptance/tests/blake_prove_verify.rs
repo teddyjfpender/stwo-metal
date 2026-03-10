@@ -9,9 +9,7 @@ use stwo_metal::{
     declare_exemplar_metal_workload_boundary, metal_runtime_support, MetalBackend,
     MetalExecutionIntent, MetalRuntimeSupport,
 };
-use stwo_metal_upstream_example_acceptance::{
-    acceptance_bridge_catalog, simd_tree_to_metal,
-};
+use stwo_metal_upstream_example_acceptance::{acceptance_bridge_catalog, simd_tree_to_metal};
 
 #[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -70,7 +68,8 @@ fn vendored_upstream_blake_example_proves_and_verifies_via_metal_backend() {
     let xor7_component = catalog.framework(setup.xor7_component());
     let xor4_component = catalog.framework(setup.xor4_component());
 
-    let mut proving_component_refs = vec![&scheduler_component as &dyn ComponentProver<MetalBackend>];
+    let mut proving_component_refs =
+        vec![&scheduler_component as &dyn ComponentProver<MetalBackend>];
     proving_component_refs.extend(
         round_components
             .iter()

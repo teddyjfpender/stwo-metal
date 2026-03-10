@@ -16,9 +16,7 @@ use stwo_metal::{
     declare_exemplar_metal_workload_boundary, metal_runtime_support, MetalBackend,
     MetalExecutionIntent, MetalRuntimeSupport,
 };
-use stwo_metal_upstream_example_acceptance::{
-    acceptance_bridge_catalog, simd_tree_to_metal,
-};
+use stwo_metal_upstream_example_acceptance::{acceptance_bridge_catalog, simd_tree_to_metal};
 
 #[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]

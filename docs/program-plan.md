@@ -46,8 +46,8 @@ The superseded `T0` through `T8` sequence now lives in:
 | G0 | Freeze the generic backend contract | `completed` | the architecture distinguishes generic substitution, generated fast path, and temporary wrappers |
 | G1 | Freeze the codegen input schema and fail-closed contract | `completed` | the required producer artifact, consumer subset, and unsupported-component behavior are specified |
 | G2 | Build the backend planning and registration surface | `completed` | `stwo-metal` has a stable internal artifact-registry and execution-plan boundary with deterministic schema checks |
-| G3 | Move acceptance coverage onto the stable generic path | `in_progress` | acceptance coverage no longer depends on architecture-local example shims where shared backend boundaries should exist |
-| G4 | Land generated fast-path registration and ABI inventory | `planned` | generated artifacts register component identity, ABI, build inventory, and specialization keys through a stable surface |
+| G3 | Move acceptance coverage onto the stable generic path | `completed` | acceptance coverage no longer depends on architecture-local example shims where shared backend boundaries should exist |
+| G4 | Land generated fast-path registration and ABI inventory | `in_progress` | generated artifacts register component identity, ABI, build inventory, and specialization keys through a stable surface |
 | G5 | Lower generated artifacts into Metal runtime execution plans | `planned` | generated components drive trace, evaluation, lookup, quotient, FRI, and commitment scheduling through backend planning surfaces |
 | G6 | Separate benchmark lanes and optimize the right rows | `planned` | generic and generated benchmark rows are measured independently and optimization work targets the generated lane explicitly |
 | G7 | Retire temporary compatibility shims | `planned` | acceptance-local adapters and example-specific wrappers are removed or clearly reduced to non-architectural fixtures |
@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G3 fourth slice: specify the non-public bridge laws and durable ownership
-boundary for the now-registered acceptance bridge catalog`
+`G4 first slice: widen the generated registration surface from route planning
+into explicit ABI and specialization inventory`
 
 The active formal basis is:
 
@@ -77,13 +77,20 @@ The active formal basis is:
 
 ## Current implementation obligations under G3
 
-- move acceptance rows onto the stable workload-boundary and planning seam
-  instead of creating new harness-local bridge contracts
-- keep unsupported-component behavior and tests explicit as G3 expands
-- keep remaining acceptance-local adapters and bounded CPU fallbacks explicit
-  until G3 and G7 retire them
-- use the now-stable registry and execution-plan seam as the default contract
-  for new acceptance-facing integration work
+- preserve the non-public bridge laws from
+  [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md)
+- keep the private support-crate ownership boundary explicit until G7 retires
+  or upstreams the current compatibility bridges
+- keep bounded CPU fallbacks explicit while the shared bridge remains non-public
+
+## Current implementation obligations under G4
+
+- widen generated registration to include explicit ABI inventory and
+  specialization metadata beyond route eligibility
+- keep generated support fail-closed when ABI inventory or specialization
+  metadata is missing
+- route new generated registration queries through the existing stable
+  artifact-registry and execution-plan seam instead of adding side tables
 
 ## G2 progress snapshot
 
@@ -145,6 +152,18 @@ The verification follow-up to the third G3 slice is now landed:
 - the private `artifact` and `execution_plan` tests are green again
 - the acceptance harness unit tests and the current non-blocked example
   prove/verify matrix are green again on `nightly-2025-07-14`
+
+The fourth G3 slice is now landed:
+
+- the registered acceptance bridge catalog no longer lives in the acceptance
+  harness crate itself
+- the current framework-backed and SIMD-backed bridge implementations now live
+  in a private shared support crate outside the main workspace, which avoids
+  the vendored nested-workspace conflict while keeping the bridge non-public
+- the acceptance harness now re-exports that private bridge boundary and keeps
+  examples in the role of acceptance fixtures instead of ownership anchors
+- the remaining honest gap moves from bridge ownership to generated ABI and
+  specialization inventory for G4
 
 ## Foundation already available
 

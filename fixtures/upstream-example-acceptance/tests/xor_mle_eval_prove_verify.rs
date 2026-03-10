@@ -7,8 +7,8 @@ use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::core::verifier::verify;
-use stwo::prover::backend::Column;
 use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::Column;
 use stwo::prover::lookups::mle::Mle;
 use stwo::prover::poly::circle::PolyOps;
 use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver};
@@ -24,9 +24,7 @@ use stwo_metal::{
     declare_exemplar_metal_workload_boundary, metal_runtime_support, MetalBackend,
     MetalExecutionIntent, MetalRuntimeSupport,
 };
-use stwo_metal_upstream_example_acceptance::{
-    acceptance_bridge_catalog, simd_tree_to_metal,
-};
+use stwo_metal_upstream_example_acceptance::{acceptance_bridge_catalog, simd_tree_to_metal};
 
 #[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -41,11 +39,9 @@ fn vendored_upstream_xor_mle_eval_example_proves_and_verifies_via_metal_backend(
     const COEFFS_COL_TRACE: usize = 1;
     const MLE_EVAL_TRACE: usize = 2;
     const LOG_EXPAND: u32 = 1;
-    let boundary = declare_exemplar_metal_workload_boundary(
-        MetalExecutionIntent::PreferMetal,
-        "xor_example",
-    )
-    .expect("xor workload boundary should be declared");
+    let boundary =
+        declare_exemplar_metal_workload_boundary(MetalExecutionIntent::PreferMetal, "xor_example")
+            .expect("xor workload boundary should be declared");
     let catalog = acceptance_bridge_catalog(&boundary)
         .expect("xor acceptance lane should stay Metal-capable");
 
@@ -119,7 +115,11 @@ fn vendored_upstream_xor_mle_eval_example_proves_and_verifies_via_metal_backend(
     tree_builder.commit(prover_channel);
 
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(simd_tree_to_metal(build_mle_eval_trace(&mle, &eval_point, claim)));
+    tree_builder.extend_evals(simd_tree_to_metal(build_mle_eval_trace(
+        &mle,
+        &eval_point,
+        claim,
+    )));
     tree_builder.commit(prover_channel);
 
     let trace_location_allocator = &mut TraceLocationAllocator::default();
@@ -164,7 +164,10 @@ fn vendored_upstream_xor_mle_eval_example_proves_and_verifies_via_metal_backend(
         MLE_EVAL_TRACE,
     );
     let components = Components {
-        components: vec![&verifier_coeffs_component as &dyn Component, &verifier_eval_component],
+        components: vec![
+            &verifier_coeffs_component as &dyn Component,
+            &verifier_eval_component,
+        ],
         n_preprocessed_columns: 0,
     };
 
@@ -175,6 +178,11 @@ fn vendored_upstream_xor_mle_eval_example_proves_and_verifies_via_metal_backend(
     commitment_scheme.commit(proof.commitments[0], &[], verifier_channel);
     commitment_scheme.commit(proof.commitments[1], &log_sizes[1], verifier_channel);
     commitment_scheme.commit(proof.commitments[2], &log_sizes[2], verifier_channel);
-    verify(&components.components, verifier_channel, commitment_scheme, proof)
-        .expect("xor MLE eval MetalBackend proof should verify");
+    verify(
+        &components.components,
+        verifier_channel,
+        commitment_scheme,
+        proof,
+    )
+    .expect("xor MLE eval MetalBackend proof should verify");
 }

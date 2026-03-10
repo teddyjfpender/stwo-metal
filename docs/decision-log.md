@@ -28,6 +28,50 @@ Superseded by:
 
 ## Entries
 
+### DEC-0081: The registered acceptance bridge catalog may move into a private shared support crate while remaining non-public
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md)
+
+Decision:
+
+The current registered acceptance bridge catalog and its framework-backed and
+SIMD-backed adapter implementations may live in a private shared support crate
+outside the main Cargo workspace as long as they preserve the non-public laws
+from `DN-0003`.
+
+Context:
+
+The acceptance harness had already collapsed ad hoc bridge construction behind
+one checked registered catalog, and the bridge laws were frozen. The remaining
+G3 ownership gap was that the implementations still lived inside the acceptance
+harness crate itself. Moving them into `support/stwo-metal-upstream-bridge`
+creates a durable shared internal home without widening the public `stwo-metal`
+API and without reintroducing the vendored nested-workspace conflict that
+blocked a direct move into the main crate.
+
+Alternatives rejected:
+
+- leave the bridge permanently in the acceptance harness
+- expose the bridge as a new public `stwo-metal` contract before reuse is
+  proven
+- block G3 on an upstream-facing move that the current repository shape does
+  not yet support cleanly
+
+Impact:
+
+- G3 can close honestly because the bridge is no longer acceptance-harness
+  local
+- the bridge remains non-public and explicitly temporary
+- the next active work moves to G4 generated registration and ABI inventory
+
+Superseded by:
+
+- none
+
 ### DEC-0080: The acceptance bridge catalog is governed by a non-public law before any durable ownership move
 
 - Date: `2026-03-10`

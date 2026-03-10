@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G3 fourth slice: specify the non-public bridge laws and durable ownership
-  boundary for the now-registered acceptance bridge catalog`
+  `G4 first slice: widen the generated registration surface from route planning
+  into explicit ABI and specialization inventory`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -50,12 +50,11 @@ Invariants:
 - internal Rust vocabulary is still CUDA-first in many places
 - unchanged upstream `wide_fibonacci`, `state_machine`, `blake`, and `xor`
   example rows now prove and verify through `MetalBackend` in the acceptance
-  harness, but those paths still rely on acceptance-local adapters
-- the remaining framework-component bridge is still CPU-domain based and still
-  lives only in the acceptance harness rather than a stable shared boundary
-- the acceptance harness now has one checked bridge-catalog surface, but the
-  durable home for that bridge law is still unresolved between a non-public
-  shared boundary and an upstream-facing path
+  harness, but those paths still rely on a non-public shared bridge with
+  explicit CPU-domain fallback debt
+- the remaining framework-component bridge is still CPU-domain based even
+  though its ownership has moved out of the acceptance harness and into a
+  private shared support boundary
 - there is not yet a declared policy for how generated output becomes durable
   and hand-tunable within this repository
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
@@ -66,23 +65,24 @@ Invariants:
 - superseded milestone history has to stay out of the active control surface so
   the new sequence remains legible
 - the current acceptance rows now all consume registered workload lanes and one
-  checked bridge catalog, but the adapters themselves still live only in the
-  acceptance harness
+  checked bridge catalog backed by a private shared support crate, which closes
+  the immediate G3 ownership question but still leaves adapter retirement for
+  later milestones
 - the shared planning seam is now stable enough for G3 work, and deterministic
   cargo verification is restored on the pinned nightly after modernizing the
   stale vendored chunking surface
-- the next decision is about bridge ownership and laws rather than more lane
-  registration or toolchain triage
+- the next decision is about how much ABI, specialization, and generated build
+  inventory belongs in the stable internal artifact registry before lowering
+  starts in earnest
 
 ## Next three deliverables
 
-1. Freeze the minimal non-public laws for a reusable acceptance bridge surface
-   so the current catalog does not drift into ad hoc test glue again.
-2. Decide whether the framework-backed bridge should move into an upstream-
-   facing boundary or a non-public shared internal boundary once the vendored
-   workspace conflict is resolved.
-3. Keep the restored pinned-nightly verification path explicit and narrow to
-   the smallest vendored compatibility patch set needed for G3.
+1. Add explicit ABI symbol and specialization-key inventory to the generated
+   artifact registry so generated routes carry more than route eligibility.
+2. Keep the restored pinned-nightly verification path explicit and narrow while
+   generated registration surfaces widen.
+3. Preserve the non-public bridge-law boundary and private support-crate
+   ownership while G4 builds the generated lane above it.
 
 ## Explicitly not doing now
 

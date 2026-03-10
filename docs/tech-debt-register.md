@@ -643,7 +643,7 @@ Target retirement point:
 
 - `T7`
 
-### TD-0017: The current framework-component Metal adapter is acceptance-local and still CPU-domain backed
+### TD-0017: The current framework-component Metal adapter is privately shared and still CPU-domain backed
 
 - Status: `active`
 - Category: `acceptance bridge`
@@ -652,24 +652,26 @@ Target retirement point:
 
 Why it exists now:
 
-The first direct `MetalBackend` upstream-example proof uses an acceptance-local
-adapter around vendored `FrameworkComponent`. That remains the smallest safe
-step because it avoids a nested-workspace dependency conflict in the main
+The first direct `MetalBackend` upstream-example proofs now use a privately
+shared adapter around vendored `FrameworkComponent` in
+`support/stwo-metal-upstream-bridge`. That remains the smallest safe step
+because it avoids a nested-workspace dependency conflict in the main
 `stwo-metal` crate and keeps the remaining CPU-domain quotient path explicit.
-The framework-backed rows now consume one registered acceptance bridge catalog
-instead of ad hoc constructors, so the adapter surface is tighter than before,
-but the adapter itself is still acceptance-local and still CPU-domain backed.
+The framework-backed rows still consume one registered acceptance bridge
+catalog, and the adapter is no longer harness-local, but it is still
+non-public and still CPU-domain backed.
 
 Current containment:
 
-- `fixtures/upstream-example-acceptance/src/lib.rs`
+- `support/stwo-metal-upstream-bridge/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/state_machine_prove_verify.rs`
 - `fixtures/upstream-example-acceptance/tests/blake_prove_verify.rs`
 
 Risk if left in place:
 
-The project could stall after the first direct backend-substitution example and
-accidentally treat acceptance-local glue as the long-term proving boundary.
+The project could stall after the first direct backend-substitution examples
+and accidentally treat the private compatibility bridge as the long-term
+proving boundary.
 
 Exit condition:
 
@@ -681,7 +683,7 @@ Target retirement point:
 
 - `T7`
 
-### TD-0019: The current SIMD-component Metal adapter is acceptance-local and depends on coefficient-retaining trace conversion
+### TD-0019: The current SIMD-component Metal adapter is privately shared and depends on coefficient-retaining trace conversion
 
 - Status: `active`
 - Category: `acceptance bridge`
@@ -691,22 +693,22 @@ Target retirement point:
 Why it exists now:
 
 The unchanged vendored upstream `xor` MLE-eval row now proves and verifies
-through `MetalBackend` with an acceptance-local adapter around vendored
+through `MetalBackend` with a privately shared adapter around vendored
 `ComponentProver<SimdBackend>`. That keeps workload logic unchanged and opens
-the first mixed-component upstream row, but it still lives only in the
-acceptance harness and currently depends on retained polynomial coefficients
-when converting Metal-owned traces into the bridged proving view. The row now
-constructs that adapter only through the shared registered acceptance bridge
-catalog rather than a standalone helper, but the adapter still remains local.
+the first mixed-component upstream row, but it still depends on retained
+polynomial coefficients when converting Metal-owned traces into the bridged
+proving view. The row constructs that adapter only through the shared
+registered acceptance bridge catalog, but the adapter remains a private
+compatibility boundary rather than a stable generated or native path.
 
 Current containment:
 
-- `fixtures/upstream-example-acceptance/src/lib.rs`
+- `support/stwo-metal-upstream-bridge/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/xor_mle_eval_prove_verify.rs`
 
 Risk if left in place:
 
-The project could confuse this local mixed-component bridge with a stable
+The project could confuse this private mixed-component bridge with a stable
 shared backend boundary and stop short of a reusable or upstream-owned path
 for non-framework prover components.
 
@@ -723,24 +725,23 @@ Target retirement point:
 
 ### TD-0020: Acceptance-local Metal adapters still need retirement into a cleaner shared boundary
 
-- Status: `active`
+- Status: `retired`
 - Category: `boundary consolidation`
 - Introduced: `2026-03-10`
 - Owner area: `post-T7 backend hardening`
 
-Why it exists now:
+Why it existed:
 
-The acceptance harness now has two local proving adapters: one for vendored
-`FrameworkComponent` rows and one for vendored `ComponentProver<SimdBackend>`
-rows. Those adapters were the smallest correctness-preserving way to prove the
-named non-blocked upstream examples through `MetalBackend`, but they are still
-test-local boundaries rather than a cleaner shared internal proving surface.
-The harness now constrains them behind one checked registered bridge catalog,
-which improves the local contract but does not retire the ownership debt.
+The acceptance harness originally had two local proving adapters: one for
+vendored `FrameworkComponent` rows and one for vendored
+`ComponentProver<SimdBackend>` rows. Those adapters were the smallest
+correctness-preserving way to prove the named non-blocked upstream examples
+through `MetalBackend`, but they were still test-local boundaries rather than
+a cleaner shared internal proving surface.
 
 Current containment:
 
-- `fixtures/upstream-example-acceptance/src/lib.rs`
+- `support/stwo-metal-upstream-bridge/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
 - `fixtures/upstream-example-acceptance/tests/state_machine_prove_verify.rs`
 - `fixtures/upstream-example-acceptance/tests/blake_prove_verify.rs`
@@ -748,17 +749,14 @@ Current containment:
 
 Risk if left in place:
 
-The project could return to native performance work with a correct backend but
-keep example-backed proving dependent on test-local adapter glue, which would
-blur the boundary between acceptance scaffolding and the durable proving
-architecture.
+This ownership-only debt is now retired. Remaining compatibility risk is
+tracked more precisely in `TD-0017` and `TD-0019`.
 
 Exit condition:
 
-The current acceptance-local adapters are either retired into a shared
-non-public boundary with explicit laws and ownership, replaced by an
-upstream-facing proving path, or removed in favor of native Metal proving
-surfaces that no longer require them.
+The registered bridge catalog and its current framework-backed and SIMD-backed
+adapters move into a shared non-public boundary with explicit laws and durable
+ownership.
 
 Target retirement point:
 
