@@ -66,6 +66,8 @@ Invariants:
   backend row
 - benchmark work remains important, but it must now follow the generic and
   generated contract instead of driving it
+- superseded milestone history has to stay out of the active control surface so
+  the new sequence remains legible
 
 ## Next three deliverables
 

@@ -107,9 +107,11 @@ The required fields and laws live in:
 
 ## Milestone map
 
-This roadmap supersedes the earlier benchmark-led sequence as the active
-planning source. Earlier milestones remain useful historical work, but the
-current program now sequences around the generic/generated contract.
+This roadmap is the active planning source.
+
+The superseded `T0` through `T8` sequence now lives in:
+
+- [`milestone-archive.md`](./milestone-archive.md)
 
 | Order | Milestone | Status | Exit condition |
 | --- | --- | --- | --- |
@@ -137,16 +139,16 @@ The next active work is:
 
 ## Native runtime direction
 
-The current mirrored Metal runtime port remains useful and stays in scope, but
-it now serves the generated and generic backend contract rather than defining
-it.
+The mirrored Metal runtime port remains in scope, but it now serves the
+generic/generated backend contract rather than defining it.
 
-Native implementation rules remain:
+Runtime rules:
 
 - use `.metal` for hot kernels
 - keep native ownership and ABI explicit
-- keep mirrored CUDA/Metal structure legible where it helps review and parity
 - prefer reusable proving-operation kernels over workload-specific kernels
+- let the execution-plan boundary decide how kernels are composed for a given
+  artifact
 
 ## Upstream skill alignment
 

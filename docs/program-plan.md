@@ -35,8 +35,11 @@ such as `stwo-cuda`.
 
 ## Milestone queue
 
-This queue supersedes the earlier benchmark-led sequence as the active program
-plan.
+This queue is the active program plan.
+
+The superseded `T0` through `T8` sequence now lives in:
+
+- [`milestone-archive.md`](./milestone-archive.md)
 
 | Order | Milestone | Status | Exit condition |
 | --- | --- | --- | --- |
@@ -73,21 +76,6 @@ The active formal basis is:
 - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
 
-## Completed foundations carried forward
-
-The earlier work remains valuable and is now treated as enabling foundation
-rather than as the active sequencing source:
-
-- repository isolation and process reset
-- Apple Silicon host and native Metal runtime boundary
-- bounded native Metal proving primitives and mirrored native hot-path files
-- unchanged upstream example acceptance coverage for
-  `wide_fibonacci`, `state_machine`, `blake`, and `xor`
-- explicit `poseidon` tracking as an upstream protocol blocker rather than a
-  Metal-backend gap
-- benchmark-faithful wide-fibonacci Metal proving row and its current measured
-  production baseline
-
 ## Current implementation obligations under G2
 
 - define the internal Rust representation of the producer artifact
@@ -97,3 +85,14 @@ rather than as the active sequencing source:
 - define unsupported-component behavior and test it
 - keep acceptance-local adapters and bounded CPU fallbacks explicit until G3 and
   G7 retire them
+
+## Foundation already available
+
+The new path starts from a real base rather than a blank implementation slate:
+
+- Apple Silicon host/runtime foundation already exists
+- mirrored Metal native hot-path structure already exists
+- current non-blocked upstream acceptance rows already pass through
+  `MetalBackend`
+- `poseidon` remains tracked as an upstream protocol blocker rather than a
+  Metal-backend gap

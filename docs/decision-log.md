@@ -28,6 +28,52 @@ Superseded by:
 
 ## Entries
 
+### DEC-0068: Superseded milestone sequencing must live in one archive, not in the active planning docs
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The old `T0` through `T8` milestone sequence is now archived in exactly one
+place:
+
+- [`milestone-archive.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/milestone-archive.md)
+
+The active planning docs must stay operational and forward-looking:
+
+- [`roadmap.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/roadmap.md)
+- [`program-plan.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/program-plan.md)
+- [`controller.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/controller.md)
+
+Context:
+
+Once the generic backend and codegen contract was frozen, the active docs still
+carried too much superseded sequencing context. That made the repository harder
+to operate because current planning, historical milestone memory, and
+architecture reset were all mixed together. A single archive keeps the old path
+auditable without letting it continue to steer day-to-day work.
+
+Alternatives rejected:
+
+- leave the old milestone history spread across roadmap, plan, and controller
+- delete the milestone history entirely
+- keep adding historical notes inline to active docs as new resets happen
+
+Impact:
+
+- the docs directory now has one explicit archive surface for old sequencing
+- the active planning docs are shorter and easier to operate from
+- future architecture resets must either update the active docs or add one
+  archive entry, rather than mixing both concerns everywhere
+
+Superseded by:
+
+- none
+
 ### DEC-0067: Examples are the acceptance matrix, while the architecture is generic backend substitution plus generated proving artifacts
 
 - Date: `2026-03-10`

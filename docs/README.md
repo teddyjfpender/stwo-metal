@@ -29,6 +29,8 @@ is planned, controlled, reviewed, and changed.
   contract-changing design template
 - [`work-item-template.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/work-item-template.md):
   slice or task template
+- [`milestone-archive.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/milestone-archive.md):
+  superseded milestone history kept out of the active control path
 
 ## Current design note
 
@@ -39,7 +41,8 @@ is planned, controlled, reviewed, and changed.
 
 ## Rules
 
-- Historical implementation archives do not live here.
+- Historical milestone history may live here only if it is explicitly archived
+  and clearly marked as non-authoritative for current work.
 - If a document stops guiding current work, delete it rather than preserving it
   as passive history.
 - Decisions, debt, and active control state must stay synchronized.
