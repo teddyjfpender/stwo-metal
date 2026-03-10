@@ -28,6 +28,45 @@ Superseded by:
 
 ## Entries
 
+### DEC-0099: The first live path below `MetalExecutionAuthority` should be an in-crate helper before any support-bridge lowering
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Before moving any private support-bridge path below `MetalExecutionAuthority`,
+the project should first lower one in-crate live helper directly onto the
+private registered execution seed.
+
+Context:
+
+`MetalExecutionAuthority` was reused successfully across benchmark,
+acceptance, and workload lanes, but that still left every live path above the
+same transitional public surface. The next semantics-preserving move was to
+prove that one live helper could operate directly on the lower private
+generated contract. Wide-fibonacci witness eligibility and hybrid-FRI lane
+support were the safest candidates because they already lived inside
+`stwo-metal` and required only plan and stage-law checks.
+
+Alternatives rejected:
+
+- move a support-bridge path below the public authority first
+- keep every live path on `MetalExecutionAuthority`
+- jump straight from public authority to a larger private lowering contract
+
+Impact:
+
+- the first live helper path now sits below `MetalExecutionAuthority`
+- the next honest G5 choice is which private support-bridge path lowers next
+
+Superseded by:
+
+- none
+
 ### DEC-0098: Workload declarations and witness staging must obey the same reduced execution-law surface once benchmark and acceptance lanes do
 
 - Date: `2026-03-10`

@@ -164,6 +164,9 @@ The next active work is:
   `MetalWorkloadBoundary` stops being the default live staging authority
 - pick the first live helper that can move below the transitional public
   authority and onto the next lower private generated contract
+- once one live helper sits below the public authority, decide which
+  support-bridge path moves next without violating the private support-crate
+  boundary
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

@@ -317,12 +317,25 @@ impl RegisteredMetalExecutionSeed {
         self.allow_cpu_fri_ready_evaluation(domain)
     }
 
-    pub fn wide_fibonacci_trace_request<'a>(
+    pub(crate) fn supports_hybrid_fri_lane(self) -> bool {
+        matches!(
+            self.plan,
+            MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull
+        ) && self.stage_ownership(MetalWorkloadStage::FriBlake2s)
+            == Some(MetalWorkloadOwnership::MetalNative)
+    }
+
+    pub(crate) fn allow_cpu_wide_fibonacci_witness(
         self,
-        input_a: &'a [BaseField],
-        input_b: &'a [BaseField],
-        n_columns: u32,
-    ) -> Result<MetalWideFibonacciTraceRequest<'a>, RegisteredMetalExecutionSeedError> {
+    ) -> Result<(), RegisteredMetalExecutionSeedError> {
+        if self.stage_ownership(MetalWorkloadStage::WitnessMain)
+            != Some(MetalWorkloadOwnership::CpuOwned)
+        {
+            return Err(RegisteredMetalExecutionSeedError::UnsupportedCpuOwnership {
+                component_name: self.component_name,
+                stage: MetalWorkloadStage::WitnessMain,
+            });
+        }
         if self.component_name != "fibonacci_example"
             || self.witness_hook != Some("ingest_cpu_wide_fibonacci_witness")
         {
@@ -331,6 +344,17 @@ impl RegisteredMetalExecutionSeed {
                 witness_hook: self.witness_hook,
             });
         }
+
+        Ok(())
+    }
+
+    pub fn wide_fibonacci_trace_request<'a>(
+        self,
+        input_a: &'a [BaseField],
+        input_b: &'a [BaseField],
+        n_columns: u32,
+    ) -> Result<MetalWideFibonacciTraceRequest<'a>, RegisteredMetalExecutionSeedError> {
+        self.allow_cpu_wide_fibonacci_witness()?;
         for missing_key in ["log_n_instances", "n_columns"] {
             if !self.specialization_keys.contains(&missing_key) {
                 return Err(
@@ -780,6 +804,8 @@ mod tests {
 
         assert_eq!(seed.allow_cpu_fri_ready_evaluation(domain), Ok(()));
         assert_eq!(seed.allow_cpu_quotient_evaluation(domain), Ok(()));
+        assert_eq!(seed.allow_cpu_wide_fibonacci_witness(), Ok(()));
+        assert!(seed.supports_hybrid_fri_lane());
     }
 
     #[test]
@@ -799,5 +825,6 @@ mod tests {
                 plan: MetalExecutionPlan::CpuOnly,
             })
         );
+        assert!(!seed.supports_hybrid_fri_lane());
     }
 }

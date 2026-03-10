@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 fifteenth slice: finish moving workload-side execution-law checks onto the
-reduced authority contract, then decide the next lower private seam`
+`G5 sixteenth slice: choose the first support-bridge path that can move below
+the transitional public authority onto a lower workspace-private seam`
 
 The active formal basis is:
 
@@ -246,6 +246,17 @@ The fourteenth G5 slice is now landed:
   the same reduced execution-authority contract
 - the next honest G5 work is deciding which live helper moves below the
   transitional public authority and onto the next lower private generated seam
+
+The fifteenth G5 slice is now landed:
+
+- wide-fibonacci witness eligibility and hybrid-FRI lane support now consume
+  the private registered execution seed directly instead of the transitional
+  public `MetalExecutionAuthority`
+- this is the first live helper path that now sits below the public reduced
+  execution-law surface
+- the next honest G5 work is choosing the first support-bridge path that can
+  move below that public surface without breaking the private support-crate
+  ownership model
 
 ## G2 progress snapshot
 

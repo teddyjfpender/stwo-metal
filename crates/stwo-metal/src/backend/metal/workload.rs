@@ -27,35 +27,31 @@ pub struct MetalWorkloadBoundary {
 
 fn require_cpu_owned_witness_main(
     workload_name: &'static str,
-    execution_authority: MetalExecutionAuthority,
+    execution_seed: RegisteredMetalExecutionSeed,
 ) -> Result<(), MetalWorkloadHandoffError<'static>> {
-    if execution_authority.stage_ownership(MetalWorkloadStage::WitnessMain)
-        != Some(MetalWorkloadOwnership::CpuOwned)
-    {
-        return Err(MetalWorkloadHandoffError::UnsupportedCpuOwnership {
-            workload_name,
-            stage: MetalWorkloadStage::WitnessMain,
-        });
-    }
-
-    Ok(())
+    execution_seed
+        .allow_cpu_wide_fibonacci_witness()
+        .map_err(|error| match error {
+            super::execution_plan::RegisteredMetalExecutionSeedError::UnsupportedCpuOwnership {
+                stage,
+                ..
+            } => MetalWorkloadHandoffError::UnsupportedCpuOwnership {
+                workload_name,
+                stage,
+            },
+            other => unreachable!(
+                "wide-fibonacci witness staging should only delegate to witness seed checks, got {other:?}"
+            ),
+        })
 }
 
-fn assert_hybrid_fri_execution_authority(
+fn assert_hybrid_fri_execution_seed(
     workload_name: &'static str,
-    execution_authority: MetalExecutionAuthority,
+    execution_seed: RegisteredMetalExecutionSeed,
 ) {
     assert!(
-        matches!(
-            execution_authority.plan(),
-            MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull
-        ),
-        "hybrid FRI workload declaration for {workload_name} requires a Metal-capable execution authority"
-    );
-    assert_eq!(
-        execution_authority.stage_ownership(MetalWorkloadStage::FriBlake2s),
-        Some(MetalWorkloadOwnership::MetalNative),
-        "declared hybrid FRI workload for {workload_name} must keep the FRI stage on the Metal lane"
+        execution_seed.supports_hybrid_fri_lane(),
+        "hybrid FRI workload declaration for {workload_name} requires a Metal-capable generated execution seed with Metal-owned FRI"
     );
 }
 
@@ -157,7 +153,7 @@ impl MetalWorkloadBoundary {
                 workload_name: self.workload_name,
             });
         }
-        require_cpu_owned_witness_main(self.workload_name, self.execution_authority())?;
+        require_cpu_owned_witness_main(self.workload_name, self.execution_seed)?;
         if input_a.len() != input_b.len() {
             return Err(MetalWorkloadHandoffError::WitnessInputLengthMismatch {
                 workload_name: self.workload_name,
@@ -385,7 +381,7 @@ pub fn declare_exemplar_hybrid_fri_workload(
     config: FriConfig,
 ) -> Result<MetalHybridFriWorkload, MetalPlannerError<'static>> {
     let boundary = declare_exemplar_metal_workload_boundary(intent, workload_name)?;
-    assert_hybrid_fri_execution_authority(workload_name, boundary.execution_authority());
+    assert_hybrid_fri_execution_seed(workload_name, boundary.execution_seed);
 
     Ok(MetalHybridFriWorkload {
         boundary,

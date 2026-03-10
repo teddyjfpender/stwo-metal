@@ -7,9 +7,7 @@ use super::execution_plan::{
 use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload::{declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary};
-use super::workload_contract::{
-    MetalExecutionAuthority, MetalWorkloadOwnership, MetalWorkloadStage,
-};
+use super::workload_contract::MetalExecutionAuthority;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalBenchmarkOperation {
@@ -95,9 +93,9 @@ impl MetalWideFibonacciBenchmarkBoundary {
         input_b: &[BaseField],
     ) -> Result<MetalWideFibonacciWitnessInputs, MetalBenchmarkInputError> {
         if self
-            .execution_authority()
-            .stage_ownership(MetalWorkloadStage::WitnessMain)
-            != Some(MetalWorkloadOwnership::CpuOwned)
+            .execution_seed
+            .allow_cpu_wide_fibonacci_witness()
+            .is_err()
         {
             return Err(MetalBenchmarkInputError::UnsupportedWitnessOwnership);
         }

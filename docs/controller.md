@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 fifteenth slice: finish moving workload-side execution-law checks onto
-  the reduced authority contract, then decide the next lower private seam`
+  `G5 sixteenth slice: choose the first support-bridge path that can move below
+  the transitional public authority onto a lower workspace-private seam`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -63,8 +63,10 @@ Invariants:
   evaluation, quotient, and prove-values staging helpers, but the shared
   prove-values bridge and the acceptance and benchmark witness lanes now anchor
   themselves on a transitional public `MetalExecutionAuthority` surface instead
-  of directly on a lower private generated execution contract, and workload-side
-  hybrid-FRI and witness staging checks now do the same
+  of directly on a lower private generated execution contract; the first
+  workload-side live helpers have now moved below that public surface onto the
+  private execution seed, but support-bridge lanes still depend on the
+  transitional authority
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -85,14 +87,14 @@ Invariants:
 
 ## Next three deliverables
 
-1. Decide which remaining live staging helper should be the first to consume a
-   lower private generated contract instead of the transitional public
-   `MetalExecutionAuthority`.
+1. Choose the first support-bridge path that should move below
+   `MetalExecutionAuthority`, starting with either the benchmark prove-values
+   bridge or the upstream acceptance lane validation path.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate
    ownership while deciding how far the transitional public execution-law
-   surface should survive beyond G5.
+   surface should survive before G7.
 
 ## Explicitly not doing now
 
