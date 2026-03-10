@@ -2710,6 +2710,75 @@ bool stwo_metal_compute_quotients_and_combine_u32x4(
     }
 }
 
+bool stwo_metal_blake2s_build_leaves_lifted_u32(
+    void *runtime_ptr,
+    void *flat_columns_ptr,
+    void *column_offsets_ptr,
+    void *column_log_sizes_ptr,
+    void *dst_ptr,
+    uint32_t n_columns,
+    uint32_t lifting_log_size,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *flat_columns = stwo_metal_buffer_box(flat_columns_ptr);
+        StwoMetalBufferBox *column_offsets = stwo_metal_buffer_box(column_offsets_ptr);
+        StwoMetalBufferBox *column_log_sizes = stwo_metal_buffer_box(column_log_sizes_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        NSUInteger row_count = ((NSUInteger)1) << lifting_log_size;
+        if (
+            column_offsets.len != n_columns ||
+            column_log_sizes.len != n_columns ||
+            dst.len != row_count * 8u
+        ) {
+            stwo_metal_write_error(error_message, error_message_len, @"Lifted Blake2s leaf construction expects flattened base columns, one offset and one log-size per column, and a packed eight-word destination per lifted row.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, @"blake2s_build_leaves_lifted_u32", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:flat_columns.buffer offset:0 atIndex:0];
+        [encoder setBuffer:column_offsets.buffer offset:0 atIndex:1];
+        [encoder setBuffer:column_log_sizes.buffer offset:0 atIndex:2];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:3];
+        [encoder setBytes:&n_columns length:sizeof(n_columns) atIndex:4];
+        [encoder setBytes:&lifting_log_size length:sizeof(lifting_log_size) atIndex:5];
+
+        MTLSize grid_size = MTLSizeMake(row_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_generate_wide_fibonacci_trace_u32(
     void *runtime_ptr,
     void *input_a_ptr,

@@ -1219,6 +1219,38 @@ impl U32Buffer {
         }
         Ok(dst)
     }
+
+    pub fn blake2s_build_leaves_lifted(
+        flat_columns: &Self,
+        column_offsets: &Self,
+        column_log_sizes: &Self,
+        lifting_log_size: u32,
+    ) -> Result<Self, MetalError> {
+        let row_count = 1usize << lifting_log_size;
+        assert_eq!(
+            column_offsets.len, column_log_sizes.len,
+            "lifted Blake2s leaves require one offset per column log-size"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(row_count * 8)?;
+        unsafe {
+            ffi::blake2s_build_leaves_lifted_u32(
+                runtime.raw.as_ptr(),
+                flat_columns.raw.as_ptr(),
+                column_offsets.raw.as_ptr(),
+                column_log_sizes.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                column_offsets
+                    .len
+                    .try_into()
+                    .expect("lifted Blake2s leaf column count should fit in u32"),
+                lifting_log_size,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
 }
 
 impl Clone for U32Buffer {
@@ -1679,6 +1711,17 @@ mod ffi {
             dst: *mut c_void,
             lifting_log_size: u32,
             n_accumulations: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_blake2s_build_leaves_lifted_u32(
+            runtime: *mut c_void,
+            flat_columns: *mut c_void,
+            column_offsets: *mut c_void,
+            column_log_sizes: *mut c_void,
+            dst: *mut c_void,
+            n_columns: u32,
+            lifting_log_size: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -2655,6 +2698,34 @@ mod ffi {
             dst,
             lifting_log_size,
             n_accumulations,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn blake2s_build_leaves_lifted_u32(
+        runtime: *mut c_void,
+        flat_columns: *mut c_void,
+        column_offsets: *mut c_void,
+        column_log_sizes: *mut c_void,
+        dst: *mut c_void,
+        n_columns: u32,
+        lifting_log_size: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_blake2s_build_leaves_lifted_u32(
+            runtime,
+            flat_columns,
+            column_offsets,
+            column_log_sizes,
+            dst,
+            n_columns,
+            lifting_log_size,
             error_ptr(&mut error),
             error.len(),
         ) {

@@ -1,8 +1,9 @@
+use std::time::Instant;
+
 use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::time::Instant;
 use tracing::{info, span, Level};
 
 use crate::core::channel::{Channel, MerkleChannel};
@@ -225,63 +226,67 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         let samples_start = Instant::now();
         let samples: TreeVec<Vec<Vec<PointSample>>> = if self.store_polynomials_coefficients {
             let polynomials = self.polynomials();
+            let mut sample_trees = sampled_points
+                .0
+                .iter()
+                .map(|tree_points| {
+                    tree_points
+                        .iter()
+                        .map(|points| {
+                            points
+                                .iter()
+                                .map(|&point| PointSample {
+                                    point,
+                                    value: SecureField::default(),
+                                })
+                                .collect_vec()
+                        })
+                        .collect_vec()
+                })
+                .collect_vec();
 
-            // Flatten requests in tree/column/point order so the grouped batched evaluations can
-            // be scattered back without changing the sampled-values contract.
-            let mut requests: Vec<(&CircleCoefficients<B>, CirclePoint<SecureField>, u32)> =
-                Vec::new();
-            for (tree_polys, tree_points) in polynomials.0.iter().zip(sampled_points.0.iter()) {
-                for (poly, points) in tree_polys.iter().zip(tree_points.iter()) {
+            // Group requests by the folded query point and coefficient size so the backend can
+            // evaluate same-size batches directly without an extra regroup/scatter pass.
+            let mut groups: HashMap<
+                (CirclePoint<SecureField>, u32),
+                Vec<(usize, usize, usize, &CircleCoefficients<B>)>,
+            > = HashMap::new();
+            for (tree_index, (tree_polys, tree_points)) in polynomials
+                .0
+                .iter()
+                .zip(sampled_points.0.iter())
+                .enumerate()
+            {
+                for (column_index, (poly, points)) in
+                    tree_polys.iter().zip(tree_points.iter()).enumerate()
+                {
                     let coeffs = poly.coeffs.as_ref().expect(
                         "coefficients should exist when store_polynomials_coefficients is enabled",
                     );
                     let repeated_double = lifting_log_size - poly.evals.domain.log_size();
-                    for &point in points.iter() {
-                        requests.push((coeffs, point, repeated_double));
+                    let coeffs_log_size = coeffs.log_size();
+                    for (point_index, &point) in points.iter().enumerate() {
+                        groups
+                            .entry((point.repeated_double(repeated_double), coeffs_log_size))
+                            .or_default()
+                            .push((tree_index, column_index, point_index, coeffs));
                     }
                 }
             }
-            debug_phase("requests_built");
-
-            let mut groups: HashMap<(CirclePoint<SecureField>, u32), Vec<usize>> = HashMap::new();
-            for (i, (_, point, repeated_double)) in requests.iter().enumerate() {
-                groups
-                    .entry((point.repeated_double(*repeated_double), *repeated_double))
-                    .or_default()
-                    .push(i);
-            }
             debug_phase("request_groups_built");
 
-            let mut results = vec![SecureField::default(); requests.len()];
             debug_phase("batched_eval_start");
-            for ((folded_point, _), indices) in groups {
-                let coeffs = indices.iter().map(|&i| requests[i].0).collect_vec();
+            for ((folded_point, _), group) in groups {
+                let coeffs = group.iter().map(|(_, _, _, coeffs)| *coeffs).collect_vec();
                 let values = B::batch_eval_at_point(&coeffs, folded_point);
-                for (value, index) in values.into_iter().zip(indices.into_iter()) {
-                    results[index] = value;
+                for ((tree_index, column_index, point_index, _), value) in
+                    group.into_iter().zip(values.into_iter())
+                {
+                    sample_trees[tree_index][column_index][point_index].value = value;
                 }
             }
             debug_phase("batched_eval_done");
 
-            let mut request_index = 0usize;
-            let mut sample_trees = Vec::with_capacity(sampled_points.0.len());
-            for tree_points in sampled_points.0.iter() {
-                let mut tree_samples = Vec::with_capacity(tree_points.len());
-                for points in tree_points.iter() {
-                    let mut column_samples = Vec::with_capacity(points.len());
-                    for &point in points.iter() {
-                        column_samples.push(PointSample {
-                            point,
-                            value: results[request_index],
-                        });
-                        request_index += 1;
-                    }
-                    tree_samples.push(column_samples);
-                }
-                sample_trees.push(tree_samples);
-            }
-            debug_assert_eq!(request_index, requests.len());
-            debug_phase("samples_scattered");
             TreeVec(sample_trees)
         } else {
             // Lambda that evaluates a polynomial on a collection of circle points and returns a
@@ -345,7 +350,10 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             lifting_log_size,
             self.config.fri_config.log_blowup_factor,
         );
-        emit_timing("quotients", quotients_start.elapsed().as_secs_f64() * 1000.0);
+        emit_timing(
+            "quotients",
+            quotients_start.elapsed().as_secs_f64() * 1000.0,
+        );
         debug_phase("quotients_ready");
 
         // Run FRI commitment phase on the oods quotients.

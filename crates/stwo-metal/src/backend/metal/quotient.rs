@@ -1,10 +1,12 @@
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, OnceLock};
+
 use ark_std::Zero;
-use itertools::Itertools;
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
+use stwo::core::circle::CirclePoint;
+use stwo::core::fields::cm31::CM31;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
-use stwo::core::pcs::quotients::{denominator_inverses, quotient_constants, ColumnSampleBatch};
+use stwo::core::pcs::quotients::{quotient_constants, ColumnSampleBatch};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::bit_reverse_index;
 use stwo::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
@@ -16,6 +18,56 @@ use super::accumulation::metal_secure_column_from_values;
 use super::MetalBackend;
 use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
+
+type QuotientDomainCache = Mutex<BTreeMap<u32, Arc<(U32Buffer, U32Buffer)>>>;
+
+fn quotient_domain_cache() -> &'static QuotientDomainCache {
+    static CACHE: OnceLock<QuotientDomainCache> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn pack_cm31(value: CM31) -> [u32; 2] {
+    [value.0 .0, value.1 .0]
+}
+
+fn pack_secure_circle_point(point: CirclePoint<SecureField>) -> [u32; 8] {
+    let [x0, x1] = pack_cm31(point.x.0);
+    let [x2, x3] = pack_cm31(point.x.1);
+    let [y0, y1] = pack_cm31(point.y.0);
+    let [y2, y3] = pack_cm31(point.y.1);
+    [x0, x1, x2, x3, y0, y1, y2, y3]
+}
+
+fn cached_quotient_domain_coords(lifting_log_size: u32) -> Arc<(U32Buffer, U32Buffer)> {
+    if let Some(buffers) = quotient_domain_cache()
+        .lock()
+        .expect("quotient domain cache mutex should not be poisoned")
+        .get(&lifting_log_size)
+        .cloned()
+    {
+        return buffers;
+    }
+
+    let domain = CanonicCoset::new(lifting_log_size).circle_domain();
+    let row_count = 1usize << lifting_log_size;
+    let mut domain_x = Vec::with_capacity(row_count);
+    let mut domain_y = Vec::with_capacity(row_count);
+    for row_index in 0..row_count {
+        let point = domain.at(bit_reverse_index(row_index, lifting_log_size));
+        domain_x.push(point.x.0);
+        domain_y.push(point.y.0);
+    }
+
+    let buffers = Arc::new((
+        U32Buffer::from_slice(&domain_x).expect("Metal quotient-domain x upload should initialize"),
+        U32Buffer::from_slice(&domain_y).expect("Metal quotient-domain y upload should initialize"),
+    ));
+    quotient_domain_cache()
+        .lock()
+        .expect("quotient domain cache mutex should not be poisoned")
+        .insert(lifting_log_size, buffers.clone());
+    buffers
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct MetalWideFibonacciQuotientRequest<'a> {
@@ -267,10 +319,10 @@ impl QuotientOps for MetalBackend {
                 .collect::<Vec<u32>>();
             let column_indices = U32Buffer::from_slice(&column_indices)
                 .expect("Metal quotient index upload should initialize");
-            let b_coeffs =
-                U32Buffer::from_slice(&b_coeffs).expect("Metal quotient b upload should initialize");
-            let c_coeffs =
-                U32Buffer::from_slice(&c_coeffs).expect("Metal quotient c upload should initialize");
+            let b_coeffs = U32Buffer::from_slice(&b_coeffs)
+                .expect("Metal quotient b upload should initialize");
+            let c_coeffs = U32Buffer::from_slice(&c_coeffs)
+                .expect("Metal quotient c upload should initialize");
             let values = SecureFieldVec::from_buffer(
                 U32Buffer::accumulate_partial_numerators(
                     &flat_columns,
@@ -297,71 +349,87 @@ impl QuotientOps for MetalBackend {
         lifting_log_size: u32,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
         let domain = CanonicCoset::new(lifting_log_size).circle_domain();
-        let host_accumulations = accumulations
+        if accumulations.is_empty() {
+            return SecureEvaluation::new(
+                domain,
+                metal_secure_column_from_values(vec![
+                    SecureField::zero();
+                    1usize << lifting_log_size
+                ]),
+            );
+        }
+        let total_partial_len = accumulations
             .iter()
-            .map(|acc| {
-                (
-                    acc.sample_point,
-                    acc.partial_numerators_acc
-                        .columns
-                        .each_ref()
-                        .map(|column| column.host_slice()),
-                    acc.partial_numerators_acc.len(),
-                    acc.first_linear_term_acc,
-                )
-            })
-            .collect_vec();
-        let sample_points = host_accumulations
-            .iter()
-            .map(|(sample_point, ..)| *sample_point)
-            .collect_vec();
+            .map(|acc| acc.partial_numerators_acc.len())
+            .sum::<usize>();
+        let mut partial_coords: [U32Buffer; 4] = std::array::from_fn(|_| {
+            U32Buffer::uninitialized(total_partial_len)
+                .expect("Metal quotient-combine partial staging should allocate")
+        });
+        let mut partial_offsets = Vec::with_capacity(accumulations.len());
+        let mut partial_log_sizes = Vec::with_capacity(accumulations.len());
+        let mut sample_points = Vec::with_capacity(accumulations.len() * 8);
+        let mut first_linear_terms = Vec::with_capacity(accumulations.len() * 4);
+        let mut offset = 0usize;
 
-        #[cfg(not(feature = "parallel"))]
-        let quotient_values = (0..(1usize << lifting_log_size))
-            .map(|row| {
-                let domain_point = domain.at(bit_reverse_index(row, lifting_log_size));
-                let inverses = denominator_inverses(&sample_points, domain_point);
-                let mut quotient = SecureField::zero();
-                for (
-                    (_, partial_numerator_coords, partial_numerator_len, first_linear_term_acc),
-                    den_inv,
-                ) in host_accumulations.iter().zip_eq(inverses)
-                {
-                    let log_ratio = lifting_log_size - partial_numerator_len.ilog2();
-                    let lifted_idx = (row >> (log_ratio + 1) << 1) + (row & 1);
-                    let full_numerator =
-                        SecureField::from_m31_array(std::array::from_fn(|coord| {
-                            partial_numerator_coords[coord][lifted_idx]
-                        })) - *first_linear_term_acc * domain_point.y;
-                    quotient += full_numerator.mul_cm31(den_inv);
-                }
-                quotient
-            })
-            .collect();
-        #[cfg(feature = "parallel")]
-        let quotient_values = (0..(1usize << lifting_log_size))
-            .into_par_iter()
-            .map(|row| {
-                let domain_point = domain.at(bit_reverse_index(row, lifting_log_size));
-                let inverses = denominator_inverses(&sample_points, domain_point);
-                let mut quotient = SecureField::zero();
-                for (
-                    (_, partial_numerator_coords, partial_numerator_len, first_linear_term_acc),
-                    den_inv,
-                ) in host_accumulations.iter().zip_eq(inverses)
-                {
-                    let log_ratio = lifting_log_size - partial_numerator_len.ilog2();
-                    let lifted_idx = (row >> (log_ratio + 1) << 1) + (row & 1);
-                    let full_numerator =
-                        SecureField::from_m31_array(std::array::from_fn(|coord| {
-                            partial_numerator_coords[coord][lifted_idx]
-                        })) - *first_linear_term_acc * domain_point.y;
-                    quotient += full_numerator.mul_cm31(den_inv);
-                }
-                quotient
-            })
-            .collect();
+        for accumulation in &accumulations {
+            let partial_len = accumulation.partial_numerators_acc.len();
+            partial_offsets.push(
+                offset
+                    .try_into()
+                    .expect("partial numerator offset should fit in u32"),
+            );
+            partial_log_sizes.push(accumulation.partial_numerators_acc.len().ilog2());
+            sample_points.extend_from_slice(&pack_secure_circle_point(accumulation.sample_point));
+            first_linear_terms.extend(
+                accumulation
+                    .first_linear_term_acc
+                    .to_m31_array()
+                    .map(|limb| limb.0),
+            );
 
-        SecureEvaluation::new(domain, metal_secure_column_from_values(quotient_values))
+            for (coord_buffer, column) in partial_coords
+                .iter_mut()
+                .zip(accumulation.partial_numerators_acc.columns.each_ref())
+            {
+                coord_buffer
+                    .copy_range_from(&column.buffer, 0, partial_len, offset)
+                    .expect("Metal quotient-combine partial staging should copy");
+            }
+            offset += partial_len;
+        }
+
+        let sample_points = U32Buffer::from_slice(&sample_points)
+            .expect("Metal quotient-combine sample-point upload should initialize");
+        let first_linear_terms = U32Buffer::from_slice(&first_linear_terms)
+            .expect("Metal quotient-combine first-linear-term upload should initialize");
+        let partial_log_sizes = U32Buffer::from_slice(&partial_log_sizes)
+            .expect("Metal quotient-combine partial log-size upload should initialize");
+        let partial_offsets = U32Buffer::from_slice(&partial_offsets)
+            .expect("Metal quotient-combine partial offset upload should initialize");
+        let domain_coords = cached_quotient_domain_coords(lifting_log_size);
+
+        let result = U32Buffer::compute_quotients_and_combine(
+            [
+                &partial_coords[0],
+                &partial_coords[1],
+                &partial_coords[2],
+                &partial_coords[3],
+            ],
+            &sample_points,
+            &first_linear_terms,
+            &partial_log_sizes,
+            &partial_offsets,
+            &domain_coords.0,
+            &domain_coords.1,
+            lifting_log_size,
+        )
+        .expect("Metal quotient-combine kernel should succeed");
+
+        let columns = SecureFieldVec::from_buffer(result).to_base_coords();
+        SecureEvaluation::new(
+            domain,
+            stwo::prover::secure_column::SecureColumnByCoords { columns },
+        )
     }
 }

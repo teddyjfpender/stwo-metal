@@ -20,6 +20,7 @@ const METAL_SOURCES: &[&str] = &[
     "bit_reverse",
     "poly_order",
     "wide_fibonacci",
+    "blake2s",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -125,6 +126,7 @@ fn main() {
     println!("cargo:rerun-if-changed=metal/bit_reverse.metal");
     println!("cargo:rerun-if-changed=metal/poly_order.metal");
     println!("cargo:rerun-if-changed=metal/wide_fibonacci.metal");
+    println!("cargo:rerun-if-changed=metal/blake2s.metal");
     for var in [
         CUDA_MODE_VAR,
         METAL_MODE_VAR,

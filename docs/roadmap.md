@@ -63,8 +63,8 @@ The first explicit benchmark objective is:
 This benchmark target is a planning objective, not a correctness gate, not the
 architecture source of truth, and not the only support claim for `stwo-metal`.
 The row now executes end to end through `MetalBackend` on Apple Silicon, but
-its current measured result is still far from the target:
-`wide_fibonacci_prove_verify_v1 = 1554.695416 ms` at `log_n_instances = 20`,
+its current best measured result is still far from the target:
+`wide_fibonacci_prove_verify_v1 = 1521.303625 ms` at `log_n_instances = 20`,
 `n_columns = 100`, `cargo_profile = release`, `STWO_METAL_MODE=metal-prod`,
 `warmups = 0`, and `samples = 1`, with `threads = 14`.
 
@@ -549,10 +549,10 @@ Current next slice inside T8:
 - treat the lifted Blake2s Merkle and proof-of-work boundaries as direct
   Metal-owned host orchestration with no `CpuBackend` dependency
 - record the current Apple Silicon end-to-end benchmark result for the
-  declared north-star row: `wide_fibonacci_prove_verify_v1 = 45616.501417 ms`,
+  declared north-star row: `wide_fibonacci_prove_verify_v1 = 1521.303625 ms`,
   with the dominant prove costs currently in `prove_core_prove_values_ms`,
-  `trace_commit_merkle_ms`, `prove_core_composition_generation_ms`, and
-  `prove_core_composition_commit_ms`
+  `trace_commit_ms`, `trace_commit_merkle_ms`, and
+  `prove_core_composition_generation_ms`
 - enable the `parallel` proving surface for the standalone Metal benchmark
   fixture and use the resulting measured row as the new optimization baseline
 - with the mirrored hot-path set complete and the benchmark boundary closed,
@@ -573,10 +573,9 @@ Current next slice inside T8:
 
 1. Reduce the dominant prove-stage costs in the end-to-end
    `wide_fibonacci_prove_verify_v1` row, starting from the now-dominant
-   `prove_core_prove_values_ms` path and the missing native point-evaluation
-   lane rather than from more host readback cleanup.
+   `prove_core_prove_values_ms` path above the native point-evaluation lane.
 2. Keep the completed mirrored native hot-path set parity-tested and
    support-honest while it carries benchmark-active work.
 3. Retire the next benchmark-relevant structural debt, starting with the
-   prove-values layer above PCS, the host-owned commitment/hash path, or the
-   bounded small-domain `PolyOps` fallback.
+   remaining prove-values grouping/scattering work, the host-owned
+   commitment/hash path, or the bounded small-domain `PolyOps` fallback.

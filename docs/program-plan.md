@@ -65,11 +65,10 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T8 fifteenth implementation slice: native Metal point
-evaluation is parity-tested, benchmark-active, and now keeps large
-coefficient staging on Metal, so the next work is the remaining PCS
-prove-values duplication, host-owned commitment cost, and bounded PolyOps
-fallback`,
+The active tranche is `T8 seventeenth implementation slice: grouped PCS
+prove-values scheduling, cached Metal coefficient staging, and bounded lifted
+Blake2s leaf hashing are benchmark-active, so the next work is the remaining
+prove-values wall, large-tree commitment cost, and bounded PolyOps fallback`,
 as tracked in
 [`controller.md`](./controller.md) and sequenced by
 [`roadmap.md`](./roadmap.md).
@@ -259,21 +258,30 @@ The first active T8 supporting slices are:
 - the benchmark contract is now explicit: non-plan Metal benchmark runs must
   use `cargo_profile = release` and `STWO_METAL_MODE=metal-prod` unless an
   override is set for diagnostics
-- the current production-grade Apple Silicon end-to-end benchmark result is
-  now recorded: `wide_fibonacci_prove_verify_v1 = 2823.8264590000003 ms`, with
-  `prove_ms = 2823.629792` and `verify_ms = 0.196667`
+- the current best measured production-grade Apple Silicon end-to-end
+  benchmark result is now recorded:
+  `wide_fibonacci_prove_verify_v1 = 1521.303625 ms`, with
+  `prove_ms = 1520.994583` and `verify_ms = 0.309042`
 - the dominant prove-stage costs in that row are now measured explicitly:
-  `prove_core_prove_values_ms = 1832.9360829999998`,
-  `trace_commit_ms = 409.924625`,
-  `prove_core_composition_generation_ms = 379.02112500000004`, and
-  `trace_commit_merkle_ms = 237.249916`
+  `prove_core_prove_values_ms = 893.510667`,
+  `trace_commit_ms = 307.475084`,
+  `prove_core_composition_generation_ms = 138.558583`, and
+  `trace_commit_merkle_ms = 147.948042`
 - the standalone Metal benchmark fixture now enables the `parallel` proving
   surface, and the first measured parallel row reported `threads = 14`
 - compared with the current `log_n_instances = 20` reference rows, the
   support-honest Metal benchmark is still about `2.03x` slower than SIMD
   (`1390 ms`) and far from the historical GPU row (`87 ms`)
 - the direct Metal trace boundary is now benchmark-faithful inside the same
-  row: `trace_generation_ms = 65.444416`
+  row: `trace_generation_ms = 68.080292`
+- grouped PCS sampled-value scheduling now writes batched evaluation results
+  directly into final sample slots instead of flattening and rescattering the
+  same request set
+- the benchmark-active large-domain batch point-evaluation path now reuses
+  flattened Metal coefficient staging across repeated point-query groups
+- the bounded native lifted Blake2s leaf kernel is now available for standard
+  Blake2s trees up to eight columns, leaving only the large trace tree on the
+  host fallback path
 
 The next required T8 boundary is:
 
@@ -281,8 +289,8 @@ The next required T8 boundary is:
   carries benchmark-active work
 - reduce the dominant measured prove stages in the end-to-end
   `wide_fibonacci_prove_verify_v1` row
-- make the next benchmark-facing structural win the PCS prove-values path
-  above the now-native point-evaluation lane, with trace commitment now the
-  next measured cost behind it
+- make the next benchmark-facing structural win the remaining grouped
+  prove-values work above the now-native point-evaluation lane, with
+  large-tree trace commitment now the next measured cost behind it
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

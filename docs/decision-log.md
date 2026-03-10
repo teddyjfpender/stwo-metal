@@ -28,6 +28,72 @@ Superseded by:
 
 ## Entries
 
+### DEC-0065: PCS sampled-value scheduling and large-domain point-evaluation staging must stay grouped and Metal-backed
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The benchmark-active sampled-value path now treats grouped scheduling and
+Metal-backed staging as hard constraints:
+
+- `prove_values` request grouping must write batched evaluation results
+  directly into final `PointSample` slots instead of building a flat request
+  list and then rescattering the same values
+- large-domain `batch_eval_at_point` must reuse flattened Metal coefficient
+  staging across repeated point-query groups instead of reflattening the same
+  coefficient sets on every grouped call
+- the large-tree lifted Blake2s leaf path may still fall back to the host, but
+  bounded standard Blake2s leaf construction now has an explicit Metal kernel
+  and the host fallback must avoid avoidable per-chunk allocation churn
+
+Context:
+
+After direct trace slicing, Metal-backed quotient staging, native FFT/IFFT, and
+the native point-evaluation lane were all in place, the measured
+`wide_fibonacci_prove_verify_v1` row was no longer dominated by obvious buffer
+readback bugs. The profile still showed two first-order walls:
+
+- `prove_core_prove_values_ms`
+- large-tree lifted Blake2s `build_leaves`
+
+The vendored PCS sampled-value path still flattened requests, regrouped them,
+evaluated them, and then scattered the results back into the same sample
+structure. At the same time, repeated grouped point queries were reflattening
+the same Metal-backed coefficient sets. After retiring those duplicate staging
+and scatter steps, the current production-grade row is now
+`wide_fibonacci_prove_verify_v1 = 1521.303625 ms`, with
+`prove_ms = 1520.994583`, `verify_ms = 0.309042`,
+`prove_core_prove_values_ms = 893.510667`,
+`trace_commit_ms = 307.475084`, and
+`trace_commit_merkle_ms = 147.948042`.
+
+Alternatives rejected:
+
+- keep the PCS request flatten/regroup/scatter shape because the backend call
+  was already grouped
+- chase only new kernels while leaving repeated coefficient flattening inside
+  the benchmark-active `PolyOps` path
+- call the bounded Metal Blake2s leaf path “done” before separating the small
+  standard-tree win from the still-host-owned large trace-tree path
+
+Impact:
+
+- the measured end-to-end row is now about `1.09x` slower than the SIMD
+  `log20` reference instead of `1.12x` slower
+- `prove_core_prove_values_ms` dropped materially without changing proof
+  semantics or widening the public API
+- the next honest walls are the remaining grouped prove-values work above PCS
+  and the still-host-owned large-tree lifted commitment path
+
+Superseded by:
+
+- none
+
 ### DEC-0064: Native FFT/IFFT commitment work must stay on Metal buffers end-to-end
 
 - Date: `2026-03-10`

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use ark_std::Zero;
 use itertools::Itertools;
@@ -73,6 +74,60 @@ fn folding_mappings(point: CirclePoint<SecureField>, log_size: u32) -> Vec<Secur
     mappings
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct BatchEvalCacheKey {
+    coeffs_log_len: u32,
+    poly_buffers: Vec<usize>,
+}
+
+type BatchEvalCoeffCache = Mutex<BTreeMap<BatchEvalCacheKey, Arc<U32Buffer>>>;
+
+fn batch_eval_coeff_cache() -> &'static BatchEvalCoeffCache {
+    static CACHE: OnceLock<BatchEvalCoeffCache> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn coeff_buffer_key(poly: &CircleCoefficients<MetalBackend>) -> usize {
+    // Coefficients are immutable throughout the proving hot path, so the shared-buffer address is
+    // a stable cache key for reusing flattened staging across repeated point queries.
+    unsafe { poly.coeffs.buffer.host_ptr() as usize }
+}
+
+fn cached_flat_coeffs_buffer(
+    polys: &[&CircleCoefficients<MetalBackend>],
+    coeffs_len: usize,
+    coeffs_log_len: u32,
+) -> Result<Arc<U32Buffer>, MetalError> {
+    let key = BatchEvalCacheKey {
+        coeffs_log_len,
+        poly_buffers: polys.iter().map(|poly| coeff_buffer_key(poly)).collect(),
+    };
+
+    if let Some(buffer) = batch_eval_coeff_cache()
+        .lock()
+        .expect("Metal batch-eval coefficient cache mutex should not be poisoned")
+        .get(&key)
+        .cloned()
+    {
+        return Ok(buffer);
+    }
+
+    let mut flat_coeffs_buffer = U32Buffer::uninitialized(polys.len() * coeffs_len)?;
+    for (index, poly) in polys.iter().enumerate() {
+        flat_coeffs_buffer.copy_from_offset(&poly.coeffs.buffer, index * coeffs_len)?;
+    }
+    let flat_coeffs_buffer = Arc::new(flat_coeffs_buffer);
+
+    let mut cache = batch_eval_coeff_cache()
+        .lock()
+        .expect("Metal batch-eval coefficient cache mutex should not be poisoned");
+    if cache.len() >= 32 {
+        cache.clear();
+    }
+    cache.insert(key, flat_coeffs_buffer.clone());
+    Ok(flat_coeffs_buffer)
+}
+
 fn batch_eval_same_size_native(
     polys: &[&CircleCoefficients<MetalBackend>],
     point: CirclePoint<SecureField>,
@@ -91,16 +146,20 @@ fn batch_eval_same_size_native(
         .into_iter()
         .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
         .collect_vec();
-    let mut flat_coeffs_buffer = U32Buffer::uninitialized(polys.len() * coeffs_len)
-        .expect("Metal batched point-evaluation buffer allocation should initialize");
-    for (index, poly) in polys.iter().enumerate() {
-        flat_coeffs_buffer
-            .copy_from_offset(&poly.coeffs.buffer, index * coeffs_len)
-            .expect("Metal batched point-evaluation coefficient staging should succeed");
-    }
     let factors_buffer = U32Buffer::from_slice(&factor_limbs)
         .expect("Metal batched point-evaluation factor upload should initialize");
-    let result_buffer = flat_coeffs_buffer
+    let flat_coeffs_buffer = if polys.len() == 1 {
+        None
+    } else {
+        Some(
+            cached_flat_coeffs_buffer(polys, coeffs_len, coeffs_log_len)
+                .expect("Metal batched point-evaluation staging cache should initialize"),
+        )
+    };
+    let coeffs_buffer = flat_coeffs_buffer
+        .as_deref()
+        .unwrap_or(&polys[0].coeffs.buffer);
+    let result_buffer = coeffs_buffer
         .batch_eval_at_point_base_field(&factors_buffer, coeffs_log_len, polys.len())
         .expect("Metal batched point evaluation should succeed");
     Some(
