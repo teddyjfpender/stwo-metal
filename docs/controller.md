@@ -29,7 +29,7 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T8 seventh implementation slice: the mirrored lookup/GKR oracle sum is native, so the next work is benchmark activation and the broader FriOps/PolyOps bridges`
+- Active tranche: `T8 eighth implementation slice: native GKR is closed and PolyOps is narrowed, so the next work is benchmark activation and the remaining FriOps/point-evaluation bridges`
 - Objective:
   return from acceptance closure to native performance work by mirroring the
   active CUDA hot-path structure into `stwo-metal-sys/metal` and porting it in
@@ -80,6 +80,11 @@ Invariants:
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
+- the first Apple Silicon native trace baseline now exists for the benchmark
+  north star: `wide_fibonacci_trace_generation_v1` completed at `66.61 ms`
+  for `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
+  `warmups = 0`, and `samples = 1`; the prove row is still blocked by the
+  remaining non-Metal proving stages tracked in `TD-0012`
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
@@ -94,8 +99,8 @@ Invariants:
 ## Next three deliverables
 
 1. Decide which broader explicit CPU bridge is the next measured bottleneck
-   after native GKR completion:
-   `FriOps`, `PolyOps`, or Blake2s lifted hashing.
+   after native GKR completion and narrowed `PolyOps`:
+   `FriOps`, point-evaluation/barycentric `PolyOps`, or Blake2s lifted hashing.
 2. Turn the mirrored hot-path completion into benchmark-active measurement for
    the wide-fibonacci north star instead of stopping at parity-only support.
 3. Keep the remaining adapter-local and wider proving bridges explicit while

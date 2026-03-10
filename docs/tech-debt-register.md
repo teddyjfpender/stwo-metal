@@ -414,7 +414,11 @@ an explicit `90 ms` RTX 4090 reference goal, and the standalone
 trace-generation path. `wide_fibonacci_prove` now generates its trace and
 accumulates its quotient through native Metal paths, but it still bridges the
 quotient output back into the inherited CUDA proving lane for pre-FRI PCS
-commitment and the rest of the proving flow.
+commitment and the rest of the proving flow. The first Apple Silicon native
+trace baseline is now measured at `66.61 ms` for `log_n_instances = 20`,
+`n_columns = 100`, `STWO_METAL_MODE=metal-dev`, `warmups = 0`, and
+`samples = 1`, but that number is trace-only and does not close the prove
+benchmark boundary.
 
 Current containment:
 

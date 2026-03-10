@@ -510,6 +510,13 @@ Current next slice inside T8:
   `MleOps` CPU bridge retired
 - treat `gkr.metal` as compile-active and parity-tested for eq-eval generation,
   next-layer construction, and bounded oracle-sum evaluation
+- treat `PolyOps::extend` and `split_at_mid` as native Metal-owned operations,
+  leaving point evaluation and barycentric helpers as the remaining explicit
+  `PolyOps` bridge surface
+- record the first Apple Silicon native trace baseline for the benchmark north
+  star: `wide_fibonacci_trace_generation_v1 = 66.61 ms` at
+  `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
+  `warmups = 0`, `samples = 1`
 - treat `prefix_sum.metal` as compile-active and parity-tested support rather
   than leaving any mirrored hot-path file scaffold-only
 - with the mirrored hot-path set complete, move the next T8 decision to

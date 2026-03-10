@@ -229,6 +229,13 @@ The first active T8 supporting slices are:
 - the previous `GkrOps` oracle CPU bridge is retired; the remaining host work
   is bounded polynomial reconstruction from native `eval_at_0` and
   `eval_at_2`
+- `PolyOps::extend` and `split_at_mid` now avoid the vendored CPU backend and
+  stay inside Metal-owned base-field storage, leaving point evaluation and
+  barycentric helpers as the remaining explicit `PolyOps` bridge surface
+- the first Apple Silicon benchmark activation run now exists for the native
+  trace row: `wide_fibonacci_trace_generation_v1` completed in `66.61 ms` at
+  `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
+  `warmups = 0`, and `samples = 1`
 - `prefix_sum.metal` now carries compile-active native inclusive prefix-sum
   support for bit-reversed circle-domain base-field columns
 - `PORTING_STATUS.md` no longer has any scaffold-only mirrored hot-path files

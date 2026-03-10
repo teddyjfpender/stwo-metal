@@ -155,6 +155,20 @@ impl BaseFieldVec {
         new_vec.copy_from(self);
         *self = new_vec;
     }
+
+    pub fn split_at_mid(self) -> (Self, Self) {
+        assert!(
+            self.size.is_power_of_two() && self.size >= 2,
+            "Metal BaseFieldVec split_at_mid requires a power-of-two length of at least two"
+        );
+        let values = self.to_vec();
+        let mid = values.len() / 2;
+        let (left, right) = values.split_at(mid);
+        (
+            Self::from_vec(left.to_vec()),
+            Self::from_vec(right.to_vec()),
+        )
+    }
 }
 
 impl Clone for BaseFieldVec {

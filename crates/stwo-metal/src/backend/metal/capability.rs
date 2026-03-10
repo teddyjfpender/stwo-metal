@@ -176,7 +176,7 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
             "The native Metal wide-fibonacci trace CPU bridge is supported and materializes ordinary CPU circle evaluations for unchanged upstream example prove/verify wiring."
         }
         MetalBackendSurface::PolyOpsCpuBridge => {
-            "The `PolyOps` boundary still contains an explicit CPU bridge for point evaluation, barycentric helpers, and some host-side orchestration, but the core twiddle precompute plus in-place RFFT/IFFT evaluate/interpolate path is now native Metal."
+            "The `PolyOps` boundary still contains an explicit CPU bridge for point evaluation and barycentric helpers, but twiddle precompute, in-place RFFT/IFFT evaluate/interpolate, zero-padding extend, and split-at-mid are now native Metal-owned operations."
         }
         MetalBackendSurface::AccumulationOpsCpuBridge => {
             "The `AccumulationOps` boundary is supported through an explicit CPU bridge over Metal-owned secure-column storage."

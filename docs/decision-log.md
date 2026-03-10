@@ -72,6 +72,97 @@ Superseded by:
 
 - none
 
+### DEC-0051: Benchmark activation records the first Apple Silicon native wide-fibonacci trace baseline before the prove row is closed
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The project records the first benchmark-active Apple Silicon trace result for
+the declared north-star row without overstating prove closure:
+`wide_fibonacci_trace_generation_v1` completed in `66.61 ms` at
+`log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
+`warmups = 0`, and `samples = 1`.
+
+Context:
+
+Once the mirrored hot-path set was complete, benchmark work needed to become
+measured rather than merely planned. The trace benchmark can already execute
+through the native Metal path, while the full prove benchmark still contains
+the explicit non-Metal remainder tracked in `TD-0012`.
+
+Alternatives rejected:
+
+- keep benchmark activation purely theoretical after the mirrored hot-path set
+  was complete
+- treat the trace-only number as if it were already comparable to the full
+  `90 ms` RTX 4090 prove/verify target
+- wait for every remaining proving bridge to retire before collecting any
+  Apple Silicon performance evidence
+
+Impact:
+
+- the project now has a real Apple Silicon benchmark baseline for the native
+  trace row
+- `wide_fibonacci_prove_verify_v1` remains an open benchmark-completion task
+  rather than an implied success
+- future performance work can compare bridge-retirement slices against a
+  recorded native Metal starting point
+
+Superseded by:
+
+- none
+
+### DEC-0050: The next post-GKR bridge-retirement step narrows `PolyOps` before benchmark activation
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`PolyOps::extend` and `PolyOps::split_at_mid` now stay inside Metal-owned
+base-field storage instead of delegating to the vendored CPU backend. The
+remaining explicit `PolyOps` bridge is narrowed to point evaluation and
+barycentric helpers while the project turns the mirrored native set into
+benchmark-active measurement.
+
+Context:
+
+Once `gkr.metal` owned the last native lookup-oracle walk, the next smallest
+truthful `PolyOps` step was to remove the easy structural CPU handoffs before
+opening a wider point-evaluation or FRI replacement tranche. `extend` is only
+zero-padding, and `split_at_mid` is only coefficient partitioning, so both can
+be retired without changing algebraic semantics.
+
+Alternatives rejected:
+
+- leave `extend` and `split_at_mid` on `CpuBackend` while moving directly to
+  benchmark runs
+- widen the slice into barycentric evaluation or full `FriOps::decompose`
+  before the structural `PolyOps` bridge had been narrowed
+- claim `PolyOps` was mostly native without retiring the CPU backend from
+  these deterministic storage transformations
+
+Impact:
+
+- `PolyOps` no longer depends on `CpuBackend` for zero-padding or midpoint
+  coefficient splits
+- the remaining explicit `PolyOps` bridge is now easier to measure honestly
+  against the wide-fibonacci proving path
+- the next benchmark-facing bridge candidates remain `FriOps`,
+  point-evaluation/barycentric `PolyOps`, and Blake2s lifted hashing
+
+Superseded by:
+
+- none
+
 ### DEC-0049: The mirrored `gkr.metal` tranche retires the remaining native GKR oracle CPU bridge before benchmark activation
 
 - Date: `2026-03-10`

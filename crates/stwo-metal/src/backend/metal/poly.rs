@@ -238,8 +238,13 @@ impl PolyOps for MetalBackend {
     }
 
     fn extend(poly: &CircleCoefficients<Self>, log_size: u32) -> CircleCoefficients<Self> {
-        let cpu_poly = to_cpu_circle_poly(poly);
-        into_metal_circle_poly(CpuBackend::extend(&cpu_poly, log_size))
+        assert!(
+            log_size >= poly.log_size(),
+            "Metal extend requires a target log size at least as large as the source"
+        );
+        let mut coeffs = poly.coeffs.clone();
+        coeffs.pad_to_size(1usize << log_size);
+        CircleCoefficients::new(coeffs)
     }
 
     fn evaluate(
@@ -269,9 +274,11 @@ impl PolyOps for MetalBackend {
     fn split_at_mid(
         poly: CircleCoefficients<Self>,
     ) -> (CircleCoefficients<Self>, CircleCoefficients<Self>) {
-        let cpu_poly = CpuCirclePoly::new(poly.coeffs.to_vec());
-        let (left, right) = CpuBackend::split_at_mid(cpu_poly);
-        (into_metal_circle_poly(left), into_metal_circle_poly(right))
+        let (left, right) = poly.coeffs.split_at_mid();
+        (
+            CircleCoefficients::new(left),
+            CircleCoefficients::new(right),
+        )
     }
 }
 
