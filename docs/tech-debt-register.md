@@ -732,13 +732,13 @@ Why it exists now:
 `wide_fibonacci_prove_verify_v1` now executes end to end through
 `MetalBackend` and verifies successfully on Apple Silicon, so the old
 benchmark-boundary debt is retired. The first measured support-honest result is
-still far from the declared north star, though: `213731.915833 ms` total, with
-`prove_ms = 213726.729125` and `verify_ms = 5.186708`, at
+still far from the declared north star, though: `102272.056124 ms` total, with
+`prove_ms = 102266.681958` and `verify_ms = 5.374166`, at
 `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
-`warmups = 0`, and `samples = 1`. The dominant measured costs are
-`prove_core_prove_values_ms = 100717.446`,
-`trace_commit_merkle_ms = 73443.648458`, and
-`prove_core_composition_commit_ms = 20958.021458`.
+`warmups = 0`, `samples = 1`, and `threads = 14`. The dominant measured costs
+are `prove_core_prove_values_ms = 71138.82325`,
+`trace_commit_merkle_ms = 16673.889875`, and
+`prove_core_composition_commit_ms = 4998.368125`.
 
 Current containment:
 
@@ -755,7 +755,9 @@ Risk if left in place:
 The project could confuse benchmark-boundary closure with performance closure,
 or it could optimize the wrong layer without using the measured phase
 breakdown. That would make the `90 ms` reference goal look arbitrary instead of
-turning it into a disciplined optimization program.
+turning it into a disciplined optimization program. The row is also still
+about `73.6x` slower than the current `log_n_instances = 20` SIMD reference
+(`1390 ms`) and far from the historical GPU row (`87 ms`).
 
 Exit condition:
 

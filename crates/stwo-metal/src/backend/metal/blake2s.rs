@@ -1,4 +1,6 @@
 use itertools::Itertools;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use stwo::core::channel::{Blake2sChannelGeneric, Channel};
 use stwo::core::proof_of_work::GrindOps;
 use stwo::core::utils::bit_reverse;
@@ -41,7 +43,12 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
 
             for chunk in &group.into_iter().chunks(16) {
                 let vec = chunk.into_iter().collect_vec();
-                prev_layer.iter_mut().enumerate().for_each(|(i, hasher)| {
+                #[cfg(not(feature = "parallel"))]
+                let iter = prev_layer.iter_mut().enumerate();
+                #[cfg(feature = "parallel")]
+                let iter = prev_layer.par_iter_mut().enumerate();
+
+                iter.for_each(|(i, hasher)| {
                     hasher.update_leaf(&vec.iter().map(|column| column.at(i)).collect_vec());
                 });
             }
@@ -55,12 +62,17 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                 .collect();
         }
 
-        prev_layer.into_iter().map(|x| x.finalize()).collect()
+        #[cfg(not(feature = "parallel"))]
+        let iter = prev_layer.into_iter();
+        #[cfg(feature = "parallel")]
+        let iter = prev_layer.into_par_iter();
+
+        iter.map(|x| x.finalize()).collect()
     }
 
     fn build_next_layer(prev_layer: &Vec<Blake2sHash>) -> Vec<Blake2sHash> {
         let log_size: u32 = prev_layer.len().ilog2() - 1;
-        (0..(1 << log_size))
+        stwo::parallel_iter!(0..(1 << log_size))
             .map(|i| {
                 Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::hash_children((
                     prev_layer[2 * i],

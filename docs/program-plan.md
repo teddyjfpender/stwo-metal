@@ -65,10 +65,10 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T8 tenth implementation slice: the wide-fibonacci
-benchmark boundary is now closed through MetalBackend, so the next work is
-measured optimization of the dominant prove stages and retirement of the next
-explicit CPU bridge`, as tracked in
+The active tranche is `T8 eleventh implementation slice: parallel Blake2s
+commitment support has materially reduced the end-to-end prove row, so the
+next work is the dominant prove-values path and the next explicit PCS bridge`,
+as tracked in
 [`controller.md`](./controller.md) and sequenced by
 [`roadmap.md`](./roadmap.md).
 
@@ -253,12 +253,17 @@ The first active T8 supporting slices are:
 - the standalone `wide_fibonacci_prove` benchmark row now executes end to end
   through `MetalBackend` and verifies successfully
 - the first Apple Silicon end-to-end benchmark result is now recorded:
-  `wide_fibonacci_prove_verify_v1 = 213731.915833 ms`, with
-  `prove_ms = 213726.729125` and `verify_ms = 5.186708`
+  `wide_fibonacci_prove_verify_v1 = 102272.056124 ms`, with
+  `prove_ms = 102266.681958` and `verify_ms = 5.374166`
 - the dominant prove-stage costs in that row are now measured explicitly:
-  `prove_core_prove_values_ms = 100717.446`,
-  `trace_commit_merkle_ms = 73443.648458`, and
-  `prove_core_composition_commit_ms = 20958.021458`
+  `prove_core_prove_values_ms = 71138.82325`,
+  `trace_commit_merkle_ms = 16673.889875`, and
+  `prove_core_composition_commit_ms = 4998.368125`
+- the standalone Metal benchmark fixture now enables the `parallel` proving
+  surface, and the first measured parallel row reported `threads = 14`
+- compared with the current `log_n_instances = 20` reference rows, the
+  support-honest Metal benchmark is still about `73.6x` slower than SIMD
+  (`1390 ms`) and far from the historical GPU row (`87 ms`)
 
 The next required T8 boundary is:
 
@@ -266,8 +271,8 @@ The next required T8 boundary is:
   carries benchmark-active work
 - reduce the dominant measured prove stages in the end-to-end
   `wide_fibonacci_prove_verify_v1` row
-- decide whether the next benchmark-facing structural win is a native lifted
-  commitment/hash pipeline or retirement of the explicit `AccumulationOps` /
-  `QuotientOps` CPU bridges
+- decide whether the next benchmark-facing structural win is retirement of the
+  explicit `AccumulationOps` / `QuotientOps` CPU bridges or deeper PCS
+  prove-values work above them
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

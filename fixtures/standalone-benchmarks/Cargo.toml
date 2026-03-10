@@ -10,7 +10,7 @@ members = []
 [features]
 default = []
 cuda-runtime = ["dep:stwo-metal"]
-metal-runtime = ["dep:stwo-metal"]
+metal-runtime = ["dep:stwo-metal", "stwo-metal/parallel"]
 
 [dependencies]
 itertools = { version = "0.12", default-features = false, features = ["use_alloc"] }

@@ -71,13 +71,16 @@ pub fn epoch_ms() -> u128 {
 }
 
 pub fn runner_metadata() -> RunnerMetadata {
+    let default_threads = std::thread::available_parallelism()
+        .map(|parallelism| parallelism.get())
+        .unwrap_or(1);
     RunnerMetadata {
         runner_class: env_or("STWO_BENCH_RUNNER_CLASS", "unspecified"),
         hostname: env_or("STWO_BENCH_HOSTNAME", "unknown"),
         os: env_or("STWO_BENCH_OS", env::consts::OS),
         arch: env_or("STWO_BENCH_ARCH", env::consts::ARCH),
         cpu: env_or("STWO_BENCH_CPU", "unknown"),
-        threads: env_usize("STWO_BENCH_THREADS", 1),
+        threads: env_usize("STWO_BENCH_THREADS", default_threads),
         gpu_name: env_or("STWO_BENCH_GPU_NAME", "unknown"),
         gpu_driver: env_or("STWO_BENCH_GPU_DRIVER", "unknown"),
         cuda_toolkit: env_or("STWO_BENCH_CUDA_TOOLKIT", "unknown"),

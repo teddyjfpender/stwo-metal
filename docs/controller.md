@@ -29,7 +29,7 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T8 tenth implementation slice: the end-to-end wide-fibonacci benchmark row now runs through MetalBackend, so the next work is measured optimization of the dominant prove stages and retirement of the next explicit CPU bridge`
+- Active tranche: `T8 eleventh implementation slice: parallel Blake2s commitment support has cut the end-to-end prove row substantially, so the next work is the dominant prove-values path and the next explicit PCS bridge`
 - Objective:
   convert the now-truthful Metal benchmark row into benchmark-grade
   performance by reducing the dominant prove-stage bottlenecks without hiding
@@ -90,14 +90,19 @@ Invariants:
   for `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
   `warmups = 0`, and `samples = 1`
 - the end-to-end Apple Silicon benchmark row now also exists:
-  `wide_fibonacci_prove_verify_v1` completed in `213731.915833 ms`, with
-  `prove_ms = 213726.729125` and `verify_ms = 5.186708`, under
+  `wide_fibonacci_prove_verify_v1` completed in `102272.056124 ms`, with
+  `prove_ms = 102266.681958` and `verify_ms = 5.374166`, under
   `STWO_METAL_MODE=metal-dev`, `warmups = 0`, and `samples = 1`
 - the benchmark boundary is now support-honest, but the measured dominant
   costs are still far from the `90 ms` north star:
-  `prove_core_prove_values_ms = 100717.446`,
-  `trace_commit_merkle_ms = 73443.648458`, and
-  `prove_core_composition_commit_ms = 20958.021458`
+  `prove_core_prove_values_ms = 71138.82325`,
+  `trace_commit_merkle_ms = 16673.889875`, and
+  `prove_core_composition_commit_ms = 4998.368125`
+- the benchmark runner now enables the `parallel` proving surface for the
+  Metal benchmark fixture, and the latest measured row used `threads = 14`
+- the end-to-end row is still approximately `73.6x` slower than the current
+  SIMD reference at `log_n_instances = 20` (`1390 ms`) and still far from the
+  historical GPU row (`87 ms`)
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - `AccumulationOps` and `QuotientOps` still use explicit CPU bridges over
@@ -113,12 +118,12 @@ Invariants:
 
 ## Next three deliverables
 
-1. Turn the first end-to-end `wide_fibonacci_prove_verify_v1` measurement into
-   an optimization program by attacking the dominant prove stages in measured
-   order.
-2. Decide whether the next benchmark-facing structural win is a native lifted
-   commitment/hash pipeline or retirement of the explicit `AccumulationOps` /
-   `QuotientOps` CPU bridges.
+1. Turn the new `102272.056124 ms` benchmark row into the next optimization
+   program by attacking `prove_core_prove_values_ms` before the now-smaller
+   Merkle path.
+2. Decide whether the next benchmark-facing structural win is retirement of
+   the explicit `AccumulationOps` / `QuotientOps` CPU bridges or deeper PCS
+   prove-values work above them.
 3. Keep the acceptance-local adapter debt and the bounded small-domain
    `PolyOps` fallback explicit while T8 focuses on benchmark-grade
    performance.

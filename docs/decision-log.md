@@ -28,6 +28,56 @@ Superseded by:
 
 ## Entries
 
+### DEC-0057: The standalone Metal benchmark fixture enables deterministic parallel proving support before deeper PCS optimization
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The standalone Metal benchmark fixture now enables `stwo-metal`'s `parallel`
+feature, and the Metal Blake2s lifted Merkle path now uses deterministic
+parallel iteration for leaf hashing and next-layer hashing when that feature is
+enabled. The first measured result after this change is
+`wide_fibonacci_prove_verify_v1 = 102272.056124 ms`, with
+`prove_ms = 102266.681958` and `verify_ms = 5.374166`, at
+`log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
+`warmups = 0`, `samples = 1`, and `threads = 14`.
+
+Context:
+
+After the benchmark boundary was closed end to end through `MetalBackend`, the
+measured prove row was still dominated by host-owned commitment work, especially
+the Blake2s lifted Merkle stages. The Metal benchmark fixture was also still
+building without the `parallel` proving surface, which meant the host-side
+proof machinery was leaving obvious deterministic parallelism unused.
+
+Alternatives rejected:
+
+- jump directly to larger PCS or quotient refactors before turning on the
+  already-supported parallel proving surface
+- enable parallel benchmarking without making the Metal Blake2s host path
+  actually honor it
+- treat the previous serial benchmark number as the only meaningful baseline
+  after a large host-side proving bottleneck was still plainly exposed
+
+Impact:
+
+- the end-to-end benchmark row improved materially, and
+  `trace_commit_merkle_ms` dropped from the prior serial baseline to a much
+  smaller but still non-trivial cost
+- `prove_core_prove_values_ms` is now the dominant measured blocker
+- the next structural choice should focus on PCS prove-values work and the
+  explicit `AccumulationOps` / `QuotientOps` bridges rather than on the Merkle
+  leaf path first
+
+Superseded by:
+
+- none
+
 ### DEC-0056: The `wide_fibonacci_prove` benchmark boundary is now closed through `MetalBackend`, and the remaining work is performance debt rather than execution debt
 
 - Date: `2026-03-10`
@@ -41,11 +91,13 @@ Decision:
 The standalone `wide_fibonacci_prove` row now executes end to end through
 `MetalBackend` and verifies successfully on Apple Silicon. The old benchmark
 boundary debt is therefore retired. The benchmark target remains open as a
-performance problem, not as an execution-boundary problem:
+performance problem, not as an execution-boundary problem. The first closure
+measurement for that row was:
 `wide_fibonacci_prove_verify_v1 = 213731.915833 ms`, with
 `prove_ms = 213726.729125` and `verify_ms = 5.186708`, at
 `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
-`warmups = 0`, and `samples = 1`.
+`warmups = 0`, and `samples = 1`. The active optimization baseline now lives
+in `DEC-0057`.
 
 Context:
 
