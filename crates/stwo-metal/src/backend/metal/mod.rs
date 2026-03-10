@@ -24,6 +24,7 @@ mod sequence;
 mod subpath;
 mod witness;
 mod workload;
+mod workload_contract;
 
 pub use backend::MetalBackend;
 pub use benchmark::{
@@ -72,8 +73,10 @@ pub use workload::{
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
     MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput,
     MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalWorkloadBoundary,
-    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
-    MetalWorkloadStageAssignment,
+    MetalWorkloadHandoffError,
+};
+pub use workload_contract::{
+    MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
 };
 
 pub use crate::stwo_metal::{

@@ -1,5 +1,8 @@
 use super::artifact::MetalRegisteredBenchmarkOperation;
 use super::planner::{MetalComponentCapability, MetalSupportTier};
+use super::workload_contract::{
+    MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
+};
 
 // Generated from the current bounded Metal workload declarations.
 // schema_version: 1
@@ -13,6 +16,7 @@ pub struct GeneratedMetalPlannerComponent {
     pub declared_capabilities: &'static [MetalComponentCapability],
     pub required_prove_capabilities: &'static [MetalComponentCapability],
     pub supported_benchmark_operations: &'static [MetalRegisteredBenchmarkOperation],
+    pub stage_assignments: &'static [MetalWorkloadStageAssignment],
 }
 
 const FIBONACCI_EXAMPLE_DECLARED_CAPABILITIES: &[MetalComponentCapability] =
@@ -43,6 +47,62 @@ const FIBONACCI_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS: &[MetalRegisteredBenchma
 
 const POSEIDON_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS: &[MetalRegisteredBenchmarkOperation] = &[];
 
+const FIBONACCI_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::WitnessMain,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "The main trace witness path remains CPU-owned for the declared Fibonacci workload boundary.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::WitnessInteraction,
+        ownership: MetalWorkloadOwnership::NotApplicable,
+        detail: "The declared Fibonacci workload boundary has no interaction trace stage.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::QuotientEval,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "Constraint quotient evaluation remains outside the declared Metal workload boundary.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::PcsCommitment,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "PCS commitment ownership remains CPU-side for the declared Fibonacci workload boundary.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::FriBlake2s,
+        ownership: MetalWorkloadOwnership::MetalNative,
+        detail: "The bounded Blake2s FRI sub-path is owned by the native Metal lane for the declared Fibonacci workload boundary.",
+    },
+];
+
+const POSEIDON_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::WitnessMain,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "The main Poseidon witness path remains CPU-owned for the declared workload boundary.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::WitnessInteraction,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "The interaction witness path remains CPU-owned for the declared Poseidon workload boundary.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::QuotientEval,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "Constraint quotient evaluation remains outside the declared Metal workload boundary.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::PcsCommitment,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "PCS commitment ownership remains CPU-side for the declared Poseidon workload boundary.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::FriBlake2s,
+        ownership: MetalWorkloadOwnership::MetalNative,
+        detail: "The bounded Blake2s FRI sub-path is owned by the native Metal lane for the declared Poseidon workload boundary.",
+    },
+];
+
 pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = &[
     GeneratedMetalPlannerComponent {
         component_name: "fibonacci_example",
@@ -51,6 +111,7 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
         declared_capabilities: FIBONACCI_EXAMPLE_DECLARED_CAPABILITIES,
         required_prove_capabilities: FIBONACCI_EXAMPLE_REQUIRED_PROVE_CAPABILITIES,
         supported_benchmark_operations: FIBONACCI_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS,
+        stage_assignments: FIBONACCI_EXAMPLE_STAGE_ASSIGNMENTS,
     },
     GeneratedMetalPlannerComponent {
         component_name: "poseidon_example",
@@ -59,5 +120,6 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
         declared_capabilities: POSEIDON_EXAMPLE_DECLARED_CAPABILITIES,
         required_prove_capabilities: POSEIDON_EXAMPLE_REQUIRED_PROVE_CAPABILITIES,
         supported_benchmark_operations: POSEIDON_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS,
+        stage_assignments: POSEIDON_EXAMPLE_STAGE_ASSIGNMENTS,
     },
 ];

@@ -4,6 +4,7 @@ use super::planner::{
 use super::planner_manifest_v1_generated::{
     GeneratedMetalPlannerComponent, STWO_METAL_PLANNER_COMPONENTS_V1,
 };
+use super::workload_contract::MetalWorkloadStageAssignment;
 
 pub const STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1: u16 = 1;
 
@@ -37,6 +38,7 @@ pub struct MetalComponentArtifact {
     pub declared_capabilities: &'static [MetalComponentCapability],
     pub required_prove_capabilities: &'static [MetalComponentCapability],
     pub supported_benchmark_operations: &'static [MetalRegisteredBenchmarkOperation],
+    pub stage_assignments: &'static [MetalWorkloadStageAssignment],
     pub generated_inventory: MetalGeneratedInventory,
 }
 
@@ -145,6 +147,7 @@ impl MetalArtifactRegistry {
             declared_capabilities: component.declared_capabilities,
             required_prove_capabilities: component.required_prove_capabilities,
             supported_benchmark_operations: component.supported_benchmark_operations,
+            stage_assignments: component.stage_assignments,
             generated_inventory: self.generated_inventory,
         }
     }
@@ -203,5 +206,6 @@ mod tests {
                 MetalRegisteredBenchmarkOperation::ProveVerify,
             ]
         );
+        assert_eq!(artifact.stage_assignments.len(), 5);
     }
 }

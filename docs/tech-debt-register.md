@@ -42,9 +42,10 @@ the required proving artifact fields, fail-closed behavior, and separation
 between generic, generated, and temporary acceptance-only paths. A first
 private registry and execution-plan seam now exists in code, and declared
 benchmark boundaries now read workload family and benchmark-operation metadata
-from that same seam. The contract still only covers a limited planner-manifest
-subset and the prove-planning path; it is not yet the finished shared boundary
-for the broader backend.
+from that same seam. Workload-stage ownership metadata now lives there too. The
+contract still only covers a limited planner-manifest subset and the
+prove-planning path; it is not yet the finished shared boundary for the broader
+backend.
 
 Current containment:
 

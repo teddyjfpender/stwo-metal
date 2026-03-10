@@ -7,39 +7,20 @@ use stwo::prover::fri::FriDecommitResult;
 use stwo::prover::poly::circle::SecureEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 
+use super::artifact::{STWO_METAL_ARTIFACT_REGISTRY_V1, STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1};
 use super::planner::{
     MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError,
 };
 use super::execution_plan::plan_registered_metal_component_prove;
 use super::subpath::MetalFriBlake2sSubpath;
+use super::workload_contract::{
+    MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
+};
 use super::witness::{
     generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
     MetalWideFibonacciTraceRequest,
 };
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum MetalWorkloadStage {
-    WitnessMain,
-    WitnessInteraction,
-    QuotientEval,
-    PcsCommitment,
-    FriBlake2s,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum MetalWorkloadOwnership {
-    MetalNative,
-    CpuOwned,
-    NotApplicable,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct MetalWorkloadStageAssignment {
-    pub stage: MetalWorkloadStage,
-    pub ownership: MetalWorkloadOwnership,
-    pub detail: &'static str,
-}
 
 #[derive(Clone, Debug)]
 pub struct MetalWorkloadBoundary {
@@ -335,75 +316,20 @@ impl MetalHybridFriWorkload {
     }
 }
 
-const FIBONACCI_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
-    MetalWorkloadStageAssignment {
-        stage: MetalWorkloadStage::WitnessMain,
-        ownership: MetalWorkloadOwnership::CpuOwned,
-        detail: "The main trace witness path remains CPU-owned for the declared Fibonacci workload boundary.",
-    },
-    MetalWorkloadStageAssignment {
-        stage: MetalWorkloadStage::WitnessInteraction,
-        ownership: MetalWorkloadOwnership::NotApplicable,
-        detail: "The declared Fibonacci workload boundary has no interaction trace stage.",
-    },
-    MetalWorkloadStageAssignment {
-        stage: MetalWorkloadStage::QuotientEval,
-        ownership: MetalWorkloadOwnership::CpuOwned,
-        detail: "Constraint quotient evaluation remains outside the declared Metal workload boundary.",
-    },
-    MetalWorkloadStageAssignment {
-        stage: MetalWorkloadStage::PcsCommitment,
-        ownership: MetalWorkloadOwnership::CpuOwned,
-        detail: "PCS commitment ownership remains CPU-side for the declared Fibonacci workload boundary.",
-    },
-    MetalWorkloadStageAssignment {
-        stage: MetalWorkloadStage::FriBlake2s,
-        ownership: MetalWorkloadOwnership::MetalNative,
-        detail: "The bounded Blake2s FRI sub-path is owned by the native Metal lane for the declared Fibonacci workload boundary.",
-    },
-];
-
-const POSEIDON_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
-    MetalWorkloadStageAssignment {
-        stage: MetalWorkloadStage::WitnessMain,
-        ownership: MetalWorkloadOwnership::CpuOwned,
-        detail: "The main Poseidon witness path remains CPU-owned for the declared workload boundary.",
-    },
-    MetalWorkloadStageAssignment {
-        stage: MetalWorkloadStage::WitnessInteraction,
-        ownership: MetalWorkloadOwnership::CpuOwned,
-        detail: "The interaction witness path remains CPU-owned for the declared Poseidon workload boundary.",
-    },
-    MetalWorkloadStageAssignment {
-        stage: MetalWorkloadStage::QuotientEval,
-        ownership: MetalWorkloadOwnership::CpuOwned,
-        detail: "Constraint quotient evaluation remains outside the declared Metal workload boundary.",
-    },
-    MetalWorkloadStageAssignment {
-        stage: MetalWorkloadStage::PcsCommitment,
-        ownership: MetalWorkloadOwnership::CpuOwned,
-        detail: "PCS commitment ownership remains CPU-side for the declared Poseidon workload boundary.",
-    },
-    MetalWorkloadStageAssignment {
-        stage: MetalWorkloadStage::FriBlake2s,
-        ownership: MetalWorkloadOwnership::MetalNative,
-        detail: "The bounded Blake2s FRI sub-path is owned by the native Metal lane for the declared Poseidon workload boundary.",
-    },
-];
-
 fn stage_assignments_for_workload(
     workload_name: &'static str,
 ) -> Result<&'static [MetalWorkloadStageAssignment], MetalPlannerError<'static>> {
-    match workload_name {
-        "fibonacci_example" => Ok(FIBONACCI_EXAMPLE_STAGE_ASSIGNMENTS),
-        "poseidon_example" => Ok(POSEIDON_EXAMPLE_STAGE_ASSIGNMENTS),
-        _ => Err(MetalPlannerError::UnknownComponent(
-            super::planner::UnknownMetalComponent {
-                component_name: workload_name,
-                operation: super::planner::MetalOperationKind::Prove,
-            },
-        )),
-    }
+    Ok(
+        STWO_METAL_ARTIFACT_REGISTRY_V1
+            .artifact_by_name(workload_name, STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1)
+            .map_err(|_| {
+                MetalPlannerError::UnknownComponent(super::planner::UnknownMetalComponent {
+                    component_name: workload_name,
+                    operation: super::planner::MetalOperationKind::Prove,
+                })
+            })?
+            .stage_assignments,
+    )
 }
 
 pub fn declare_exemplar_metal_workload_boundary(

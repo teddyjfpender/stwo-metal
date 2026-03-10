@@ -99,6 +99,8 @@ The first G2 slice is now landed:
 - the public planner and workload declarations now route through that seam
 - benchmark declarations now also validate against registry-backed workload
   family and operation metadata
+- workload-stage ownership metadata now lives in shared contract types and the
+  generated registration manifest rather than in a second workload-local table
 
 ## Foundation already available
 

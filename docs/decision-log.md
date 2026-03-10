@@ -28,6 +28,48 @@ Superseded by:
 
 ## Entries
 
+### DEC-0071: Workload-stage ownership metadata must live in shared contract data, not a workload-local table
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Workload-stage ownership is now part of the same registered contract data used
+for component planning:
+
+- stage and ownership types are shared contract types
+- generated registration data carries stage assignments
+- workload boundaries read stage assignments from registered artifacts instead
+  of maintaining a second workload-local table
+
+Context:
+
+After the earlier G2 slices, planner routing and benchmark identity were
+already registry-backed, but workload-stage ownership still lived in a parallel
+manual table inside the workload module. That left one more planning seam
+outside the contract the roadmap had already frozen. Moving stage assignments
+into shared contract data narrows that gap without widening the public API.
+
+Alternatives rejected:
+
+- keep a workload-local stage table beside the registry
+- move workload-stage ownership into runtime code rather than registration data
+- postpone this consolidation until after generated fast-path implementation
+
+Impact:
+
+- workload declarations now consume one less ad hoc planning table
+- the next honest G2 gap is richer inventory and broader operation coverage,
+  not workload identity or ownership duplication
+
+Superseded by:
+
+- none
+
 ### DEC-0070: Benchmark declaration metadata must be read from the same registered artifact seam as prove planning
 
 - Date: `2026-03-10`

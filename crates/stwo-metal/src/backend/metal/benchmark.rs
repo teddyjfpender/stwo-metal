@@ -10,9 +10,9 @@ use super::witness::{
     MetalWideFibonacciTraceRequest,
 };
 use super::workload::{
-    declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary, MetalWorkloadOwnership,
-    MetalWorkloadStage,
+    declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary,
 };
+use super::workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalBenchmarkOperation {

@@ -47,8 +47,8 @@ Invariants:
 ## Current blockers
 
 - there is not yet a stable internal artifact-registry boundary for
-  Stwo/codegen-produced proving artifacts beyond the current prove and
-  benchmark-declaration subset
+  Stwo/codegen-produced proving artifacts beyond the current prove, benchmark,
+  and workload-stage subset
 - there is not yet a stable execution-plan boundary for operations beyond the
   current prove-planning path
 - generic and generated lanes are now encoded as a private planning seam, but
