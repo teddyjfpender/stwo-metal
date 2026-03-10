@@ -126,24 +126,6 @@ impl MetalArtifactRegistry {
         Ok(())
     }
 
-    pub fn artifact_for_prove<'a>(
-        &self,
-        component_name: &'a str,
-        expected_schema_version: u16,
-    ) -> Result<MetalComponentArtifact, MetalArtifactLookupError<'a>> {
-        self.artifact_supporting_generated_route(
-            component_name,
-            expected_schema_version,
-            MetalGeneratedRouteKind::RegisteredProve,
-        )
-        .map_err(|error| match error {
-            MetalArtifactSupportError::Lookup(error) => error,
-            MetalArtifactSupportError::UnsupportedGeneratedRoute { component_name, route: _ } => {
-                MetalArtifactLookupError::UnknownComponent { component_name }
-            }
-        })
-    }
-
     pub fn artifact_by_name<'a>(
         &self,
         component_name: &'a str,
@@ -227,22 +209,30 @@ mod tests {
     #[test]
     fn artifact_registry_reports_schema_mismatch_explicitly() {
         let error = STWO_METAL_ARTIFACT_REGISTRY_V1
-            .artifact_for_prove("fibonacci_example", STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1 + 1)
+            .artifact_supporting_generated_route(
+                "fibonacci_example",
+                STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1 + 1,
+                MetalGeneratedRouteKind::RegisteredProve,
+            )
             .unwrap_err();
 
         assert_eq!(
             error,
-            MetalArtifactLookupError::SchemaMismatch {
+            MetalArtifactSupportError::Lookup(MetalArtifactLookupError::SchemaMismatch {
                 expected: STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1 + 1,
                 found: STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
-            }
+            })
         );
     }
 
     #[test]
     fn artifact_registry_materializes_component_artifact_for_known_component() {
         let artifact = STWO_METAL_ARTIFACT_REGISTRY_V1
-            .artifact_for_prove("fibonacci_example", STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1)
+            .artifact_supporting_generated_route(
+                "fibonacci_example",
+                STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
+                MetalGeneratedRouteKind::RegisteredProve,
+            )
             .unwrap();
 
         assert_eq!(artifact.component_name, "fibonacci_example");

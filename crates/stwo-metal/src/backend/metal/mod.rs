@@ -9,6 +9,7 @@ mod column;
 mod commitment_slice;
 mod first_layer;
 mod fri;
+mod generated_policy;
 mod handoff;
 mod line;
 mod lookups;

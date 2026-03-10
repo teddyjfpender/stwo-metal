@@ -108,6 +108,8 @@ The first G2 slice is now landed:
 - workload and benchmark declarations now consume generated-route compatibility
   through the shared execution-plan seam rather than reaching into the registry
   directly
+- one explicit unsupported-generated-component policy path now exists in code
+  and is tested privately beneath the execution-plan layer
 
 ## Foundation already available
 

@@ -28,6 +28,48 @@ Superseded by:
 
 ## Entries
 
+### DEC-0075: Unsupported generated support must have one explicit policy path in code before broader backend adoption
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The design-note rule that unsupported generated support must fail closed is now
+backed by one explicit private policy module in code. That policy:
+
+- resolves a requested generated route against the registered artifact seam
+- distinguishes missing artifact, schema mismatch, and unsupported route
+- returns a deterministic reject/use decision before planner error mapping
+
+Context:
+
+Earlier G2 slices had already added schema checks, per-component inventory,
+route compatibility, and execution-plan adoption for planner, workload, and
+benchmark declarations. The remaining problem was that the unsupported-
+generated-component rule still lived mostly in docs and error mapping. A small
+private policy layer makes that rule concrete without widening the public API
+before the broader backend seam is stable.
+
+Alternatives rejected:
+
+- leave unsupported generated support as a design-note-only rule
+- encode policy independently in each caller through repeated matches
+- widen the public planner API immediately to expose policy internals
+
+Impact:
+
+- unsupported generated support now has one canonical decision point in code
+- the next honest G2 gap is broader backend adoption of the shared seam, not
+  the existence of the fail-closed rule itself
+
+Superseded by:
+
+- none
+
 ### DEC-0074: Benchmark and workload declarations must consume generated-route support through the execution-plan seam
 
 - Date: `2026-03-10`

@@ -62,9 +62,10 @@ Risk if left in place:
 
 The project could now overstate the progress of the contract implementation:
 the seam exists, carries richer metadata, and is now consumed by planner,
-workload, and benchmark declarations, but if broader backend routing and one
-explicit unsupported-generated-component policy path do not move onto that same
-boundary, the implementation could still drift back into mixed planning paths.
+workload, and benchmark declarations, and one explicit unsupported-generated-
+component policy path now exists in code, but if broader backend routing does
+not move onto that same boundary, the implementation could still drift back
+into mixed planning paths.
 
 Exit condition:
 

@@ -76,8 +76,9 @@ Invariants:
 
 1. Widen the shared execution-plan seam beyond planner, workload, and benchmark
    declarations so more backend routing consumes the same fail-closed contract.
-2. Freeze one explicit unsupported-generated-component policy path in code,
-   rather than only in the design note and debt register.
+2. Start pulling the next backend-facing registration and routing sites onto the
+   same seam so unsupported generated support is handled consistently in one
+   place.
 3. Keep acceptance-local adapters, bounded CPU fallbacks, and unsupported
    generated-component behavior explicit until the new shared boundaries fully
    replace the old ad hoc paths.

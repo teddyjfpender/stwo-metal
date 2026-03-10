@@ -1,7 +1,10 @@
 use super::artifact::{
-    MetalArtifactLookupError, MetalArtifactRegistry, MetalArtifactSupportError,
-    MetalComponentArtifact, MetalGeneratedRouteKind, STWO_METAL_ARTIFACT_REGISTRY_V1,
-    STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
+    MetalComponentArtifact, MetalGeneratedRouteKind, MetalArtifactRegistry,
+    STWO_METAL_ARTIFACT_REGISTRY_V1, STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
+};
+use super::generated_policy::{
+    resolve_generated_route_policy, MetalGeneratedRoutePolicy,
+    UnsupportedGeneratedComponentReason,
 };
 use super::planner::{
     plan_metal_operation, MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind,
@@ -65,29 +68,31 @@ pub(crate) fn registered_generated_artifact_in_registry<'a>(
     component_name: &'a str,
     route: MetalGeneratedRouteKind,
 ) -> Result<MetalComponentArtifact, MetalPlannerError<'a>> {
-    registry
-        .artifact_supporting_generated_route(component_name, expected_schema_version, route)
-        .map_err(|error| match error {
-            MetalArtifactSupportError::Lookup(MetalArtifactLookupError::SchemaMismatch {
-                expected: _,
-                found: _,
-            }) => MetalPlannerError::UnknownComponent(UnknownMetalComponent {
-                component_name,
-                operation: MetalOperationKind::Prove,
-            }),
-            MetalArtifactSupportError::Lookup(MetalArtifactLookupError::UnknownComponent {
-                component_name,
-            }) => MetalPlannerError::UnknownComponent(UnknownMetalComponent {
-                component_name,
-                operation: MetalOperationKind::Prove,
-            }),
-            MetalArtifactSupportError::UnsupportedGeneratedRoute { component_name, route } => {
-                MetalPlannerError::UnsupportedGeneratedRoute(UnsupportedGeneratedMetalRoute {
+    match resolve_generated_route_policy(
+        registry,
+        expected_schema_version,
+        component_name,
+        route,
+    ) {
+        MetalGeneratedRoutePolicy::UseRegisteredArtifact(artifact) => Ok(artifact),
+        MetalGeneratedRoutePolicy::Reject(problem) => match problem.reason {
+            UnsupportedGeneratedComponentReason::ArtifactNotRegistered
+            | UnsupportedGeneratedComponentReason::SchemaMismatch { .. } => {
+                Err(MetalPlannerError::UnknownComponent(UnknownMetalComponent {
                     component_name,
-                    route,
-                })
+                    operation: MetalOperationKind::Prove,
+                }))
             }
-        })
+            UnsupportedGeneratedComponentReason::UnsupportedRoute(route) => {
+                Err(MetalPlannerError::UnsupportedGeneratedRoute(
+                    UnsupportedGeneratedMetalRoute {
+                        component_name,
+                        route,
+                    },
+                ))
+            }
+        },
+    }
 }
 
 pub(crate) fn plan_registered_metal_operation<'a>(
@@ -100,23 +105,13 @@ pub(crate) fn plan_registered_metal_operation<'a>(
     let inputs = component_names
         .iter()
         .map(|component_name| {
-            registry
-                .artifact_for_prove(component_name, expected_schema_version)
+            registered_generated_artifact_in_registry(
+                registry,
+                expected_schema_version,
+                component_name,
+                MetalGeneratedRouteKind::RegisteredProve,
+            )
                 .map(|artifact| artifact.as_plan_input(operation))
-                .map_err(|error| match error {
-                    MetalArtifactLookupError::SchemaMismatch { expected: _, found: _ } => {
-                        MetalPlannerError::UnknownComponent(UnknownMetalComponent {
-                            component_name,
-                            operation,
-                        })
-                    }
-                    MetalArtifactLookupError::UnknownComponent { component_name } => {
-                        MetalPlannerError::UnknownComponent(UnknownMetalComponent {
-                            component_name,
-                            operation,
-                        })
-                    }
-                })
         })
         .collect::<Result<Vec<_>, _>>()?;
 
