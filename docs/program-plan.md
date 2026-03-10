@@ -47,8 +47,8 @@ than the architectural source of truth.
 | T4 | Land first Metal-backed primitive path | `completed` | at least one bounded Metal execution path exists with deterministic validation |
 | T5 | Prove one bounded Stwo trace path through Metal | `completed` | one declared trace or proving sub-path runs correctly on the Metal path |
 | T5a | Rebaseline around generic backend completion and unchanged upstream examples | `completed` | planning documents and done criteria are corrected to the backend-first goal |
-| T6 | Restore one truthful end-to-end supported workload | `planned` | one declared workload runs end to end on the Metal path with matching semantics |
-| T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `in_progress` | the accepted upstream example set proves and verifies through `MetalBackend` |
+| T6 | Restore one truthful end-to-end supported workload | `completed` | one declared workload runs end to end on the Metal path with matching semantics |
+| T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `completed` | the accepted upstream example set proves and verifies through `MetalBackend` |
 | T8 | Mirror and port the native CUDA hot path into Metal for benchmark-grade performance work | `in_progress` | the selected native hot-path files exist under `metal/`, are status-tracked, and are being ported in the declared order |
 
 ## Immediate sequencing rules
@@ -65,9 +65,10 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T8 sixth implementation slice: convert mirrored
-hot-path completion into benchmark-active measurement and the next remaining
-CPU-bridge retirement`, as tracked in
+The active tranche is `T8 tenth implementation slice: the wide-fibonacci
+benchmark boundary is now closed through MetalBackend, so the next work is
+measured optimization of the dominant prove stages and retirement of the next
+explicit CPU bridge`, as tracked in
 [`controller.md`](./controller.md) and sequenced by
 [`roadmap.md`](./roadmap.md).
 
@@ -230,12 +231,15 @@ The first active T8 supporting slices are:
   is bounded polynomial reconstruction from native `eval_at_0` and
   `eval_at_2`
 - `PolyOps::extend` and `split_at_mid` now avoid the vendored CPU backend and
-  stay inside Metal-owned base-field storage, leaving point evaluation and
-  barycentric helpers as the remaining explicit `PolyOps` bridge surface
+  stay inside Metal-owned base-field storage
+- `PolyOps` point evaluation and barycentric helpers now avoid the vendored
+  CPU backend too, leaving only the bounded small-domain
+  evaluate/interpolate fallback as the remaining explicit `PolyOps` CPU path
 - `FriOps::decompose` now avoids the vendored CPU backend and stays inside
-  Metal-owned secure-column storage, leaving secure-column repacking plus the
-  host-side fold accumulation boundary as the remaining explicit `FriOps`
-  bridge surface
+  Metal-owned secure-column storage
+- the wider `FriOps` secure-column repacking plus host-side fold accumulation
+  path now also avoids the vendored CPU backend, so the legacy explicit
+  `FriOps` bridge is retired
 - the first Apple Silicon benchmark activation run now exists for the native
   trace row: `wide_fibonacci_trace_generation_v1` completed in `66.61 ms` at
   `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
@@ -243,14 +247,27 @@ The first active T8 supporting slices are:
 - `prefix_sum.metal` now carries compile-active native inclusive prefix-sum
   support for bit-reversed circle-domain base-field columns
 - `PORTING_STATUS.md` no longer has any scaffold-only mirrored hot-path files
+- the lifted Blake2s Merkle and proof-of-work boundaries now avoid the
+  vendored CPU backend and run as direct host-side Blake2s work over
+  Metal-owned proving surfaces
+- the standalone `wide_fibonacci_prove` benchmark row now executes end to end
+  through `MetalBackend` and verifies successfully
+- the first Apple Silicon end-to-end benchmark result is now recorded:
+  `wide_fibonacci_prove_verify_v1 = 213731.915833 ms`, with
+  `prove_ms = 213726.729125` and `verify_ms = 5.186708`
+- the dominant prove-stage costs in that row are now measured explicitly:
+  `prove_core_prove_values_ms = 100717.446`,
+  `trace_commit_merkle_ms = 73443.648458`, and
+  `prove_core_composition_commit_ms = 20958.021458`
 
 The next required T8 boundary is:
 
 - keep the completed mirrored hot-path set explicit and parity-tested while it
-  begins carrying benchmark-active work
-- decide which broader explicit CPU bridge is the next benchmark-facing
-  bottleneck after mirror completion
-- keep the remaining `FriOps`, `PolyOps`, and Blake2s proving bridges explicit
-  while the benchmark-facing replacement slice is chosen
+  carries benchmark-active work
+- reduce the dominant measured prove stages in the end-to-end
+  `wide_fibonacci_prove_verify_v1` row
+- decide whether the next benchmark-facing structural win is a native lifted
+  commitment/hash pipeline or retirement of the explicit `AccumulationOps` /
+  `QuotientOps` CPU bridges
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

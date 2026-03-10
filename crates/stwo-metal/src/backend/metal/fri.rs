@@ -84,9 +84,12 @@ pub fn fold_line(
 }
 
 fn pack_secure_column(values: &SecureColumnByCoords<MetalBackend>) -> SecureFieldVec {
-    // `MetalBackend` still stores secure columns by coordinates, so FriOps currently repacks
-    // through CPU-visible values before entering the bounded packed Metal fold kernels.
-    SecureFieldVec::from_vec(values.to_cpu().to_vec())
+    let len = values.len();
+    let mut packed = SecureFieldVec::new_uninitialized(len);
+    for index in 0..len {
+        packed.set_data(index, values.at(index));
+    }
+    packed
 }
 
 fn metal_secure_column_from_values(values: Vec<SecureField>) -> SecureColumnByCoords<MetalBackend> {
@@ -101,11 +104,23 @@ fn metal_secure_column_from_values(values: Vec<SecureField>) -> SecureColumnByCo
     }
 }
 
+fn metal_secure_column_from_packed(values: &SecureFieldVec) -> SecureColumnByCoords<MetalBackend> {
+    let len = values.len();
+    let mut columns = array::from_fn(|_| BaseFieldVec::new_uninitialized(len));
+    for index in 0..len {
+        let value = values.get_data(index);
+        for (column, coord) in columns.iter_mut().zip(value.to_m31_array()) {
+            column.set_data(index, coord);
+        }
+    }
+    SecureColumnByCoords { columns }
+}
+
 fn metal_line_evaluation_from_packed(
     domain: LineDomain,
     values: SecureFieldVec,
 ) -> LineEvaluation<MetalBackend> {
-    LineEvaluation::new(domain, metal_secure_column_from_values(values.to_vec()))
+    LineEvaluation::new(domain, metal_secure_column_from_packed(&values))
 }
 
 impl FriOps for MetalBackend {
@@ -129,16 +144,15 @@ impl FriOps for MetalBackend {
         let alpha_sq = alpha * alpha;
         let folded =
             fold_circle_into_line_first_layer(&pack_secure_column(&src.values), src.domain, alpha);
-        let combined = dst
-            .values
-            .to_cpu()
-            .to_vec()
-            .into_iter()
-            .zip(folded.to_vec())
-            .map(|(previous, folded_value)| previous * alpha_sq + folded_value)
-            .collect();
+        let mut combined = SecureFieldVec::new_uninitialized(dst.values.len());
+        for index in 0..dst.values.len() {
+            combined.set_data(
+                index,
+                dst.values.at(index) * alpha_sq + folded.get_data(index),
+            );
+        }
 
-        *dst = LineEvaluation::new(dst.domain(), metal_secure_column_from_values(combined));
+        *dst = LineEvaluation::new(dst.domain(), metal_secure_column_from_packed(&combined));
     }
 
     fn decompose(

@@ -401,12 +401,12 @@ Target retirement point:
 
 ### TD-0012: The wide-fibonacci prove benchmark still bridges native Metal quotient output into the inherited CUDA-era proving lane
 
-- Status: `active`
+- Status: `retired`
 - Category: `benchmark execution boundary`
 - Introduced: `2026-03-09`
 - Owner area: `T5 benchmark-target alignment`
 
-Why it exists now:
+Why it existed:
 
 `stwo-metal` now declares the log-size-20 wide-fibonacci benchmark target with
 an explicit `90 ms` RTX 4090 reference goal, and the standalone
@@ -440,6 +440,10 @@ named rather than implicitly inherited from CUDA.
 Target retirement point:
 
 - `T6`
+
+Retired by:
+
+- `DEC-0056`
 
 ### TD-0013: The target upstream example acceptance set is not yet vendored in the local snapshot
 
@@ -711,6 +715,55 @@ The current acceptance-local adapters are either retired into a shared
 non-public boundary with explicit laws and ownership, replaced by an
 upstream-facing proving path, or removed in favor of native Metal proving
 surfaces that no longer require them.
+
+Target retirement point:
+
+- `T8`
+
+### TD-0021: The end-to-end wide-fibonacci benchmark row is support-honest but still far from the declared `90 ms` target
+
+- Status: `active`
+- Category: `benchmark performance gap`
+- Introduced: `2026-03-10`
+- Owner area: `T8 benchmark optimization`
+
+Why it exists now:
+
+`wide_fibonacci_prove_verify_v1` now executes end to end through
+`MetalBackend` and verifies successfully on Apple Silicon, so the old
+benchmark-boundary debt is retired. The first measured support-honest result is
+still far from the declared north star, though: `213731.915833 ms` total, with
+`prove_ms = 213726.729125` and `verify_ms = 5.186708`, at
+`log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
+`warmups = 0`, and `samples = 1`. The dominant measured costs are
+`prove_core_prove_values_ms = 100717.446`,
+`trace_commit_merkle_ms = 73443.648458`, and
+`prove_core_composition_commit_ms = 20958.021458`.
+
+Current containment:
+
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
+- `crates/stwo-metal/src/backend/metal/blake2s.rs`
+- `crates/stwo-metal/src/backend/metal/accumulation.rs`
+- `crates/stwo-metal/src/backend/metal/quotient.rs`
+- `crates/stwo-metal/src/backend/metal/handoff.rs`
+- `docs/controller.md`
+- `docs/roadmap.md`
+
+Risk if left in place:
+
+The project could confuse benchmark-boundary closure with performance closure,
+or it could optimize the wrong layer without using the measured phase
+breakdown. That would make the `90 ms` reference goal look arbitrary instead of
+turning it into a disciplined optimization program.
+
+Exit condition:
+
+The end-to-end `wide_fibonacci_prove_verify_v1` row has repeatable benchmark
+measurements in the declared environment and no longer spends the majority of
+its time in the currently dominant host-owned commitment and prove-value
+stages, with progress evaluated against the recorded phase breakdown rather
+than against file-presence heuristics.
 
 Target retirement point:
 

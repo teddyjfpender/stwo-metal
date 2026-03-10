@@ -29,27 +29,25 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T8 ninth implementation slice: native GKR is closed, PolyOps is narrowed, and Fri decompose is native, so the next work is benchmark activation and the remaining secure-column repacking/point-evaluation bridges`
+- Active tranche: `T8 tenth implementation slice: the end-to-end wide-fibonacci benchmark row now runs through MetalBackend, so the next work is measured optimization of the dominant prove stages and retirement of the next explicit CPU bridge`
 - Objective:
-  return from acceptance closure to native performance work by mirroring the
-  active CUDA hot-path structure into `stwo-metal-sys/metal` and porting it in
-  the declared order
+  convert the now-truthful Metal benchmark row into benchmark-grade
+  performance by reducing the dominant prove-stage bottlenecks without hiding
+  any remaining host-owned or CPU-bridge boundaries
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - Current owner area:
-  `backend-completion planning and example-backed acceptance`
+  `native performance work and bridge retirement`
 
 ## Current blockers
 
 - the project goal had drifted toward benchmark-specific proving rows instead
   of a generic Stwo proving backend
 - `MetalBackend` now implements the full Stwo `Backend` trait
-- `MetalBackend` now implements the Blake2s `BackendForChannel` surface through
-  explicit CPU-bridge Merkle and proof-of-work boundaries
+- `MetalBackend` now implements the Blake2s `BackendForChannel` surface
+  without a `CpuBackend` dependency, but the lifted commitment path is still
+  host-owned and readback-based rather than a GPU-side hash pipeline
 - internal Rust vocabulary is still CUDA-first in many places
-- the bounded FRI commitment slice now exists, but its last-layer
-  interpolation still crosses an explicit CPU bridge rather than a native
-  `stwo-metal` interpolation boundary
 - unchanged upstream `wide_fibonacci`, `state_machine`, `blake`, and `xor`
   example rows now prove and verify through `MetalBackend` in the acceptance
   harness
@@ -77,16 +75,33 @@ Invariants:
   kernel over bit-reversed circle-domain base-field columns
 - the mirrored `metal/` hot-path set recorded in `PORTING_STATUS.md` is now
   structurally complete
+- the wider `FriOps` secure-column repacking and fold-accumulation path is now
+  Metal-owned, so the legacy explicit `FriOps` CPU bridge is retired
+- `PolyOps` point evaluation and barycentric helpers are now Metal-owned; the
+  only remaining `PolyOps` CPU fallback is the bounded small-domain
+  evaluate/interpolate path
+- the lifted Blake2s Merkle and proof-of-work boundaries are now direct
+  Metal-owned host orchestration with no `CpuBackend` dependency
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
 - the first Apple Silicon native trace baseline now exists for the benchmark
   north star: `wide_fibonacci_trace_generation_v1` completed at `66.61 ms`
   for `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
-  `warmups = 0`, and `samples = 1`; the prove row is still blocked by the
-  remaining non-Metal proving stages tracked in `TD-0012`
+  `warmups = 0`, and `samples = 1`
+- the end-to-end Apple Silicon benchmark row now also exists:
+  `wide_fibonacci_prove_verify_v1` completed in `213731.915833 ms`, with
+  `prove_ms = 213726.729125` and `verify_ms = 5.186708`, under
+  `STWO_METAL_MODE=metal-dev`, `warmups = 0`, and `samples = 1`
+- the benchmark boundary is now support-honest, but the measured dominant
+  costs are still far from the `90 ms` north star:
+  `prove_core_prove_values_ms = 100717.446`,
+  `trace_commit_merkle_ms = 73443.648458`, and
+  `prove_core_composition_commit_ms = 20958.021458`
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
+- `AccumulationOps` and `QuotientOps` still use explicit CPU bridges over
+  Metal-owned storage
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it is not the immediate next backend row
 - the only named upstream-example row still open in the current target set is
@@ -98,14 +113,15 @@ Invariants:
 
 ## Next three deliverables
 
-1. Decide which broader explicit CPU bridge is the next measured bottleneck
-   after native GKR completion, narrowed `PolyOps`, and native `FriOps::decompose`:
-   secure-column repacking inside `FriOps`, point-evaluation/barycentric
-   `PolyOps`, or Blake2s lifted hashing.
-2. Turn the mirrored hot-path completion into benchmark-active measurement for
-   the wide-fibonacci north star instead of stopping at parity-only support.
-3. Keep the remaining adapter-local and wider proving bridges explicit while
-   the next benchmark-facing replacement slice is chosen.
+1. Turn the first end-to-end `wide_fibonacci_prove_verify_v1` measurement into
+   an optimization program by attacking the dominant prove stages in measured
+   order.
+2. Decide whether the next benchmark-facing structural win is a native lifted
+   commitment/hash pipeline or retirement of the explicit `AccumulationOps` /
+   `QuotientOps` CPU bridges.
+3. Keep the acceptance-local adapter debt and the bounded small-domain
+   `PolyOps` fallback explicit while T8 focuses on benchmark-grade
+   performance.
 
 ## Explicitly not doing now
 

@@ -1,12 +1,21 @@
-use stwo::core::circle::{CirclePoint, Coset};
+use ark_std::Zero;
+use itertools::Itertools;
+use stwo::core::circle::{CirclePoint, CirclePointIndex, Coset};
+use stwo::core::constraints::{coset_vanishing, coset_vanishing_derivative, point_vanishing};
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::poly::circle::{CanonicCoset, CircleDomain};
+use stwo::core::poly::line::LineDomain;
+use stwo::core::poly::utils::{fold, get_folding_alphas};
+use stwo::core::utils::bit_reverse_index;
 use stwo::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
-use stwo::prover::backend::{Col, CpuBackend};
+use stwo::prover::backend::{Col, Column, CpuBackend};
+use stwo::prover::fri::FriOps;
+use stwo::prover::line::LineEvaluation;
 use stwo::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use stwo::prover::poly::twiddles::TwiddleTree;
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::secure_column::SecureColumnByCoords;
 use stwo_metal_sys::metal::{MetalError, U32Buffer};
 
 use super::MetalBackend;
@@ -207,24 +216,63 @@ impl PolyOps for MetalBackend {
         poly: &CircleCoefficients<Self>,
         point: CirclePoint<SecureField>,
     ) -> SecureField {
-        let cpu_poly = to_cpu_circle_poly(poly);
-        CpuBackend::eval_at_point(&cpu_poly, point)
+        if poly.log_size() == 0 {
+            return poly.coeffs.at(0).into();
+        }
+
+        let mut mappings = vec![point.y];
+        let mut x = point.x;
+        for _ in 1..poly.log_size() {
+            mappings.push(x);
+            x = CirclePoint::double_x(x);
+        }
+        mappings.reverse();
+
+        fold(&poly.coeffs.to_vec(), &mappings)
     }
 
     fn barycentric_weights(
         coset: CanonicCoset,
         p: CirclePoint<SecureField>,
     ) -> Col<Self, SecureField> {
-        SecureFieldVec::from_vec(CpuBackend::barycentric_weights(coset, p))
+        let domain = coset.circle_domain();
+
+        let (si_i, vi_p): (Vec<_>, Vec<_>) = (0..domain.size())
+            .map(|i| {
+                let coset_point = domain
+                    .at(bit_reverse_index(i, domain.log_size()))
+                    .into_ef::<SecureField>();
+                let minus_two_coset_point_y = coset_point.y * SecureField::from(-2);
+                (
+                    minus_two_coset_point_y
+                        * coset_vanishing_derivative(
+                            Coset::new(CirclePointIndex::generator(), domain.log_size()),
+                            coset_point,
+                        ),
+                    point_vanishing(coset_point, p.into_ef::<SecureField>()),
+                )
+            })
+            .unzip();
+
+        let vn_p: SecureField = coset_vanishing(
+            CanonicCoset::new(domain.log_size()).coset,
+            p.into_ef::<SecureField>(),
+        );
+
+        SecureFieldVec::from_vec(
+            (0..domain.size())
+                .map(|i| vn_p / (si_i[i] * vi_p[i]))
+                .collect_vec(),
+        )
     }
 
     fn barycentric_eval_at_point(
         evals: &CircleEvaluation<Self, BaseField, BitReversedOrder>,
         weights: &Col<Self, SecureField>,
     ) -> SecureField {
-        let cpu_eval = to_cpu_circle_eval(evals);
-        let cpu_weights = weights.to_vec();
-        CpuBackend::barycentric_eval_at_point(&cpu_eval, &cpu_weights)
+        (0..evals.domain.size()).fold(SecureField::zero(), |acc, i| {
+            acc + (evals.values.at(i) * weights.at(i))
+        })
     }
 
     fn eval_at_point_by_folding(
@@ -232,9 +280,39 @@ impl PolyOps for MetalBackend {
         point: CirclePoint<SecureField>,
         twiddles: &TwiddleTree<Self>,
     ) -> SecureField {
-        let cpu_eval = to_cpu_circle_eval(evals);
-        let cpu_twiddles = to_cpu_twiddle_tree(twiddles);
-        CpuBackend::eval_at_point_by_folding(&cpu_eval, point, &cpu_twiddles)
+        let log_size = evals.domain.log_size();
+        let mut folding_alphas = get_folding_alphas(point, log_size as usize);
+        let first_inner_layer_domain = LineDomain::new(Coset::half_odds(log_size - 1));
+        let mut layer_evaluation = LineEvaluation::new_zero(first_inner_layer_domain);
+
+        let base_values = evals.values.to_vec();
+        let secure_field_values = SecureColumnByCoords {
+            columns: std::array::from_fn(|coord| {
+                if coord == 0 {
+                    BaseFieldVec::from_vec(base_values.clone())
+                } else {
+                    BaseFieldVec::new_zeroes(base_values.len())
+                }
+            }),
+        };
+
+        MetalBackend::fold_circle_into_line(
+            &mut layer_evaluation,
+            &stwo::prover::poly::circle::SecureEvaluation::new(evals.domain, secure_field_values),
+            folding_alphas.pop().unwrap(),
+            twiddles,
+        );
+
+        while layer_evaluation.len() > 1 {
+            layer_evaluation = MetalBackend::fold_line(
+                &layer_evaluation,
+                folding_alphas.pop().unwrap(),
+                twiddles,
+                1,
+            );
+        }
+
+        layer_evaluation.values.at(0) / SecureField::from(2_u32.pow(log_size))
     }
 
     fn extend(poly: &CircleCoefficients<Self>, log_size: u32) -> CircleCoefficients<Self> {

@@ -28,6 +28,179 @@ Superseded by:
 
 ## Entries
 
+### DEC-0056: The `wide_fibonacci_prove` benchmark boundary is now closed through `MetalBackend`, and the remaining work is performance debt rather than execution debt
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The standalone `wide_fibonacci_prove` row now executes end to end through
+`MetalBackend` and verifies successfully on Apple Silicon. The old benchmark
+boundary debt is therefore retired. The benchmark target remains open as a
+performance problem, not as an execution-boundary problem:
+`wide_fibonacci_prove_verify_v1 = 213731.915833 ms`, with
+`prove_ms = 213726.729125` and `verify_ms = 5.186708`, at
+`log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
+`warmups = 0`, and `samples = 1`.
+
+Context:
+
+The prior benchmark activation tranche had already recorded a native trace
+baseline, but the full prove row still carried a named non-Metal execution
+gap. After retiring the remaining wider FRI, point-evaluation, and Blake2s
+`CpuBackend` dependencies, the benchmark runner could be switched to
+`MetalBackend` truthfully and measured as an end-to-end row.
+
+Alternatives rejected:
+
+- keep `TD-0012` active after the runner already executes through
+  `MetalBackend`
+- treat the first end-to-end Apple Silicon number as if it already satisfied
+  the `90 ms` reference goal
+- record the benchmark result without splitting benchmark-boundary closure from
+  performance debt
+
+Impact:
+
+- `TD-0012` is retired
+- `T6` is now complete
+- the next T8 work is measured optimization of the dominant prove stages, not
+  benchmark-boundary closure
+- the recorded prove-phase breakdown is now the optimization source of truth
+
+Superseded by:
+
+- none
+
+### DEC-0055: Blake2s lifted Merkle and proof-of-work support no longer depends on `CpuBackend`
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The lifted Blake2s Merkle leaf construction, next-layer hashing, and channel
+proof-of-work grind loop are now implemented directly for `MetalBackend`
+without delegating to `CpuBackend`.
+
+Context:
+
+Once the mirrored native hot-path set was complete and the benchmark row was
+close to executable, the remaining Blake2s trait debt had become a misleading
+signal: the work was host-side Blake2s hashing over Metal-owned columns, but
+the code still routed through `CpuBackend`. That obscured the real bottleneck
+and overstated the remaining bridge count.
+
+Alternatives rejected:
+
+- keep the lifted Blake2s and proof-of-work path on `CpuBackend` while claiming
+  the benchmark row was nearly end-to-end
+- move directly to benchmark closure without retiring the misleading Blake2s
+  bridge
+- invent a GPU-side Blake2s kernel before first retiring the unnecessary CPU
+  backend dependency
+
+Impact:
+
+- the legacy Blake2s capability names are retained for API stability, but they
+  now describe direct support rather than CPU bridging
+- the next benchmark-facing bottlenecks are measured host-owned commitment work
+  and explicit `AccumulationOps` / `QuotientOps` bridges
+
+Superseded by:
+
+- none
+
+### DEC-0054: Point evaluation and barycentric `PolyOps` are now Metal-owned, leaving only the bounded small-domain fallback
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`PolyOps::eval_at_point`, `barycentric_weights`,
+`barycentric_eval_at_point`, and `eval_at_point_by_folding` now execute
+directly over Metal-owned polynomial and evaluation storage instead of
+delegating to `CpuBackend`. The only explicit `PolyOps` CPU path that remains
+is the bounded small-domain evaluate/interpolate fallback.
+
+Context:
+
+After `extend` and `split_at_mid` were retired from `CpuBackend`, the next
+smallest truthful Poly step was to port the direct algebraic point-evaluation
+and barycentric helpers. Those routines are deterministic host logic over
+Metal-owned buffers and did not require a new kernel to retire the CPU bridge.
+
+Alternatives rejected:
+
+- leave point evaluation and barycentric helpers on `CpuBackend` while
+  claiming Poly support was close enough for benchmark closure
+- widen directly into larger commitment or benchmark work before narrowing the
+  remaining Poly trait debt
+- add speculative new kernels before proving the direct Metal-owned host logic
+  was sufficient
+
+Impact:
+
+- `PolyOps` no longer depends on `CpuBackend` for point evaluation or
+  barycentric helpers
+- the remaining explicit `PolyOps` CPU path is now small, named, and bounded
+
+Superseded by:
+
+- none
+
+### DEC-0053: The wider `FriOps` secure-column repacking and fold-accumulation bridge is retired from `CpuBackend`
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The wider `FriOps` path is now Metal-owned: secure-column repacking stays on
+Metal-owned storage, `fold_circle_into_line` accumulates against Metal-owned
+line values without `CpuBackend`, and the old legacy `FriOps` CPU bridge is
+retired.
+
+Context:
+
+`FriOps::decompose` had already moved off `CpuBackend`, which made the
+remaining FRI bridge more obviously artificial. The next semantics-preserving
+step was to repack secure columns and accumulate folded values directly over
+Metal-owned storage rather than continuing to bounce through CPU vectors.
+
+Alternatives rejected:
+
+- keep describing `FriOps` as bridged even after the remaining bridge was only
+  a storage conversion artifact
+- jump directly to benchmark conclusions without retiring the wider FRI bridge
+- hide the repacking and fold-accumulation move inside a larger benchmark-only
+  patch
+
+Impact:
+
+- the legacy `FriOps` capability name now refers to retired CPU bridging
+  rather than an active dependency
+- the wider benchmark-facing proving gap moves away from FRI and toward
+  commitment and accumulation bottlenecks
+
+Superseded by:
+
+- none
+
 ### DEC-0049: Mirrored hot-path completion may stop at parity-tested support for `prefix_sum`, and the next native decision moves from file presence to benchmark bottlenecks
 
 - Date: `2026-03-10`

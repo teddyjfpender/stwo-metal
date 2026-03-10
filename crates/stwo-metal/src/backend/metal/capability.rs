@@ -146,15 +146,16 @@ pub const fn metal_backend_surface_status(
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
         MetalBackendSurface::AccumulationOpsCpuBridge
-        | MetalBackendSurface::QuotientOpsCpuBridge
-        | MetalBackendSurface::FriOpsCpuBridge
+        | MetalBackendSurface::QuotientOpsCpuBridge => {
+            MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+        }
+        MetalBackendSurface::FriOpsCpuBridge
+        | MetalBackendSurface::MleOpsCpuBridge
+        | MetalBackendSurface::GkrOpsCpuBridge
         | MetalBackendSurface::Blake2sHashColumnCpuBridge
         | MetalBackendSurface::Blake2sMerkleOpsLiftedCpuBridge
         | MetalBackendSurface::Blake2sGrindCpuBridge
         | MetalBackendSurface::Blake2sBackendForChannelCpuBridge => {
-            MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
-        }
-        MetalBackendSurface::MleOpsCpuBridge | MetalBackendSurface::GkrOpsCpuBridge => {
             MetalBackendSurfaceStatus::Supported
         }
         MetalBackendSurface::QuotientAccumulate => MetalBackendSurfaceStatus::UnsupportedPlanned,
@@ -176,7 +177,7 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
             "The native Metal wide-fibonacci trace CPU bridge is supported and materializes ordinary CPU circle evaluations for unchanged upstream example prove/verify wiring."
         }
         MetalBackendSurface::PolyOpsCpuBridge => {
-            "The `PolyOps` boundary still contains an explicit CPU bridge for point evaluation and barycentric helpers, but twiddle precompute, in-place RFFT/IFFT evaluate/interpolate, zero-padding extend, and split-at-mid are now native Metal-owned operations."
+            "The `PolyOps` boundary still contains a bounded explicit CPU bridge only for the small-domain evaluate/interpolate fallback, while point evaluation, barycentric helpers, zero-padding extend, and split-at-mid are now Metal-owned operations."
         }
         MetalBackendSurface::AccumulationOpsCpuBridge => {
             "The `AccumulationOps` boundary is supported through an explicit CPU bridge over Metal-owned secure-column storage."
@@ -185,7 +186,7 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
             "The `QuotientOps` boundary is supported through an explicit CPU bridge over Metal-owned evaluation and accumulation storage."
         }
         MetalBackendSurface::FriOpsCpuBridge => {
-            "The `FriOps` boundary still contains an explicit CPU bridge for secure-column repacking and host-side fold accumulation, but bounded fold kernels and `decompose` are now native Metal-owned operations."
+            "Legacy capability name retained for API stability: `FriOps` now uses Metal-owned secure-column repacking, host-side fold accumulation over Metal-owned columns, bounded fold kernels, and native `decompose`, so the old explicit CPU bridge is retired."
         }
         MetalBackendSurface::MleOpsCpuBridge => {
             "Legacy capability name retained for API stability: `MleOps::fix_first_variable` is now implemented through native Metal kernels over Metal-owned multilinear-evaluation storage, and the old explicit CPU bridge is retired."
@@ -194,16 +195,16 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
             "Legacy capability name retained for API stability: `GkrOps` now uses native Metal eq-eval generation, next-layer construction, and oracle sum evaluation over Metal-owned lookup storage; the remaining host work is bounded polynomial reconstruction from two already-materialized secure-field values."
         }
         MetalBackendSurface::Blake2sHashColumnCpuBridge => {
-            "The `ColumnOps<Blake2sHash>` boundary is supported through an explicit CPU bridge over host-owned Blake2s hash columns."
+            "Legacy capability name retained for API stability: `ColumnOps<Blake2sHash>` is now supported directly with host-owned Blake2s hash columns and no `CpuBackend` dependency."
         }
         MetalBackendSurface::Blake2sMerkleOpsLiftedCpuBridge => {
-            "The lifted Blake2s Merkle boundary is supported through an explicit CPU bridge over Metal-owned base-field columns."
+            "Legacy capability name retained for API stability: the lifted Blake2s Merkle boundary is now supported directly over Metal-owned base-field columns with host-side Blake2s hashing and no `CpuBackend` dependency."
         }
         MetalBackendSurface::Blake2sGrindCpuBridge => {
-            "The Blake2s proof-of-work boundary is supported through an explicit CPU bridge."
+            "Legacy capability name retained for API stability: the Blake2s proof-of-work boundary is now supported directly through the channel's nonce verification loop and no `CpuBackend` dependency."
         }
         MetalBackendSurface::Blake2sBackendForChannelCpuBridge => {
-            "The Blake2s `BackendForChannel` boundary is supported through an explicit CPU bridge over Merkle and proof-of-work surfaces."
+            "Legacy capability name retained for API stability: the Blake2s `BackendForChannel` boundary is now supported directly through Metal-owned proving surfaces plus host-side Blake2s hashing, with no `CpuBackend` dependency."
         }
         MetalBackendSurface::BaseFieldColumnSet => "Base-field Metal column mutation is supported.",
         MetalBackendSurface::BaseFieldColumnFromIterator => {

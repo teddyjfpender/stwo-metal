@@ -91,11 +91,12 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
     );
     assert_eq!(
         metal_backend_surface_status(MetalBackendSurface::FriOpsCpuBridge),
-        MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+        MetalBackendSurfaceStatus::Supported
     );
     assert!(
-        metal_backend_surface_detail(MetalBackendSurface::FriOpsCpuBridge)
-            .contains("explicit CPU bridge")
+        metal_backend_surface_detail(MetalBackendSurface::FriOpsCpuBridge).contains("native")
+            || metal_backend_surface_detail(MetalBackendSurface::FriOpsCpuBridge)
+                .contains("retired")
     );
     assert_eq!(
         metal_backend_surface_status(MetalBackendSurface::MleOpsCpuBridge),
@@ -113,35 +114,35 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
     );
     assert_eq!(
         metal_backend_surface_status(MetalBackendSurface::Blake2sHashColumnCpuBridge),
-        MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+        MetalBackendSurfaceStatus::Supported
     );
     assert!(
         metal_backend_surface_detail(MetalBackendSurface::Blake2sHashColumnCpuBridge)
-            .contains("explicit CPU bridge")
+            .contains("no `CpuBackend` dependency")
     );
     assert_eq!(
         metal_backend_surface_status(MetalBackendSurface::Blake2sMerkleOpsLiftedCpuBridge),
-        MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+        MetalBackendSurfaceStatus::Supported
     );
     assert!(
         metal_backend_surface_detail(MetalBackendSurface::Blake2sMerkleOpsLiftedCpuBridge)
-            .contains("explicit CPU bridge")
+            .contains("no `CpuBackend` dependency")
     );
     assert_eq!(
         metal_backend_surface_status(MetalBackendSurface::Blake2sGrindCpuBridge),
-        MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+        MetalBackendSurfaceStatus::Supported
     );
     assert!(
         metal_backend_surface_detail(MetalBackendSurface::Blake2sGrindCpuBridge)
-            .contains("explicit CPU bridge")
+            .contains("no `CpuBackend` dependency")
     );
     assert_eq!(
         metal_backend_surface_status(MetalBackendSurface::Blake2sBackendForChannelCpuBridge),
-        MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+        MetalBackendSurfaceStatus::Supported
     );
     assert!(
         metal_backend_surface_detail(MetalBackendSurface::Blake2sBackendForChannelCpuBridge)
-            .contains("explicit CPU bridge")
+            .contains("no `CpuBackend` dependency")
     );
 }
 

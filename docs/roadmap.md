@@ -61,7 +61,12 @@ The first explicit benchmark objective is:
 - reference row source for that goal: RTX 4090 CUDA benchmark history
 
 This benchmark target is a planning objective, not a correctness gate, not the
-architecture source of truth, and not yet a support claim for `stwo-metal`.
+architecture source of truth, and not the only support claim for `stwo-metal`.
+The row now executes end to end through `MetalBackend` on Apple Silicon, but
+its current measured result is still far from the target:
+`wide_fibonacci_prove_verify_v1 = 213731.915833 ms` at `log_n_instances = 20`,
+`n_columns = 100`, `STWO_METAL_MODE=metal-dev`, `warmups = 0`, and
+`samples = 1`.
 
 ## Example-backed acceptance focus
 
@@ -76,11 +81,10 @@ Target acceptance set:
 - `wide_fibonacci`
 - `xor`
 
-Current local constraint:
+Current local input:
 
-- the current vendored snapshot under `vendor/` does not yet expose the
-  upstream `crates/examples` tree directly, so this acceptance set requires an
-  explicit vendoring or import step before the matrix can be executed fully
+- the upstream `crates/examples` tree is now pinned locally under the vendored
+  snapshot, so the acceptance matrix is executable against an auditable input
 
 Acceptance matrix:
 
@@ -238,8 +242,8 @@ Why this order:
 | T4 | Land the first bounded Metal primitive path | `completed` | one reusable GPU-backed primitive exists with deterministic CPU-oracle validation |
 | T5 | Prove one bounded Stwo trace path through Metal | `completed` | one declared trace or proving sub-path runs correctly on the Metal backend |
 | T5a | Rebaseline around generic backend completion and unchanged upstream examples | `completed` | roadmap, controller, plan, and done criteria treat upstream example proving as the primary deliverable |
-| T6 | Restore one truthful end-to-end supported workload | `planned` | one declared workload proves end to end on Metal with matching semantics and declared measurement |
-| T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `in_progress` | the accepted upstream example set proves and verifies through `MetalBackend` without workload-specific rewrites |
+| T6 | Restore one truthful end-to-end supported workload | `completed` | one declared workload proves end to end on Metal with matching semantics and declared measurement |
+| T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `completed` | the accepted upstream example set proves and verifies through `MetalBackend` without workload-specific rewrites |
 | T8 | Mirror and port the native CUDA hot path into Metal for benchmark-grade performance work | `in_progress` | the selected native `cuda/` hot-path files exist under `metal/` with tracked status, deterministic parity retirement criteria, and implementation work advancing in the declared order |
 
 ## Milestone detail
@@ -400,6 +404,19 @@ Required outputs:
 - correctness is demonstrated before throughput claims
 - performance reporting uses a declared workload and environment
 
+Current completed slice:
+
+- the standalone `wide_fibonacci_prove` row now executes through
+  `MetalBackend` end to end and verifies successfully
+- the first declared Apple Silicon measurement for that support-honest row is
+  `wide_fibonacci_prove_verify_v1 = 213731.915833 ms`, with
+  `prove_ms = 213726.729125` and `verify_ms = 5.186708`, at
+  `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
+  `warmups = 0`, and `samples = 1`
+- the benchmark boundary is therefore closed as a correctness and execution
+  claim, while the performance gap remains explicit debt rather than implied
+  completion
+
 ### T7: Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring
 
 Required outputs:
@@ -446,7 +463,7 @@ Current first implementation slice:
   mixed-component path with one framework-backed component and one
   non-framework prover component
 
-Current next slice inside T7:
+Current completion note inside T7:
 
 - the first backend-completion bridge tranche is now landed:
   `MetalBackend` implements `PolyOps`, `AccumulationOps`, and `QuotientOps`
@@ -461,7 +478,8 @@ Current next slice inside T7:
   polynomial reconstruction left after the native oracle sums
 - the Blake2s channel bridge tranche is now landed:
   `MetalBackend` implements the Blake2s `BackendForChannel` surface through
-  explicit CPU-bridge Merkle and proof-of-work boundaries
+  direct host-side Blake2s hashing over Metal-owned proving surfaces, with no
+  `CpuBackend` dependency
 - those slices are accepted because they shrink the generic backend gap
   without pretending the remaining prover traits are native Metal yet
 - `MetalBackend` now satisfies the generic Stwo `Backend` trait and the
@@ -472,9 +490,13 @@ Current next slice inside T7:
 - `poseidon` is not the immediate next row because the vendored upstream
   snapshot already marks its lifted proving path unsupported for the current
   AIR degree shape
-- only after those bridge-retirement slices meaningfully widen shared proving
-  support should T7 be marked complete-for-current-vendor or widened to a new
-  accepted example set
+- the remaining acceptance-local adapter cleanup now lives as explicit debt and
+  does not block T7 completion for the current non-blocked example set
+- T7 is now complete for the current vendored target set because the
+  non-blocked rows `wide_fibonacci`, `state_machine`, `blake`, and `xor`
+  prove and verify through `MetalBackend`, while `poseidon` remains explicitly
+  blocked by the vendored lifted-protocol AIR-degree limit rather than by a
+  known Metal-backend gap
 
 ### T8: Mirror and port the native CUDA hot path into Metal for benchmark-grade performance work
 
@@ -511,19 +533,27 @@ Current next slice inside T8:
 - treat `gkr.metal` as compile-active and parity-tested for eq-eval generation,
   next-layer construction, and bounded oracle-sum evaluation
 - treat `PolyOps::extend` and `split_at_mid` as native Metal-owned operations,
-  leaving point evaluation and barycentric helpers as the remaining explicit
-  `PolyOps` bridge surface
+  and treat point evaluation and barycentric helpers as native Metal-owned too,
+  leaving only the bounded small-domain evaluate/interpolate fallback as the
+  remaining explicit `PolyOps` CPU path
 - record the first Apple Silicon native trace baseline for the benchmark north
   star: `wide_fibonacci_trace_generation_v1 = 66.61 ms` at
   `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
   `warmups = 0`, `samples = 1`
-- treat `FriOps::decompose` as a native Metal-owned operation, leaving
-  secure-column repacking and host-side fold accumulation as the remaining
-  explicit `FriOps` bridge surface
+- treat the wider `FriOps` secure-column repacking and host-side fold
+  accumulation path as Metal-owned, so the legacy explicit `FriOps` CPU bridge
+  is retired
 - treat `prefix_sum.metal` as compile-active and parity-tested support rather
   than leaving any mirrored hot-path file scaffold-only
-- with the mirrored hot-path set complete, move the next T8 decision to
-  benchmark activation and remaining explicit CPU-bridge retirement
+- treat the lifted Blake2s Merkle and proof-of-work boundaries as direct
+  Metal-owned host orchestration with no `CpuBackend` dependency
+- record the first Apple Silicon end-to-end benchmark result for the declared
+  north-star row: `wide_fibonacci_prove_verify_v1 = 213731.915833 ms`, with the
+  dominant prove costs currently in `prove_core_prove_values_ms`,
+  `trace_commit_merkle_ms`, and `prove_core_composition_commit_ms`
+- with the mirrored hot-path set complete and the benchmark boundary closed,
+  move the next T8 decision to measured optimization of the dominant prove
+  stages and retirement of the next explicit CPU bridge
 
 ## Sequencing rules
 
@@ -537,9 +567,11 @@ Current next slice inside T8:
 
 ## Current next three planning deliverables
 
-1. Turn the completed mirrored native hot-path set into benchmark-active
-   measurement against the wide-fibonacci north star.
-2. Keep the mirrored native `mle`, `gkr`, and `prefix_sum` slices parity-tested
-   and support-honest in the capability model and docs.
-3. Choose the next broader explicit CPU bridge to retire after mirror
-   completion, starting from the measured bottleneck rather than file presence.
+1. Reduce the dominant prove-stage costs in the end-to-end
+   `wide_fibonacci_prove_verify_v1` row, starting from measured bottlenecks
+   rather than file presence.
+2. Keep the completed mirrored native hot-path set parity-tested and
+   support-honest while it carries benchmark-active work.
+3. Retire the next benchmark-relevant explicit CPU bridge, starting with the
+   native lifted commitment/hash path or the explicit `AccumulationOps` /
+   `QuotientOps` bridges.

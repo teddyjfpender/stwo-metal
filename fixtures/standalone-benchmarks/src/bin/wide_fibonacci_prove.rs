@@ -1,58 +1,58 @@
 use serde::Serialize;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use std::time::Instant;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::air::Component;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::air::accumulation::PointEvaluationAccumulator;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::channel::{Blake2sChannel, Channel, MerkleChannel};
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::constraints::coset_vanishing;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::fields::m31::BaseField;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::fields::FieldExpOps;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::pcs::utils::get_lifting_log_size;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::poly::circle::CanonicCoset;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::proof::{StarkProof, StarkProofSizeBreakdown};
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::utils::MaybeOwned;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::verifier::{verify, PREPROCESSED_TRACE_IDX};
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::prover::poly::circle::CircleEvaluation;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::prover::poly::circle::PolyOps;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::prover::poly::BitReversedOrder;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo::prover::{
     CommitmentSchemeProver, CommitmentTreeProver, ComponentProver, ComponentProvers,
     DomainEvaluationAccumulator, ProvingError, Trace,
 };
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo_metal::{
-    accumulate_wide_fibonacci_quotients, declare_exemplar_metal_workload_boundary, BaseFieldVec,
-    CudaBackend, MetalExecutionIntent, MetalWideFibonacciQuotientRequest,
+    accumulate_wide_fibonacci_quotients, declare_exemplar_metal_workload_boundary, MetalBackend,
+    MetalBaseFieldVec, MetalExecutionIntent, MetalWideFibonacciQuotientRequest,
     MetalWideFibonacciTrace,
 };
 use stwo_metal_standalone_benchmarks::support::{
     env_flag, env_or, env_u32, env_usize, epoch_ms, required_env_path, runner_metadata,
     write_json, RunnerMetadata, SummaryStats,
 };
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 use stwo_metal_standalone_benchmarks::support::summarize;
 
 const BENCHMARK_ID: &str = "wide_fibonacci_prove_verify_v1";
@@ -61,7 +61,7 @@ const DEFAULT_LOG_N_INSTANCES: u32 = 20;
 const DEFAULT_N_COLUMNS: u32 = 100;
 const DEFAULT_WARMUPS: usize = 1;
 const DEFAULT_SAMPLES: usize = 5;
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 const MAIN_TRACE_IDX: usize = 1;
 
 #[derive(Serialize)]
@@ -197,7 +197,7 @@ fn main() {
     };
 
     let classification = env_or("STWO_BENCH_CLASSIFICATION", "supported-benchmark-candidate");
-    let dependency_row = env_or("STWO_BENCH_DEPENDENCY_ROW", "vendored-upstream-bridge-v1");
+    let dependency_row = env_or("STWO_BENCH_DEPENDENCY_ROW", "metal-backend-e2e-v1");
     let git_commit = env_or("STWO_BENCH_GIT_COMMIT", "unknown");
     let command = env_or("STWO_BENCH_COMMAND", "unknown");
 
@@ -227,16 +227,13 @@ fn main() {
             sentinel: None,
         }
     } else {
-        #[cfg(not(feature = "cuda-runtime"))]
+        #[cfg(not(feature = "metal-runtime"))]
         panic!(
-            "wide_fibonacci_prove benchmark requires the cuda-runtime feature for non-plan execution"
+            "wide_fibonacci_prove benchmark requires the metal-runtime feature for non-plan execution"
         );
 
-        #[cfg(feature = "cuda-runtime")]
+        #[cfg(feature = "metal-runtime")]
         {
-            if runner.stwo_cuda_mode == "no-cuda" {
-                panic!("wide_fibonacci_prove benchmark cannot run with STWO_CUDA_MODE=no-cuda");
-            }
             if runner.stwo_metal_mode == "no-metal" {
                 panic!("wide_fibonacci_prove benchmark cannot run with STWO_METAL_MODE=no-metal because trace generation now enters through the native Metal path");
             }
@@ -396,13 +393,13 @@ fn main() {
     println!("{}", output_path.display());
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 struct WideFibonacciBenchmarkComponent {
     log_n_rows: u32,
     n_columns: usize,
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 impl WideFibonacciBenchmarkComponent {
     fn new(log_n_rows: u32, n_columns: usize) -> Self {
         assert!(n_columns >= 3, "wide fibonacci benchmark requires at least 3 columns");
@@ -417,7 +414,7 @@ impl WideFibonacciBenchmarkComponent {
     }
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 impl Component for WideFibonacciBenchmarkComponent {
     fn n_constraints(&self) -> usize {
         self.n_columns - 2
@@ -472,12 +469,12 @@ impl Component for WideFibonacciBenchmarkComponent {
     }
 }
 
-#[cfg(feature = "cuda-runtime")]
-impl ComponentProver<CudaBackend> for WideFibonacciBenchmarkComponent {
+#[cfg(feature = "metal-runtime")]
+impl ComponentProver<MetalBackend> for WideFibonacciBenchmarkComponent {
     fn evaluate_constraint_quotients_on_domain(
         &self,
-        trace: &Trace<'_, CudaBackend>,
-        evaluation_accumulator: &mut DomainEvaluationAccumulator<CudaBackend>,
+        trace: &Trace<'_, MetalBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<MetalBackend>,
     ) {
         if self.n_constraints() == 0 {
             return;
@@ -501,7 +498,7 @@ impl ComponentProver<CudaBackend> for WideFibonacciBenchmarkComponent {
             );
         }
 
-        let twiddles = CudaBackend::precompute_twiddles(eval_domain.half_coset);
+        let twiddles = MetalBackend::precompute_twiddles(eval_domain.half_coset);
         let trace_evaluations = trace_columns
             .iter()
             .map(|poly| {
@@ -540,12 +537,12 @@ impl ComponentProver<CudaBackend> for WideFibonacciBenchmarkComponent {
         .expect("wide-fibonacci quotient accumulation should succeed through the native Metal path");
         let quotient_columns = quotients.to_coordinate_columns();
         for (dst, src) in accum.col.columns.iter_mut().zip(quotient_columns) {
-            *dst = BaseFieldVec::from_vec(src);
+            *dst = MetalBaseFieldVec::from_vec(src);
         }
     }
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 #[derive(Clone)]
 struct SampleResult {
     total_elapsed_ms: f64,
@@ -566,7 +563,7 @@ struct SampleResult {
     sentinel: WideFibonacciSentinel,
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 fn run_one_sample(
     input_a_host: &[BaseField],
     input_b_host: &[BaseField],
@@ -611,7 +608,7 @@ fn run_one_sample(
     }
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 #[derive(Clone, Copy)]
 struct ProveBreakdown {
     setup_and_preprocessed_commit_ms: f64,
@@ -627,7 +624,7 @@ struct ProveBreakdown {
     prove_core_sanity_check_ms: f64,
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 #[derive(Clone, Copy)]
 struct ProveCoreBreakdown {
     composition_generation_ms: f64,
@@ -636,7 +633,7 @@ struct ProveCoreBreakdown {
     sanity_check_ms: f64,
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 fn prove_wide_fibonacci_blake(
     input_a_host: &[BaseField],
     input_b_host: &[BaseField],
@@ -654,7 +651,7 @@ fn prove_wide_fibonacci_blake(
     assert_eq!(input_b_host.len(), input_len);
 
     let setup_start = Instant::now();
-    let twiddles = CudaBackend::precompute_twiddles(
+    let twiddles = MetalBackend::precompute_twiddles(
         CanonicCoset::new(log_n_instances + 1 + config.fri_config.log_blowup_factor)
             .circle_domain()
             .half_coset,
@@ -662,7 +659,7 @@ fn prove_wide_fibonacci_blake(
 
     let prover_channel = &mut Blake2sChannel::default();
     let mut commitment_scheme =
-        CommitmentSchemeProver::<CudaBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+        CommitmentSchemeProver::<MetalBackend, Blake2sMerkleChannel>::new(config, &twiddles);
 
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(vec![]);
@@ -684,7 +681,7 @@ fn prove_wide_fibonacci_blake(
     let component = WideFibonacciBenchmarkComponent::new(log_n_instances, n_columns);
     let prove_core_start = Instant::now();
     let (proof, prove_core_breakdown) =
-        prove_with_breakdown::<CudaBackend, Blake2sMerkleChannel>(
+        prove_with_breakdown::<MetalBackend, Blake2sMerkleChannel>(
             &[&component],
             prover_channel,
             commitment_scheme,
@@ -712,7 +709,7 @@ fn prove_wide_fibonacci_blake(
     )
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 fn prove_with_breakdown<B: stwo::prover::backend::BackendForChannel<MC>, MC: MerkleChannel>(
     components: &[&dyn ComponentProver<B>],
     channel: &mut MC::C,
@@ -790,7 +787,7 @@ fn prove_with_breakdown<B: stwo::prover::backend::BackendForChannel<MC>, MC: Mer
     ))
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 fn extract_composition_oods_eval<H: stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted>(
     proof: &StarkProof<H>,
     oods_point: stwo::core::circle::CirclePoint<SecureField>,
@@ -819,26 +816,26 @@ fn extract_composition_oods_eval<H: stwo::core::vcs_lifted::merkle_hasher::Merkl
     Some(left_eval + oods_point.repeated_double(max_log_degree_bound - 1).x * right_eval)
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 struct TraceCommitBreakdown {
     interpolation_ms: f64,
     extension_ms: f64,
     merkle_ms: f64,
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 fn commit_trace_with_breakdown(
-    commitment_scheme: &mut CommitmentSchemeProver<'_, CudaBackend, Blake2sMerkleChannel>,
+    commitment_scheme: &mut CommitmentSchemeProver<'_, MetalBackend, Blake2sMerkleChannel>,
     prover_channel: &mut Blake2sChannel,
-    trace: Vec<CircleEvaluation<CudaBackend, BaseField, BitReversedOrder>>,
-    twiddles: &stwo::prover::poly::twiddles::TwiddleTree<CudaBackend>,
+    trace: Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
+    twiddles: &stwo::prover::poly::twiddles::TwiddleTree<MetalBackend>,
 ) -> TraceCommitBreakdown {
     let interpolation_start = Instant::now();
-    let trace_polynomials = CudaBackend::interpolate_columns(trace, twiddles);
+    let trace_polynomials = MetalBackend::interpolate_columns(trace, twiddles);
     let interpolation_ms = interpolation_start.elapsed().as_secs_f64() * 1000.0;
 
     let extension_start = Instant::now();
-    let trace_polynomials = CudaBackend::evaluate_polynomials(
+    let trace_polynomials = MetalBackend::evaluate_polynomials(
         trace_polynomials,
         commitment_scheme.config.fri_config.log_blowup_factor,
         twiddles,
@@ -857,7 +854,7 @@ fn commit_trace_with_breakdown(
         .config
         .lifting_log_size
         .unwrap_or(max_log_domain_size);
-    let commitment = MerkleProverLifted::<CudaBackend, Blake2sMerkleHasher>::commit(
+    let commitment = MerkleProverLifted::<MetalBackend, Blake2sMerkleHasher>::commit(
         trace_polynomials
             .iter()
             .map(|poly| &poly.evals.values)
@@ -879,7 +876,7 @@ fn commit_trace_with_breakdown(
     }
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 fn verify_wide_fibonacci_blake(
     component: &WideFibonacciBenchmarkComponent,
     proof: &StarkProof<Blake2sMerkleHasher>,
@@ -892,14 +889,14 @@ fn verify_wide_fibonacci_blake(
     verify(&[component as &dyn Component], verifier_channel, commitment_scheme, proof.clone())
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 fn generate_wide_fibonacci_trace_evaluations(
     input_a_host: &[BaseField],
     input_b_host: &[BaseField],
     log_n_instances: u32,
     n_columns: usize,
 ) -> (
-    Vec<CircleEvaluation<CudaBackend, BaseField, BitReversedOrder>>,
+    Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
     WideFibonacciSentinel,
 ) {
     let input_len = 1usize << log_n_instances;
@@ -921,7 +918,7 @@ fn generate_wide_fibonacci_trace_evaluations(
         .map(|column_index| {
             CircleEvaluation::new(
                 domain,
-                BaseFieldVec::from_vec(trace.column_values(column_index)),
+                MetalBaseFieldVec::from_vec(trace.column_values(column_index)),
             )
         })
         .collect();
@@ -929,7 +926,7 @@ fn generate_wide_fibonacci_trace_evaluations(
     (trace, sentinel)
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 fn sentinel_from_metal_trace(
     trace: &MetalWideFibonacciTrace,
     input_len: usize,
@@ -943,7 +940,7 @@ fn sentinel_from_metal_trace(
     }
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 fn proof_metadata(proof: &StarkProof<Blake2sMerkleHasher>) -> ProofMetadata {
     let size_breakdown = proof.size_breakdown_estimate();
     ProofMetadata {
@@ -956,7 +953,7 @@ fn proof_metadata(proof: &StarkProof<Blake2sMerkleHasher>) -> ProofMetadata {
     }
 }
 
-#[cfg(feature = "cuda-runtime")]
+#[cfg(feature = "metal-runtime")]
 impl From<StarkProofSizeBreakdown> for ProofSizeBreakdownMetadata {
     fn from(value: StarkProofSizeBreakdown) -> Self {
         Self {
