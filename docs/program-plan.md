@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 first slice: lower one generated registration into a stable planning input
-for the next runtime-facing execution-plan work`
+`G5 second slice: consume the lowering-facing registration input in one
+runtime-planning helper without widening side metadata channels`
 
 The active formal basis is:
 
@@ -119,6 +119,16 @@ The third G4 slice is now landed:
   through that shared registration object instead of reassembling raw manifest
   fields
 - G4 is now complete and the next honest work moves to G5 lowering
+
+## G5 progress snapshot
+
+The first G5 slice is now landed:
+
+- one checked lowering-facing generated registration input now derives from the
+  shared registry seam
+- the lowering path no longer needs to reassemble workload family, ABI family,
+  ABI symbols, build modules, witness hooks, and specialization keys from raw
+  manifest fragments
 
 ## G2 progress snapshot
 

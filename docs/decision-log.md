@@ -28,6 +28,45 @@ Superseded by:
 
 ## Entries
 
+### DEC-0085: Runtime-facing lowering helpers must consume one canonical lowering input
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Once a checked lowering-facing generated registration input exists, the first
+runtime-facing lowering helpers must consume that input directly. They may not
+reassemble ABI symbols, specialization keys, or build inventory from separate
+queries.
+
+Context:
+
+G5 starts by turning the checked generated registration into one stable
+lowering input. The next failure mode would be to leave that input unused while
+runtime-facing helpers continued to pluck separate fields from artifacts or
+manifests. This decision keeps the lowering contract linear and law-abiding.
+
+Alternatives rejected:
+
+- treat the lowering input as optional documentation only
+- let each lowering helper reconstruct its own metadata view
+- delay canonical lowering-input consumption until deeper runtime work already
+  exists
+
+Impact:
+
+- the next G5 slice is constrained to consume one canonical lowering input
+- generated lowering remains attached to the same stable registry seam from
+  declaration through runtime planning
+
+Superseded by:
+
+- none
+
 ### DEC-0084: Generated lowering must start from one checked registration object rather than raw manifest fragments
 
 - Date: `2026-03-10`

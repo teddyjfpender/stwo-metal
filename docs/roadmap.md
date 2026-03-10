@@ -134,6 +134,8 @@ The next active work is:
 
 - lower one generated registration into a stable planning input for runtime-
   facing execution-plan work
+- consume that lowering-facing input in one runtime-planning helper before
+  widening lowering further
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

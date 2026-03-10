@@ -35,6 +35,36 @@ impl RegisteredMetalComponent {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RegisteredMetalLoweringInput {
+    pub schema_version: u16,
+    pub route: MetalGeneratedRouteKind,
+    pub component_name: &'static str,
+    pub workload_family: &'static str,
+    pub abi_family: &'static str,
+    pub abi_symbols: &'static [&'static str],
+    pub build_modules: &'static [&'static str],
+    pub witness_hook: Option<&'static str>,
+    pub specialization_keys: &'static [&'static str],
+}
+
+impl RegisteredMetalComponent {
+    pub fn lowering_input(self) -> RegisteredMetalLoweringInput {
+        let inventory = self.generated_inventory();
+        RegisteredMetalLoweringInput {
+            schema_version: self.schema_version,
+            route: self.route,
+            component_name: self.component_name(),
+            workload_family: self.artifact.workload_family,
+            abi_family: inventory.abi_family,
+            abi_symbols: inventory.abi_symbols,
+            build_modules: inventory.build_modules,
+            witness_hook: inventory.witness_hook,
+            specialization_keys: inventory.specialization_keys,
+        }
+    }
+}
+
 pub(crate) fn registered_generated_artifact<'a>(
     component_name: &'a str,
     route: MetalGeneratedRouteKind,
@@ -242,6 +272,24 @@ mod tests {
         assert_eq!(
             registration.generated_inventory().specialization_keys,
             &["log_n_instances", "n_columns"]
+        );
+        let lowering_input = registration.lowering_input();
+        assert_eq!(lowering_input.component_name, "fibonacci_example");
+        assert_eq!(lowering_input.workload_family, "wide_fibonacci");
+        assert_eq!(lowering_input.abi_family, "wide_fibonacci");
+        assert_eq!(
+            lowering_input.build_modules,
+            &[
+                "planner_manifest_v1_generated",
+                "witness",
+                "quotient",
+                "fri",
+                "benchmark"
+            ]
+        );
+        assert_eq!(
+            lowering_input.witness_hook,
+            Some("ingest_cpu_wide_fibonacci_witness")
         );
     }
 }
