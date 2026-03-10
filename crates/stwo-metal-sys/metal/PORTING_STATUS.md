@@ -16,11 +16,12 @@ Current compile-active Metal sources wired by `build.rs`:
 - `poly_utils.metal`
 - `rfft.metal`
 - `ifft.metal`
+- `quotients.metal`
+- `fold_circle_into_line.metal`
+- `fold_line.metal`
 - `bit_reverse.metal`
 - `poly_order.metal`
-- `fri.metal`
 - `wide_fibonacci.metal`
-- `quotient.metal`
 - `runtime.m`
 
 Current parity-tested native files:
@@ -30,15 +31,20 @@ Current parity-tested native files:
 - `poly_utils.metal`
 - `rfft.metal`
 - `ifft.metal`
-
-Current scaffold-only mirror files for the native hot path:
-
 - `quotients.metal`
 - `fold_circle_into_line.metal`
 - `fold_line.metal`
+
+Current scaffold-only mirror files for the native hot path:
+
 - `prefix_sum.metal`
 - `mle.metal`
 - `gkr.metal`
+
+Historical non-mirrored Metal sources retained outside the compile-active set:
+
+- `fri.metal`
+- `quotient.metal`
 
 Declared port order:
 

@@ -503,8 +503,10 @@ Current next slice inside T8:
 - treat `poly_utils.metal`, `rfft.metal`, and `ifft.metal` as the next
   compile-active, parity-tested FFT/poly tranche on top of the native twiddle
   boundary
-- move directly into mirrored `quotients`, `fold_circle_into_line`, and
-  `fold_line` after the FFT core
+- treat mirrored `quotients.metal`, `fold_circle_into_line.metal`, and
+  `fold_line.metal` as the active native proving lane after the FFT core
+- move directly into `prefix_sum`, `mle`, and `gkr` after the mirrored proving
+  files are compile-active
 
 ## Sequencing rules
 
@@ -518,9 +520,9 @@ Current next slice inside T8:
 
 ## Current next three planning deliverables
 
-1. Land the mirrored native `quotients` slice on top of the now-native FFT
-   core.
-2. Land the mirrored native `fold_circle_into_line` slice with deterministic
-   parity against the vendored CPU backend.
-3. Land the mirrored native `fold_line` slice before widening deeper lookup or
-   quotient performance work.
+1. Land the mirrored native `prefix_sum` slice where it is actually required by
+   the remaining proving path.
+2. Land the mirrored native `mle` slice with deterministic parity against the
+   vendored CPU backend.
+3. Land the mirrored native `gkr` slice before calling the hot-path mirror
+   complete.

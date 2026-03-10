@@ -10,11 +10,12 @@ const METAL_SOURCES: &[&str] = &[
     "poly_utils",
     "rfft",
     "ifft",
+    "quotients",
+    "fold_circle_into_line",
+    "fold_line",
     "bit_reverse",
     "poly_order",
-    "fri",
     "wide_fibonacci",
-    "quotient",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -107,11 +108,12 @@ fn main() {
     println!("cargo:rerun-if-changed=metal/poly_utils.metal");
     println!("cargo:rerun-if-changed=metal/rfft.metal");
     println!("cargo:rerun-if-changed=metal/ifft.metal");
+    println!("cargo:rerun-if-changed=metal/quotients.metal");
+    println!("cargo:rerun-if-changed=metal/fold_circle_into_line.metal");
+    println!("cargo:rerun-if-changed=metal/fold_line.metal");
     println!("cargo:rerun-if-changed=metal/bit_reverse.metal");
     println!("cargo:rerun-if-changed=metal/poly_order.metal");
-    println!("cargo:rerun-if-changed=metal/fri.metal");
     println!("cargo:rerun-if-changed=metal/wide_fibonacci.metal");
-    println!("cargo:rerun-if-changed=metal/quotient.metal");
     for var in [
         CUDA_MODE_VAR,
         METAL_MODE_VAR,

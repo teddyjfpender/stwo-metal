@@ -211,12 +211,18 @@ The first active T8 supporting slices are:
   core for `MetalBackend::evaluate_into`
 - `ifft.metal` now carries the first compile-active native interpolation core
   for `MetalBackend::interpolate`
+- `quotients.metal` now carries the compile-active mirrored quotient kernel
+  previously isolated in the non-mirrored Metal proving lane
+- `fold_circle_into_line.metal` now carries the compile-active mirrored first
+  FRI fold kernel previously isolated in the non-mirrored Metal proving lane
+- `fold_line.metal` now carries the compile-active mirrored line-fold kernel
+  previously isolated in the non-mirrored Metal proving lane
 
 The next required T8 boundary is:
 
 - keep compile-active Metal files explicit and separate from scaffold-only
   mirror files
-- begin real mirrored quotient and fold implementation at `quotients`,
-  `fold_circle_into_line`, and `fold_line`
+- begin real mirrored support-kernel implementation at `prefix_sum`, `mle`,
+  and `gkr`
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

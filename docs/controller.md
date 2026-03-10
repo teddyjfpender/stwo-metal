@@ -29,7 +29,7 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T8 third implementation slice: move from native FFT/poly into mirrored quotient and fold files`
+- Active tranche: `T8 fourth implementation slice: move from mirrored quotient and fold files into the remaining lookup/support kernels`
 - Objective:
   return from acceptance closure to native performance work by mirroring the
   active CUDA hot-path structure into `stwo-metal-sys/metal` and porting it in
@@ -63,8 +63,10 @@ Invariants:
   remains a thin frontier
 - `fields.metal` and `twiddles.metal` are now compile-active and parity-tested,
   and `rfft.metal` / `ifft.metal` / `poly_utils.metal` now carry the native
-  evaluate/interpolate core, but mirrored quotient and fold files are still
-  mostly scaffold-only
+  evaluate/interpolate core, and mirrored `quotients.metal`,
+  `fold_circle_into_line.metal`, and `fold_line.metal` now carry the active
+  native proving kernels, but `prefix_sum`, `mle`, and `gkr` are still
+  scaffold-only
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
@@ -82,13 +84,13 @@ Invariants:
 ## Next three deliverables
 
 1. Land the mirrored native file set under
-   `crates/stwo-metal-sys/metal` for the next native proving tranche:
-   `quotients`, `fold_circle_into_line`, and `fold_line`.
-2. Keep `fields.metal`, `twiddles.metal`, `poly_utils.metal`, `rfft.metal`,
-   and `ifft.metal` recorded as compile-active and parity-tested so the repo
-   does not regress to hidden CPU FFT/poly behavior.
-3. Start real mirrored quotient and fold implementation so the remaining
-   CPU-bridged `PolyOps` and FRI ownership shrinks after the FFT core.
+   `crates/stwo-metal-sys/metal` for the remaining support tranche:
+   `prefix_sum`, `mle`, and `gkr`.
+2. Keep the mirrored native proving files recorded as compile-active and
+   parity-tested so the repo does not regress to the old non-mirrored Metal
+   islands.
+3. Use the remaining support tranche to keep shrinking CPU-bridged proving
+   surfaces after the mirrored FFT, quotient, and fold lanes.
 
 ## Explicitly not doing now
 

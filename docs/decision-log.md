@@ -28,6 +28,49 @@ Superseded by:
 
 ## Entries
 
+### DEC-0047: Native quotient and fold kernels must live in mirrored Metal file names before the remaining support tranche proceeds
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The active native proving kernels now live in the mirrored files
+`quotients.metal`, `fold_circle_into_line.metal`, and `fold_line.metal`. The
+older non-mirrored files `quotient.metal` and `fri.metal` remain in the tree
+only as retained history and are no longer part of the compile-active Metal
+set.
+
+Context:
+
+After the native FFT core landed, the next structural mismatch was that the
+active quotient and fold kernels still lived in non-mirrored file names. That
+made the Metal subtree harder to compare against the CUDA source and kept the
+T8 status file less truthful than it should be. Re-homing those kernels fixes
+the structure without churning the runtime ABI.
+
+Alternatives rejected:
+
+- keep compiling the old `fri.metal` and `quotient.metal` files indefinitely
+- rename runtime kernel entry points as part of the structural move
+- postpone the mirrored proving-file move until after `prefix_sum`, `mle`, or
+  `gkr`
+
+Impact:
+
+- the compile-active Metal set is now aligned more closely with the mirrored
+  CUDA file structure
+- the next honest T8 tranche is the remaining support-kernel set:
+  `prefix_sum`, `mle`, and `gkr`
+- the old non-mirrored files are retained only as historical context
+
+Superseded by:
+
+- none
+
 ### DEC-0046: The second compile-active native T8 replacement lands the mirrored FFT core before quotient and fold work
 
 - Date: `2026-03-10`
