@@ -4,7 +4,7 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo_root"
 
-mode="${STWO_CUDA_MODE:-cuda-dev}"
+mode="${STWO_METAL_MODE:-metal-prod}"
 plan_only="${STWO_BENCH_PLAN_ONLY:-0}"
 log_n_instances="${STWO_BENCH_LOG_N_INSTANCES:-20}"
 n_columns="${STWO_BENCH_N_COLUMNS:-100}"
@@ -18,12 +18,12 @@ timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 result_dir="${STWO_BENCH_RESULT_DIR:-$results_root/$timestamp}"
 result_json="${STWO_BENCH_OUTPUT_JSON:-$result_dir/wide_fibonacci_prove.json}"
 
-if [ "$plan_only" != "1" ] && [ "$mode" = "no-cuda" ]; then
-    echo "wide_fibonacci_prove benchmark requires STWO_CUDA_MODE != no-cuda unless STWO_BENCH_PLAN_ONLY=1." >&2
+if [ "$plan_only" != "1" ] && [ "$mode" = "no-metal" ]; then
+    echo "wide_fibonacci_prove benchmark requires STWO_METAL_MODE != no-metal unless STWO_BENCH_PLAN_ONLY=1." >&2
     exit 1
 fi
 
-if [ "${STWO_BENCH_SKIP_PREFLIGHT:-0}" != "1" ]; then
+if [ "$plan_only" != "1" ] && [ "${STWO_BENCH_SKIP_PREFLIGHT:-0}" != "1" ]; then
     env STWO_CUDA_MODE=no-cuda sh scripts/run_standalone_pinned_validation.sh
 fi
 
@@ -76,7 +76,7 @@ esac
 
 runtime_feature_args=""
 if [ "$plan_only" != "1" ]; then
-    runtime_feature_args="--features cuda-runtime"
+    runtime_feature_args="--features metal-runtime"
 fi
 
 command_string="cargo run --release --manifest-path fixtures/standalone-benchmarks/Cargo.toml --bin wide_fibonacci_prove $runtime_feature_args"
@@ -85,7 +85,7 @@ if [ "$git_commit" = "unknown" ] && git rev-parse --is-inside-work-tree >/dev/nu
     git_commit="$(git rev-parse HEAD)"
 fi
 
-STWO_CUDA_MODE="$mode" \
+STWO_METAL_MODE="$mode" \
 STWO_BENCH_OUTPUT_JSON="$result_json" \
 STWO_BENCH_PLAN_ONLY="$plan_only" \
 STWO_BENCH_LOG_N_INSTANCES="$log_n_instances" \

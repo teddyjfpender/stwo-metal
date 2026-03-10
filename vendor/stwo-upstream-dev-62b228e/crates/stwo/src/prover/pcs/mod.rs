@@ -309,7 +309,15 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         let sampled_values = samples
             .as_cols_ref()
             .map_cols(|x| x.iter().map(|o| o.value).collect());
-        channel.mix_felts(&sampled_values.clone().flatten_cols());
+        let flattened_sampled_values = sampled_values
+            .as_cols_ref()
+            .flatten()
+            .into_iter()
+            .flatten()
+            .into_iter()
+            .copied()
+            .collect_vec();
+        channel.mix_felts(&flattened_sampled_values);
         debug_phase("sampled_values_mixed");
 
         let columns = self.evaluations();

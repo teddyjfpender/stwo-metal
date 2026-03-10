@@ -6,8 +6,8 @@ use stwo::core::fields::m31::BaseField;
 #[cfg(feature = "metal-runtime")]
 use stwo_metal::{generate_metal_wide_fibonacci_trace, MetalWideFibonacciTraceRequest};
 use stwo_metal_standalone_benchmarks::support::{
-    env_flag, env_or, env_u32, env_usize, epoch_ms, required_env_path, runner_metadata,
-    write_json, RunnerMetadata, SummaryStats,
+    enforce_metal_benchmark_contract, env_flag, env_or, env_u32, env_usize, epoch_ms,
+    required_env_path, runner_metadata, write_json, RunnerMetadata, SummaryStats,
 };
 #[cfg(feature = "metal-runtime")]
 use stwo_metal_standalone_benchmarks::support::summarize;
@@ -74,6 +74,7 @@ fn main() {
     let started_at = epoch_ms();
 
     let runner = runner_metadata();
+    enforce_metal_benchmark_contract(BENCHMARK_ID, plan_only, &runner);
 
     let workload = WorkloadMetadata {
         family: "wide_fibonacci".to_string(),
@@ -119,10 +120,6 @@ fn main() {
 
         #[cfg(feature = "metal-runtime")]
         {
-        if runner.stwo_metal_mode == "no-metal" {
-            panic!("wide_fibonacci_trace benchmark cannot run with STWO_METAL_MODE=no-metal");
-        }
-
         let input_len = instances as usize;
         let input_a_host = (0..input_len)
             .map(|i| BaseField::from((i as u32 % 1024) + 1))

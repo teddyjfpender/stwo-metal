@@ -28,6 +28,60 @@ Superseded by:
 
 ## Entries
 
+### DEC-0062: Production benchmark measurements now require `cargo_profile = release`, `STWO_METAL_MODE = metal-prod`, and Metal-backed wide-fibonacci quotient staging
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The benchmark contract for non-plan Apple Silicon measurements is now:
+
+- run the standalone Metal benchmark binaries in the Rust `release` profile
+- use `STWO_METAL_MODE=metal-prod` unless an explicit diagnostic override is set
+- treat non-release or `metal-dev` benchmark rows as diagnostic data, not as the
+  primary performance baseline
+- keep wide-fibonacci quotient accumulation on Metal-backed trace buffers during
+  composition generation instead of reading the evaluation columns back to host
+  slices first
+
+Context:
+
+The previous benchmark narrative overstated the slowdown because the project
+had been treating `cargo run`-style dev-profile rows as if they were
+production measurements. At the same time, the wide-fibonacci composition path
+was still forcing a full host materialization of the trace evaluations before
+entering the native quotient kernel. After enforcing the benchmark contract and
+keeping quotient staging on Metal-backed buffers, the measured production-grade
+row is now `wide_fibonacci_prove_verify_v1 = 10900.002875 ms`, with
+`prove_ms = 10899.813583000001`, `verify_ms = 0.18929200000000002`,
+`prove_core_prove_values_ms = 4686.306874999999`, and
+`prove_core_composition_generation_ms = 3729.947666`.
+
+Alternatives rejected:
+
+- keep treating dev-profile or `metal-dev` runs as the benchmark source of truth
+- add unchecked fast-math flags and call that “production mode” without first
+  proving correctness and measuring the real release baseline
+- leave wide-fibonacci quotient staging host-backed while trying to optimize the
+  same phase at higher levels
+
+Impact:
+
+- the active benchmark baseline is now truthful and directly comparable against
+  SIMD and historical GPU rows
+- the project’s remaining performance gap is now understood as roughly `7.8x`
+  to the SIMD `log_n_instances = 20` row, not the old debug-inflated `31x`
+- the next benchmark-facing structural target stays above `PolyOps`:
+  PCS prove-values duplication and the remaining host-owned commitment/hash path
+
+Superseded by:
+
+- none
+
 ### DEC-0061: Native Metal point evaluation is now a benchmark-active `PolyOps` surface, and coefficient staging must stay on Metal when possible
 
 - Date: `2026-03-10`

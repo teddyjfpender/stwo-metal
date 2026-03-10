@@ -256,18 +256,21 @@ The first active T8 supporting slices are:
   Metal-owned proving surfaces
 - the standalone `wide_fibonacci_prove` benchmark row now executes end to end
   through `MetalBackend` and verifies successfully
-- the current Apple Silicon end-to-end benchmark result is now recorded:
-  `wide_fibonacci_prove_verify_v1 = 45616.501417 ms`, with
-  `prove_ms = 45611.008417` and `verify_ms = 5.492999999999999`
+- the benchmark contract is now explicit: non-plan Metal benchmark runs must
+  use `cargo_profile = release` and `STWO_METAL_MODE=metal-prod` unless an
+  override is set for diagnostics
+- the current production-grade Apple Silicon end-to-end benchmark result is
+  now recorded: `wide_fibonacci_prove_verify_v1 = 10900.002875 ms`, with
+  `prove_ms = 10899.813583000001` and `verify_ms = 0.18929200000000002`
 - the dominant prove-stage costs in that row are now measured explicitly:
-  `prove_core_prove_values_ms = 21835.479`,
-  `trace_commit_merkle_ms = 9168.181416`,
-  `prove_core_composition_generation_ms = 5236.126292`, and
-  `prove_core_composition_commit_ms = 3701.2050419999996`
+  `prove_core_prove_values_ms = 4686.306874999999`,
+  `prove_core_composition_generation_ms = 3729.947666`,
+  `trace_generation_ms = 1691.5720410000001`, and
+  `trace_commit_merkle_ms = 214.14654099999998`
 - the standalone Metal benchmark fixture now enables the `parallel` proving
   surface, and the first measured parallel row reported `threads = 14`
 - compared with the current `log_n_instances = 20` reference rows, the
-  support-honest Metal benchmark is still about `32.8x` slower than SIMD
+  support-honest Metal benchmark is still about `7.8x` slower than SIMD
   (`1390 ms`) and far from the historical GPU row (`87 ms`)
 
 The next required T8 boundary is:
@@ -276,8 +279,8 @@ The next required T8 boundary is:
   carries benchmark-active work
 - reduce the dominant measured prove stages in the end-to-end
   `wide_fibonacci_prove_verify_v1` row
-- make the next benchmark-facing structural win the native point-evaluation
-  lane above PCS, because host readback consolidation has now plateaued
-  relative to the remaining prove-values cost
+- make the next benchmark-facing structural win the PCS prove-values path
+  above the now-native point-evaluation lane, while keeping the host-owned
+  commitment/hash path explicit and measured
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

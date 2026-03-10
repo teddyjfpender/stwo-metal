@@ -64,9 +64,9 @@ This benchmark target is a planning objective, not a correctness gate, not the
 architecture source of truth, and not the only support claim for `stwo-metal`.
 The row now executes end to end through `MetalBackend` on Apple Silicon, but
 its current measured result is still far from the target:
-`wide_fibonacci_prove_verify_v1 = 43262.562624 ms` at `log_n_instances = 20`,
-`n_columns = 100`, `STWO_METAL_MODE=metal-dev`, `warmups = 0`, and
-`samples = 1`, with `threads = 14`.
+`wide_fibonacci_prove_verify_v1 = 10900.002875 ms` at `log_n_instances = 20`,
+`n_columns = 100`, `cargo_profile = release`, `STWO_METAL_MODE=metal-prod`,
+`warmups = 0`, and `samples = 1`, with `threads = 14`.
 
 ## Example-backed acceptance focus
 

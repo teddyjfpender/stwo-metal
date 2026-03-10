@@ -4,8 +4,8 @@ use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::fields::FieldExpOps;
 use stwo_metal::{
-    accumulate_wide_fibonacci_quotients, metal_runtime_support, MetalRuntimeSupport,
-    MetalWideFibonacciQuotientError, MetalWideFibonacciQuotientRequest,
+    accumulate_wide_fibonacci_quotients, metal_runtime_support, MetalBaseFieldVec,
+    MetalRuntimeSupport, MetalWideFibonacciQuotientError, MetalWideFibonacciQuotientRequest,
 };
 
 fn cpu_wide_fibonacci_quotients(
@@ -37,7 +37,10 @@ fn quotient_request_validates_shape() {
     let trace0 = vec![BaseField::from_u32_unchecked(1); 8];
     let trace1 = vec![BaseField::from_u32_unchecked(2); 8];
     let trace2 = vec![BaseField::from_u32_unchecked(3); 4];
-    let refs = vec![trace0.as_slice(), trace1.as_slice(), trace2.as_slice()];
+    let trace0 = MetalBaseFieldVec::from_vec(trace0);
+    let trace1 = MetalBaseFieldVec::from_vec(trace1);
+    let trace2 = MetalBaseFieldVec::from_vec(trace2);
+    let refs = vec![&trace0, &trace1, &trace2];
 
     let error = accumulate_wide_fibonacci_quotients(MetalWideFibonacciQuotientRequest {
         trace_evaluations: &refs,
@@ -92,6 +95,18 @@ fn native_wide_fibonacci_quotients_match_cpu_oracle() {
         trace3.as_slice(),
         trace4.as_slice(),
     ];
+    let metal_trace0 = MetalBaseFieldVec::from_vec(trace0.clone());
+    let metal_trace1 = MetalBaseFieldVec::from_vec(trace1.clone());
+    let metal_trace2 = MetalBaseFieldVec::from_vec(trace2.clone());
+    let metal_trace3 = MetalBaseFieldVec::from_vec(trace3.clone());
+    let metal_trace4 = MetalBaseFieldVec::from_vec(trace4.clone());
+    let metal_trace_refs = vec![
+        &metal_trace0,
+        &metal_trace1,
+        &metal_trace2,
+        &metal_trace3,
+        &metal_trace4,
+    ];
     let random_coeff_powers = vec![
         SecureField::from_u32_unchecked(3, 5, 7, 11),
         SecureField::from_u32_unchecked(13, 17, 19, 23),
@@ -103,7 +118,7 @@ fn native_wide_fibonacci_quotients_match_cpu_oracle() {
     ];
 
     let native = accumulate_wide_fibonacci_quotients(MetalWideFibonacciQuotientRequest {
-        trace_evaluations: &trace_refs,
+        trace_evaluations: &metal_trace_refs,
         random_coeff_powers: &random_coeff_powers,
         denominator_inverses: &denominator_inverses,
         domain_log_size,

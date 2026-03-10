@@ -251,6 +251,7 @@ Supported values:
 - `no-metal`
 - `metal-dev`
 - `metal-ci`
+- `metal-prod`
 
 Default behavior:
 
@@ -282,6 +283,14 @@ Default behavior:
 - the build fails closed if the Apple Metal toolchain is unavailable.
 - the CI lane must run the deterministic bounded Metal parity tests declared for
   the implemented surface.
+
+`metal-prod`:
+
+- `.metal` compilation is required.
+- non-plan benchmark measurements are expected to use `metal-prod` together
+  with a release Rust profile.
+- arithmetic compilation settings remain explicit and correctness-oriented
+  rather than enabling unchecked fast-math behavior.
 
 ## Proposed runtime boundary
 
@@ -332,7 +341,7 @@ Rules:
 Build-time compilation is owned by
 [`crates/stwo-metal-sys/build.rs`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/crates/stwo-metal-sys/build.rs).
 
-For `metal-dev` and `metal-ci` on supported hosts:
+For `metal-dev`, `metal-ci`, and `metal-prod` on supported hosts:
 
 1. Discover Apple’s Metal tools through `xcrun`.
 2. Compile each `.metal` source file to `.air` using:

@@ -66,6 +66,7 @@ enum MetalMode {
     NoMetal,
     MetalDev,
     MetalCi,
+    MetalProd,
 }
 
 impl MetalMode {
@@ -75,8 +76,9 @@ impl MetalMode {
                 "no-metal" => Self::NoMetal,
                 "metal-dev" => Self::MetalDev,
                 "metal-ci" => Self::MetalCi,
+                "metal-prod" => Self::MetalProd,
                 other => panic!(
-                    "Unsupported {METAL_MODE_VAR} value '{other}'. Supported values: no-metal, metal-dev, metal-ci."
+                    "Unsupported {METAL_MODE_VAR} value '{other}'. Supported values: no-metal, metal-dev, metal-ci, metal-prod."
                 ),
             },
             Err(_) => Self::default_for_host(),
@@ -96,6 +98,7 @@ impl MetalMode {
             Self::NoMetal => "no-metal",
             Self::MetalDev => "metal-dev",
             Self::MetalCi => "metal-ci",
+            Self::MetalProd => "metal-prod",
         }
     }
 }
@@ -209,16 +212,8 @@ fn build_metal_support(mode: MetalMode) {
         .iter()
         .map(|source| {
             let air_path = out_dir.join(format!("{source}.air"));
-            run_command(
-                Command::new("xcrun")
-                    .arg("metal")
-                    .arg("-c")
-                    .arg(format!("metal/{source}.metal"))
-                    .arg("-o")
-                    .arg(&air_path),
-                "compile Metal kernels",
-                mode,
-            );
+            let mut command = metal_compile_command(source, &air_path, mode);
+            run_command(&mut command, "compile Metal kernels", mode);
             air_path
         })
         .collect();
@@ -265,8 +260,29 @@ fn run_command(command: &mut Command, action: &str, mode: MetalMode) {
         MetalMode::MetalDev => {
             panic!("Failed to {action} in dev mode.\n{detail}");
         }
+        MetalMode::MetalProd => {
+            panic!("Failed to {action} in production mode.\n{detail}");
+        }
         MetalMode::NoMetal => unreachable!("command runner is not used in no-metal mode"),
     }
+}
+
+fn metal_compile_command(source: &str, air_path: &Path, mode: MetalMode) -> Command {
+    let mut command = Command::new("xcrun");
+    command.arg("metal").arg("-c");
+
+    if mode == MetalMode::MetalProd {
+        // Production mode keeps arithmetic semantics explicit and stable.
+        command
+            .arg("-fmetal-math-mode=safe")
+            .arg("-fmetal-math-fp32-functions=precise");
+    }
+
+    command
+        .arg(format!("metal/{source}.metal"))
+        .arg("-o")
+        .arg(air_path);
+    command
 }
 
 fn write_metal_autogen_stub() {

@@ -16,11 +16,12 @@ use stwo_metal_sys::metal::{MetalError, U32Buffer};
 
 use super::accumulation::metal_secure_column_from_values;
 use super::MetalBackend;
+use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MetalWideFibonacciQuotientRequest<'a> {
-    pub trace_evaluations: &'a [&'a [BaseField]],
+    pub trace_evaluations: &'a [&'a BaseFieldVec],
     pub random_coeff_powers: &'a [SecureField],
     pub denominator_inverses: &'a [BaseField],
     pub domain_log_size: u32,
@@ -188,15 +189,15 @@ pub fn accumulate_wide_fibonacci_quotients(
         });
     }
 
-    let mut trace_values = Vec::with_capacity(
+    let mut trace_values = U32Buffer::uninitialized(
         request
             .trace_evaluations
             .len()
             .checked_mul(eval_domain_size)
             .unwrap(),
-    );
-    for column in request.trace_evaluations {
-        trace_values.extend(column.iter().map(|value| value.0));
+    )?;
+    for (column_index, column) in request.trace_evaluations.iter().enumerate() {
+        trace_values.copy_from_offset(&column.buffer, column_index * eval_domain_size)?;
     }
     let random_coeff_powers = request
         .random_coeff_powers
@@ -208,8 +209,6 @@ pub fn accumulate_wide_fibonacci_quotients(
         .iter()
         .map(|value| value.0)
         .collect::<Vec<_>>();
-
-    let trace_values = U32Buffer::from_slice(&trace_values)?;
     let random_coeff_powers = U32Buffer::from_slice(&random_coeff_powers)?;
     let denominator_inverses = U32Buffer::from_slice(&denominator_inverses)?;
     let values = U32Buffer::accumulate_wide_fibonacci_quotients(
@@ -236,7 +235,7 @@ impl QuotientOps for MetalBackend {
         let size = columns[0].len();
         let host_columns = columns
             .iter()
-            .map(|column| column.values.to_vec())
+            .map(|column| column.values.host_slice())
             .collect_vec();
         let quotient_constants = quotient_constants(sample_batches);
 

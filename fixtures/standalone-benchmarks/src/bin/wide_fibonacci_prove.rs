@@ -49,8 +49,8 @@ use stwo_metal::{
     MetalWideFibonacciTrace,
 };
 use stwo_metal_standalone_benchmarks::support::{
-    env_flag, env_or, env_u32, env_usize, epoch_ms, required_env_path, runner_metadata,
-    write_json, RunnerMetadata, SummaryStats,
+    enforce_metal_benchmark_contract, env_flag, env_or, env_u32, env_usize, epoch_ms,
+    required_env_path, runner_metadata, write_json, RunnerMetadata, SummaryStats,
 };
 #[cfg(feature = "metal-runtime")]
 use stwo_metal_standalone_benchmarks::support::summarize;
@@ -185,6 +185,7 @@ fn main() {
     let started_at = epoch_ms();
 
     let runner = runner_metadata();
+    enforce_metal_benchmark_contract(BENCHMARK_ID, plan_only, &runner);
     let workload = WorkloadMetadata {
         family: "wide_fibonacci".to_string(),
         channel: "blake2s".to_string(),
@@ -234,10 +235,6 @@ fn main() {
 
         #[cfg(feature = "metal-runtime")]
         {
-            if runner.stwo_metal_mode == "no-metal" {
-                panic!("wide_fibonacci_prove benchmark cannot run with STWO_METAL_MODE=no-metal because trace generation now enters through the native Metal path");
-            }
-
             let input_len = instances as usize;
             let input_a_host = vec![BaseField::from(1u32); input_len];
             let input_b_host = (0..input_len)
@@ -509,13 +506,9 @@ impl ComponentProver<MetalBackend> for WideFibonacciBenchmarkComponent {
                 }
             })
             .collect::<Vec<_>>();
-        let trace1_evaluations = trace_evaluations
+        let trace1_evaluation_refs = trace_evaluations
             .iter()
-            .map(|column| column.values.to_vec())
-            .collect::<Vec<_>>();
-        let trace1_evaluation_refs = trace1_evaluations
-            .iter()
-            .map(|column| column.as_slice())
+            .map(|column| &column.values)
             .collect::<Vec<_>>();
 
         let log_expand = eval_domain.log_size() - trace_domain.log_size();

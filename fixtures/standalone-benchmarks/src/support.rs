@@ -12,6 +12,7 @@ pub struct RunnerMetadata {
     pub hostname: String,
     pub os: String,
     pub arch: String,
+    pub cargo_profile: String,
     pub cpu: String,
     pub threads: usize,
     pub gpu_name: String,
@@ -70,6 +71,14 @@ pub fn epoch_ms() -> u128 {
         .as_millis()
 }
 
+pub fn cargo_profile() -> &'static str {
+    if cfg!(debug_assertions) {
+        "dev"
+    } else {
+        "release"
+    }
+}
+
 pub fn runner_metadata() -> RunnerMetadata {
     let default_threads = std::thread::available_parallelism()
         .map(|parallelism| parallelism.get())
@@ -79,6 +88,7 @@ pub fn runner_metadata() -> RunnerMetadata {
         hostname: env_or("STWO_BENCH_HOSTNAME", "unknown"),
         os: env_or("STWO_BENCH_OS", env::consts::OS),
         arch: env_or("STWO_BENCH_ARCH", env::consts::ARCH),
+        cargo_profile: cargo_profile().to_string(),
         cpu: env_or("STWO_BENCH_CPU", "unknown"),
         threads: env_usize("STWO_BENCH_THREADS", default_threads),
         gpu_name: env_or("STWO_BENCH_GPU_NAME", "unknown"),
@@ -86,6 +96,32 @@ pub fn runner_metadata() -> RunnerMetadata {
         cuda_toolkit: env_or("STWO_BENCH_CUDA_TOOLKIT", "unknown"),
         stwo_cuda_mode: env_or("STWO_CUDA_MODE", "no-cuda"),
         stwo_metal_mode: env_or("STWO_METAL_MODE", "no-metal"),
+    }
+}
+
+pub fn enforce_metal_benchmark_contract(
+    benchmark_id: &str,
+    plan_only: bool,
+    runner: &RunnerMetadata,
+) {
+    if plan_only {
+        return;
+    }
+
+    if cargo_profile() != "release" && !env_flag("STWO_BENCH_ALLOW_NON_RELEASE") {
+        panic!(
+            "{benchmark_id} requires a release build profile for non-plan execution. Re-run with `cargo run --release ...` or set STWO_BENCH_ALLOW_NON_RELEASE=1 to override."
+        );
+    }
+
+    if runner.stwo_metal_mode == "metal-dev" && !env_flag("STWO_BENCH_ALLOW_DEV_METAL") {
+        panic!(
+            "{benchmark_id} requires STWO_METAL_MODE=metal-prod for non-plan benchmark measurements. Set STWO_METAL_MODE=metal-prod or STWO_BENCH_ALLOW_DEV_METAL=1 to override."
+        );
+    }
+
+    if runner.stwo_metal_mode == "no-metal" {
+        panic!("{benchmark_id} cannot run with STWO_METAL_MODE=no-metal.");
     }
 }
 

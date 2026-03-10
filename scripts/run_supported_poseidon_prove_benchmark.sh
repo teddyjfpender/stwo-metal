@@ -22,7 +22,7 @@ if [ "$plan_only" != "1" ] && [ "$mode" = "no-cuda" ]; then
     exit 1
 fi
 
-if [ "${STWO_BENCH_SKIP_PREFLIGHT:-0}" != "1" ]; then
+if [ "$plan_only" != "1" ] && [ "${STWO_BENCH_SKIP_PREFLIGHT:-0}" != "1" ]; then
     env STWO_CUDA_MODE=no-cuda sh scripts/run_standalone_pinned_validation.sh
 fi
 
