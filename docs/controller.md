@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 fourteenth slice: reuse the reduced execution-law surface across the
-  remaining live staging helpers before lowering it further`
+  `G5 fifteenth slice: finish moving workload-side execution-law checks onto
+  the reduced authority contract, then decide the next lower private seam`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -63,7 +63,8 @@ Invariants:
   evaluation, quotient, and prove-values staging helpers, but the shared
   prove-values bridge and the acceptance and benchmark witness lanes now anchor
   themselves on a transitional public `MetalExecutionAuthority` surface instead
-  of directly on a lower private generated execution contract
+  of directly on a lower private generated execution contract, and workload-side
+  hybrid-FRI and witness staging checks now do the same
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -84,8 +85,9 @@ Invariants:
 
 ## Next three deliverables
 
-1. Lower the remaining workload-side helper checks that only need plan and
-   stage law off `MetalWorkloadBoundary` and onto `MetalExecutionAuthority`.
+1. Decide which remaining live staging helper should be the first to consume a
+   lower private generated contract instead of the transitional public
+   `MetalExecutionAuthority`.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate

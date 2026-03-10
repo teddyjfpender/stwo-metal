@@ -18,22 +18,26 @@ fn fibonacci_boundary_is_explicitly_hybrid() {
         "fibonacci_example",
     )
     .unwrap();
+    let execution_authority = boundary.execution_authority();
 
-    assert_eq!(boundary.plan(), MetalExecutionPlan::MetalFriHybrid);
     assert_eq!(
-        boundary.stage_ownership(MetalWorkloadStage::WitnessMain),
+        execution_authority.plan(),
+        MetalExecutionPlan::MetalFriHybrid
+    );
+    assert_eq!(
+        execution_authority.stage_ownership(MetalWorkloadStage::WitnessMain),
         Some(MetalWorkloadOwnership::CpuOwned)
     );
     assert_eq!(
-        boundary.stage_ownership(MetalWorkloadStage::QuotientEval),
+        execution_authority.stage_ownership(MetalWorkloadStage::QuotientEval),
         Some(MetalWorkloadOwnership::CpuOwned)
     );
     assert_eq!(
-        boundary.stage_ownership(MetalWorkloadStage::PcsCommitment),
+        execution_authority.stage_ownership(MetalWorkloadStage::PcsCommitment),
         Some(MetalWorkloadOwnership::CpuOwned)
     );
     assert_eq!(
-        boundary.stage_ownership(MetalWorkloadStage::FriBlake2s),
+        execution_authority.stage_ownership(MetalWorkloadStage::FriBlake2s),
         Some(MetalWorkloadOwnership::MetalNative)
     );
 }
@@ -47,7 +51,9 @@ fn poseidon_boundary_keeps_interaction_trace_explicitly_cpu_owned() {
     .unwrap();
 
     assert_eq!(
-        boundary.stage_ownership(MetalWorkloadStage::WitnessInteraction),
+        boundary
+            .execution_authority()
+            .stage_ownership(MetalWorkloadStage::WitnessInteraction),
         Some(MetalWorkloadOwnership::CpuOwned)
     );
 }

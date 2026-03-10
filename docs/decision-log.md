@@ -28,6 +28,46 @@ Superseded by:
 
 ## Entries
 
+### DEC-0098: Workload declarations and witness staging must obey the same reduced execution-law surface once benchmark and acceptance lanes do
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+After `MetalExecutionAuthority` is reused in benchmark and acceptance lanes,
+the remaining workload-side helper checks that only need plan and stage law
+must also move onto that same reduced contract before G5 lowers further.
+
+Context:
+
+The thirteenth G5 slice proved that benchmark prove-values, acceptance lane
+validation, and benchmark witness staging could all share the same reduced
+execution-law surface. Leaving workload declarations and witness staging on
+`MetalWorkloadBoundary` after that would reintroduce a second default law
+owner for execution capability checks.
+
+Alternatives rejected:
+
+- keep workload declaration checks on `MetalWorkloadBoundary`
+- let witness staging be the one remaining place where workload boundaries own
+  execution law
+- jump below the public authority before workload code is aligned with it
+
+Impact:
+
+- workload-side hybrid-FRI declaration and witness staging now share the same
+  reduced execution-law surface as benchmark and acceptance lanes
+- the next honest G5 slice is choosing the first live helper that moves below
+  the transitional public authority onto the next lower private contract
+
+Superseded by:
+
+- none
+
 ### DEC-0097: The reduced execution-law surface must be shared across benchmark and acceptance lanes before further lowering
 
 - Date: `2026-03-10`

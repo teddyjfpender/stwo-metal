@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 fourteenth slice: reuse the reduced execution-law surface across the
-remaining live staging helpers before lowering it further`
+`G5 fifteenth slice: finish moving workload-side execution-law checks onto the
+reduced authority contract, then decide the next lower private seam`
 
 The active formal basis is:
 
@@ -236,6 +236,16 @@ The thirteenth G5 slice is now landed:
   it directly
 - the next honest G5 work is lowering the remaining workload-side helper
   checks that only need plan and stage law off `MetalWorkloadBoundary`
+
+The fourteenth G5 slice is now landed:
+
+- workload-side hybrid-FRI declaration checks now consume authority-shaped
+  helpers instead of treating `MetalWorkloadBoundary` as the live execution-law
+  owner
+- the wide-fibonacci witness handoff now checks CPU witness ownership through
+  the same reduced execution-authority contract
+- the next honest G5 work is deciding which live helper moves below the
+  transitional public authority and onto the next lower private generated seam
 
 ## G2 progress snapshot
 

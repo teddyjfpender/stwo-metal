@@ -25,6 +25,40 @@ pub struct MetalWorkloadBoundary {
     execution_seed: RegisteredMetalExecutionSeed,
 }
 
+fn require_cpu_owned_witness_main(
+    workload_name: &'static str,
+    execution_authority: MetalExecutionAuthority,
+) -> Result<(), MetalWorkloadHandoffError<'static>> {
+    if execution_authority.stage_ownership(MetalWorkloadStage::WitnessMain)
+        != Some(MetalWorkloadOwnership::CpuOwned)
+    {
+        return Err(MetalWorkloadHandoffError::UnsupportedCpuOwnership {
+            workload_name,
+            stage: MetalWorkloadStage::WitnessMain,
+        });
+    }
+
+    Ok(())
+}
+
+fn assert_hybrid_fri_execution_authority(
+    workload_name: &'static str,
+    execution_authority: MetalExecutionAuthority,
+) {
+    assert!(
+        matches!(
+            execution_authority.plan(),
+            MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull
+        ),
+        "hybrid FRI workload declaration for {workload_name} requires a Metal-capable execution authority"
+    );
+    assert_eq!(
+        execution_authority.stage_ownership(MetalWorkloadStage::FriBlake2s),
+        Some(MetalWorkloadOwnership::MetalNative),
+        "declared hybrid FRI workload for {workload_name} must keep the FRI stage on the Metal lane"
+    );
+}
+
 impl MetalWorkloadBoundary {
     fn map_execution_seed_error(
         &self,
@@ -123,14 +157,7 @@ impl MetalWorkloadBoundary {
                 workload_name: self.workload_name,
             });
         }
-        if self.stage_ownership(MetalWorkloadStage::WitnessMain)
-            != Some(MetalWorkloadOwnership::CpuOwned)
-        {
-            return Err(MetalWorkloadHandoffError::UnsupportedCpuOwnership {
-                workload_name: self.workload_name,
-                stage: MetalWorkloadStage::WitnessMain,
-            });
-        }
+        require_cpu_owned_witness_main(self.workload_name, self.execution_authority())?;
         if input_a.len() != input_b.len() {
             return Err(MetalWorkloadHandoffError::WitnessInputLengthMismatch {
                 workload_name: self.workload_name,
@@ -358,19 +385,7 @@ pub fn declare_exemplar_hybrid_fri_workload(
     config: FriConfig,
 ) -> Result<MetalHybridFriWorkload, MetalPlannerError<'static>> {
     let boundary = declare_exemplar_metal_workload_boundary(intent, workload_name)?;
-
-    assert!(
-        matches!(
-            boundary.plan(),
-            MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull
-        ),
-        "hybrid FRI workload declaration requires a Metal-capable workload boundary"
-    );
-    assert_eq!(
-        boundary.stage_ownership(MetalWorkloadStage::FriBlake2s),
-        Some(MetalWorkloadOwnership::MetalNative),
-        "declared hybrid FRI workload must keep the FRI stage on the Metal lane"
-    );
+    assert_hybrid_fri_execution_authority(workload_name, boundary.execution_authority());
 
     Ok(MetalHybridFriWorkload {
         boundary,

@@ -162,6 +162,8 @@ The next active work is:
   helper before deciding whether it remains public beyond G5
 - lower the remaining workload-side helpers that only need execution law so
   `MetalWorkloadBoundary` stops being the default live staging authority
+- pick the first live helper that can move below the transitional public
+  authority and onto the next lower private generated contract
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

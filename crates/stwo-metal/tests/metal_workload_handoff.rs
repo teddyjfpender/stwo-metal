@@ -57,12 +57,16 @@ fn cpu_owned_fri_ready_handoff_preserves_domain_and_plan() {
         "fibonacci_example",
     )
     .unwrap();
+    let execution_authority = boundary.execution_authority();
 
     let input = boundary
         .ingest_cpu_fri_ready_evaluation(&evaluation)
         .unwrap();
 
-    assert_eq!(boundary.plan(), MetalExecutionPlan::MetalFriHybrid);
+    assert_eq!(
+        execution_authority.plan(),
+        MetalExecutionPlan::MetalFriHybrid
+    );
     assert_eq!(input.workload_name(), "fibonacci_example");
     assert_eq!(input.domain(), evaluation.domain);
     assert_eq!(input.column().to_vec(), evaluation.values.to_vec());
@@ -76,12 +80,16 @@ fn cpu_owned_quotient_handoff_preserves_domain_and_plan() {
         "fibonacci_example",
     )
     .unwrap();
+    let execution_authority = boundary.execution_authority();
 
     let input = boundary
         .ingest_cpu_quotient_evaluation(&quotient_evaluation)
         .unwrap();
 
-    assert_eq!(boundary.plan(), MetalExecutionPlan::MetalFriHybrid);
+    assert_eq!(
+        execution_authority.plan(),
+        MetalExecutionPlan::MetalFriHybrid
+    );
     assert_eq!(input.workload_name(), "fibonacci_example");
     assert_eq!(input.domain(), quotient_evaluation.domain);
     assert_eq!(
@@ -97,6 +105,7 @@ fn cpu_owned_wide_fibonacci_witness_handoff_preserves_inputs_and_plan() {
         "fibonacci_example",
     )
     .unwrap();
+    let execution_authority = boundary.execution_authority();
     let input_len = 1usize << 6;
     let input_a = vec![BaseField::from_u32_unchecked(1); input_len];
     let input_b = (0..input_len)
@@ -107,7 +116,10 @@ fn cpu_owned_wide_fibonacci_witness_handoff_preserves_inputs_and_plan() {
         .ingest_cpu_wide_fibonacci_witness(&input_a, &input_b, 8)
         .unwrap();
 
-    assert_eq!(boundary.plan(), MetalExecutionPlan::MetalFriHybrid);
+    assert_eq!(
+        execution_authority.plan(),
+        MetalExecutionPlan::MetalFriHybrid
+    );
     assert_eq!(input.workload_name(), "fibonacci_example");
     assert_eq!(input.log_n_instances(), 6);
     assert_eq!(input.n_columns(), 8);
