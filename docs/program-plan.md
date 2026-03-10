@@ -101,6 +101,8 @@ The first G2 slice is now landed:
   family and operation metadata
 - workload-stage ownership metadata now lives in shared contract types and the
   generated registration manifest rather than in a second workload-local table
+- per-component generated inventory now records registration key, ABI family,
+  build inventory, and witness hooks through the same registry seam
 
 ## Foundation already available
 

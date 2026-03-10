@@ -42,10 +42,11 @@ the required proving artifact fields, fail-closed behavior, and separation
 between generic, generated, and temporary acceptance-only paths. A first
 private registry and execution-plan seam now exists in code, and declared
 benchmark boundaries now read workload family and benchmark-operation metadata
-from that same seam. Workload-stage ownership metadata now lives there too. The
-contract still only covers a limited planner-manifest subset and the
-prove-planning path; it is not yet the finished shared boundary for the broader
-backend.
+from that same seam. Workload-stage ownership metadata now lives there too, and
+per-component generated inventory now records registration key, ABI family,
+build inventory, and witness hooks through that same boundary. The contract
+still only covers a limited planner-manifest subset and the prove-planning
+path; it is not yet the finished shared boundary for the broader backend.
 
 Current containment:
 
@@ -59,8 +60,9 @@ Current containment:
 Risk if left in place:
 
 The project could now overstate the progress of the contract implementation:
-the seam exists, but if it is not widened and adopted broadly, the backend
-could drift back into mixed planning paths.
+the seam exists and carries richer metadata, but if broader operation
+compatibility and unsupported generated-operation behavior do not move onto the
+same boundary, the backend could drift back into mixed planning paths.
 
 Exit condition:
 

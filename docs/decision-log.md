@@ -28,6 +28,51 @@ Superseded by:
 
 ## Entries
 
+### DEC-0072: Generated inventory must be recorded per component, not as one shared registry blob
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The private Metal artifact registry now records generated inventory on each
+registered component artifact rather than as one shared registry-wide blob:
+
+- registration key
+- ABI family
+- build-module inventory
+- optional witness hook
+
+Context:
+
+Earlier G2 slices had already unified planner routing, benchmark identity, and
+workload-stage ownership under one contract seam. The next honest gap was that
+generated fast-path inventory still effectively behaved like shared registry
+metadata, which is too weak for the codegen contract frozen in `dn-0002`.
+Moving that inventory onto each component keeps the boundary truthful without
+widening the public API.
+
+Alternatives rejected:
+
+- keep generated inventory as one shared registry-level structure
+- defer per-component inventory until full generated fast-path lowering
+- expose generated inventory publicly before the private seam is stable
+
+Impact:
+
+- component artifacts now carry richer generated metadata through the same
+  private boundary as planning and workload declarations
+- the next honest G2 gap is broader operation compatibility and fail-closed
+  unsupported generated-operation behavior, not per-component generated
+  identity
+
+Superseded by:
+
+- none
+
 ### DEC-0071: Workload-stage ownership metadata must live in shared contract data, not a workload-local table
 
 - Date: `2026-03-10`

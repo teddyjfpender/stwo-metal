@@ -2,7 +2,7 @@ use super::planner::{
     MetalComponentCapability, MetalComponentPlanInput, MetalOperationKind, MetalSupportTier,
 };
 use super::planner_manifest_v1_generated::{
-    GeneratedMetalPlannerComponent, STWO_METAL_PLANNER_COMPONENTS_V1,
+    GeneratedMetalInventoryEntry, GeneratedMetalPlannerComponent, STWO_METAL_PLANNER_COMPONENTS_V1,
 };
 use super::workload_contract::MetalWorkloadStageAssignment;
 
@@ -20,6 +20,10 @@ pub struct MetalGeneratedInventory {
     pub manifest_module: &'static str,
     pub manifest_lookup_fn: &'static str,
     pub manifest_version: u16,
+    pub registration_key: &'static str,
+    pub abi_family: &'static str,
+    pub build_modules: &'static [&'static str],
+    pub witness_hook: Option<&'static str>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -72,7 +76,6 @@ pub enum MetalArtifactLookupError<'a> {
 pub struct MetalArtifactRegistry {
     schema_version: u16,
     producer: MetalProducerIdentity,
-    generated_inventory: MetalGeneratedInventory,
     artifacts: &'static [GeneratedMetalPlannerComponent],
 }
 
@@ -82,11 +85,6 @@ pub const STWO_METAL_ARTIFACT_REGISTRY_V1: MetalArtifactRegistry = MetalArtifact
         producer_name: "stwo-metal",
         producer_version: "planner-manifest-v1",
         provenance: "crates/stwo-metal/src/backend/metal/planner_manifest_v1_generated.rs",
-    },
-    generated_inventory: MetalGeneratedInventory {
-        manifest_module: "planner_manifest_v1_generated",
-        manifest_lookup_fn: "planner_component_by_name",
-        manifest_version: 1,
     },
     artifacts: STWO_METAL_PLANNER_COMPONENTS_V1,
 };
@@ -148,7 +146,22 @@ impl MetalArtifactRegistry {
             required_prove_capabilities: component.required_prove_capabilities,
             supported_benchmark_operations: component.supported_benchmark_operations,
             stage_assignments: component.stage_assignments,
-            generated_inventory: self.generated_inventory,
+            generated_inventory: self.generated_inventory(component.generated_inventory),
+        }
+    }
+
+    fn generated_inventory(
+        &self,
+        entry: GeneratedMetalInventoryEntry,
+    ) -> MetalGeneratedInventory {
+        MetalGeneratedInventory {
+            manifest_module: "planner_manifest_v1_generated",
+            manifest_lookup_fn: "STWO_METAL_PLANNER_COMPONENTS_V1.iter().find",
+            manifest_version: 1,
+            registration_key: entry.registration_key,
+            abi_family: entry.abi_family,
+            build_modules: entry.build_modules,
+            witness_hook: entry.witness_hook,
         }
     }
 }
@@ -207,5 +220,16 @@ mod tests {
             ]
         );
         assert_eq!(artifact.stage_assignments.len(), 5);
+        assert_eq!(artifact.generated_inventory.registration_key, "fibonacci_example");
+        assert_eq!(artifact.generated_inventory.abi_family, "wide_fibonacci");
+        assert_eq!(
+            artifact.generated_inventory.manifest_lookup_fn,
+            "STWO_METAL_PLANNER_COMPONENTS_V1.iter().find"
+        );
+        assert!(artifact.generated_inventory.build_modules.contains(&"fri"));
+        assert_eq!(
+            artifact.generated_inventory.witness_hook,
+            Some("ingest_cpu_wide_fibonacci_witness")
+        );
     }
 }

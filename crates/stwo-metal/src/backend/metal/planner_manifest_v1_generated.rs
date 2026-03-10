@@ -4,6 +4,14 @@ use super::workload_contract::{
     MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
 };
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct GeneratedMetalInventoryEntry {
+    pub registration_key: &'static str,
+    pub abi_family: &'static str,
+    pub build_modules: &'static [&'static str],
+    pub witness_hook: Option<&'static str>,
+}
+
 // Generated from the current bounded Metal workload declarations.
 // schema_version: 1
 // manifest_version: 1
@@ -17,6 +25,7 @@ pub struct GeneratedMetalPlannerComponent {
     pub required_prove_capabilities: &'static [MetalComponentCapability],
     pub supported_benchmark_operations: &'static [MetalRegisteredBenchmarkOperation],
     pub stage_assignments: &'static [MetalWorkloadStageAssignment],
+    pub generated_inventory: GeneratedMetalInventoryEntry,
 }
 
 const FIBONACCI_EXAMPLE_DECLARED_CAPABILITIES: &[MetalComponentCapability] =
@@ -46,6 +55,20 @@ const FIBONACCI_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS: &[MetalRegisteredBenchma
 ];
 
 const POSEIDON_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS: &[MetalRegisteredBenchmarkOperation] = &[];
+
+const FIBONACCI_EXAMPLE_BUILD_MODULES: &[&str] = &[
+    "planner_manifest_v1_generated",
+    "witness",
+    "quotient",
+    "fri",
+    "benchmark",
+];
+
+const POSEIDON_EXAMPLE_BUILD_MODULES: &[&str] = &[
+    "planner_manifest_v1_generated",
+    "fri",
+    "workload",
+];
 
 const FIBONACCI_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
     MetalWorkloadStageAssignment {
@@ -112,6 +135,12 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
         required_prove_capabilities: FIBONACCI_EXAMPLE_REQUIRED_PROVE_CAPABILITIES,
         supported_benchmark_operations: FIBONACCI_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS,
         stage_assignments: FIBONACCI_EXAMPLE_STAGE_ASSIGNMENTS,
+        generated_inventory: GeneratedMetalInventoryEntry {
+            registration_key: "fibonacci_example",
+            abi_family: "wide_fibonacci",
+            build_modules: FIBONACCI_EXAMPLE_BUILD_MODULES,
+            witness_hook: Some("ingest_cpu_wide_fibonacci_witness"),
+        },
     },
     GeneratedMetalPlannerComponent {
         component_name: "poseidon_example",
@@ -121,5 +150,11 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
         required_prove_capabilities: POSEIDON_EXAMPLE_REQUIRED_PROVE_CAPABILITIES,
         supported_benchmark_operations: POSEIDON_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS,
         stage_assignments: POSEIDON_EXAMPLE_STAGE_ASSIGNMENTS,
+        generated_inventory: GeneratedMetalInventoryEntry {
+            registration_key: "poseidon_example",
+            abi_family: "poseidon",
+            build_modules: POSEIDON_EXAMPLE_BUILD_MODULES,
+            witness_hook: None,
+        },
     },
 ];

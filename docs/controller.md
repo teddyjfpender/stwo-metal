@@ -68,12 +68,15 @@ Invariants:
   generated contract instead of driving it
 - superseded milestone history has to stay out of the active control surface so
   the new sequence remains legible
+- per-component generated inventory now exists, but broader generated-operation
+  compatibility and fail-closed unsupported-operation behavior are not yet
+  routed through the same shared seam
 
 ## Next three deliverables
 
-1. Widen the artifact registry from the current planner-manifest subset to a
-   richer generated inventory boundary with explicit producer metadata and
-   broader operation coverage.
+1. Add broader generated-operation compatibility and fail-closed
+   unsupported-operation behavior to the shared registry and execution-plan
+   seam.
 2. Push more existing declaration surfaces through the execution-plan boundary
    so planner, workload, and benchmark routing share the same fail-closed seam.
 3. Keep acceptance-local adapters, bounded CPU fallbacks, and unsupported
