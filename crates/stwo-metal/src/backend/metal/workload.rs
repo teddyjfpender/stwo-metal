@@ -20,23 +20,51 @@ use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 #[derive(Clone, Debug)]
 pub struct MetalWorkloadBoundary {
     workload_name: &'static str,
-    plan: MetalExecutionPlan,
-    stage_assignments: &'static [MetalWorkloadStageAssignment],
     generated_inventory: MetalGeneratedInventory,
     execution_seed: RegisteredMetalExecutionSeed,
 }
 
 impl MetalWorkloadBoundary {
+    fn map_execution_seed_error(
+        &self,
+        error: super::execution_plan::RegisteredMetalExecutionSeedError,
+    ) -> MetalWorkloadHandoffError<'static> {
+        match error {
+            super::execution_plan::RegisteredMetalExecutionSeedError::PlanNotMetalCapable {
+                plan,
+                ..
+            } => MetalWorkloadHandoffError::PlanNotMetalCapable {
+                workload_name: self.workload_name,
+                plan,
+            },
+            super::execution_plan::RegisteredMetalExecutionSeedError::UnsupportedCpuOwnership {
+                stage,
+                ..
+            } => MetalWorkloadHandoffError::UnsupportedCpuOwnership {
+                workload_name: self.workload_name,
+                stage,
+            },
+            super::execution_plan::RegisteredMetalExecutionSeedError::NonCanonicDomain { .. } => {
+                MetalWorkloadHandoffError::NonCanonicDomain {
+                    workload_name: self.workload_name,
+                }
+            }
+            other => unreachable!(
+                "workload staging should only delegate to evaluation-handoff seed checks, got {other:?}"
+            ),
+        }
+    }
+
     pub fn workload_name(&self) -> &'static str {
         self.workload_name
     }
 
     pub fn plan(&self) -> MetalExecutionPlan {
-        self.plan
+        self.execution_seed.plan
     }
 
     pub fn stage_assignments(&self) -> &'static [MetalWorkloadStageAssignment] {
-        self.stage_assignments
+        self.execution_seed.stage_assignments
     }
 
     pub fn generated_inventory(&self) -> MetalGeneratedInventory {
@@ -44,30 +72,16 @@ impl MetalWorkloadBoundary {
     }
 
     pub fn stage_ownership(&self, stage: MetalWorkloadStage) -> Option<MetalWorkloadOwnership> {
-        self.stage_assignments
-            .iter()
-            .find(|assignment| assignment.stage == stage)
-            .map(|assignment| assignment.ownership)
+        self.execution_seed.stage_ownership(stage)
     }
 
     pub fn ingest_cpu_fri_ready_evaluation(
         &self,
         evaluation: &SecureEvaluation<CpuBackend, BitReversedOrder>,
     ) -> Result<MetalFriReadyEvaluationInput, MetalWorkloadHandoffError<'static>> {
-        if !matches!(
-            self.plan,
-            MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull
-        ) {
-            return Err(MetalWorkloadHandoffError::PlanNotMetalCapable {
-                workload_name: self.workload_name,
-                plan: self.plan,
-            });
-        }
-        if !evaluation.domain.is_canonic() {
-            return Err(MetalWorkloadHandoffError::NonCanonicDomain {
-                workload_name: self.workload_name,
-            });
-        }
+        self.execution_seed
+            .allow_cpu_fri_ready_evaluation(evaluation.domain)
+            .map_err(|error| self.map_execution_seed_error(error))?;
 
         Ok(MetalFriReadyEvaluationInput {
             workload_name: self.workload_name,
@@ -80,16 +94,9 @@ impl MetalWorkloadBoundary {
         &self,
         quotient_evaluation: &SecureEvaluation<CpuBackend, BitReversedOrder>,
     ) -> Result<MetalCpuQuotientEvaluationInput, MetalWorkloadHandoffError<'static>> {
-        if self.stage_ownership(MetalWorkloadStage::QuotientEval)
-            != Some(MetalWorkloadOwnership::CpuOwned)
-        {
-            return Err(MetalWorkloadHandoffError::UnsupportedCpuOwnership {
-                workload_name: self.workload_name,
-                stage: MetalWorkloadStage::QuotientEval,
-            });
-        }
-
-        let _ = self.ingest_cpu_fri_ready_evaluation(quotient_evaluation)?;
+        self.execution_seed
+            .allow_cpu_quotient_evaluation(quotient_evaluation.domain)
+            .map_err(|error| self.map_execution_seed_error(error))?;
 
         Ok(MetalCpuQuotientEvaluationInput {
             workload_name: self.workload_name,
@@ -332,8 +339,6 @@ pub fn declare_exemplar_metal_workload_boundary(
 
     Ok(MetalWorkloadBoundary {
         workload_name,
-        plan: boundary_input.plan,
-        stage_assignments: boundary_input.stage_assignments,
         generated_inventory: boundary_input.generated_inventory,
         execution_seed: binding.execution_seed(),
     })

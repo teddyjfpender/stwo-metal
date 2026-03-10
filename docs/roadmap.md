@@ -148,6 +148,8 @@ The next active work is:
   so runtime scheduling starts from one canonical seed
 - widen that same execution seed into the next quotient or evaluation staging
   helper instead of letting later runtime helpers rebuild route metadata
+- derive the first prove-values staging helper from that same canonical
+  generated seed or binding instead of recomposing PCS staging metadata
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

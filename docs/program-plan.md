@@ -66,9 +66,9 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 eighth slice: widen the shared execution seed from trace generation into
-the next staging helpers so quotient and evaluation lowering stop rebuilding
-route metadata piecemeal`
+`G5 ninth slice: derive the first prove-values staging helper from the
+canonical generated execution seed so PCS runtime lowering stops composing
+staging metadata locally`
 
 The active formal basis is:
 
@@ -176,6 +176,17 @@ The seventh G5 slice is now landed:
   workload and benchmark paths construct raw witness requests independently
 - the next honest G5 work is to widen that same seed into quotient and
   evaluation staging rather than reintroducing a second runtime metadata seam
+
+The eighth G5 slice is now landed:
+
+- CPU FRI-ready evaluation handoff and CPU quotient-evaluation handoff now
+  consume the same checked execution seed instead of rebuilding plan and stage
+  ownership checks locally
+- workload boundaries now treat the execution seed as the single source of
+  truth for plan and stage ownership rather than storing a parallel copy of
+  that runtime metadata
+- the next honest G5 work is the first prove-values staging helper above those
+  handoffs
 
 ## G2 progress snapshot
 

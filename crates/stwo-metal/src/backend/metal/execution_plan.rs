@@ -1,4 +1,5 @@
 use stwo::core::fields::m31::BaseField;
+use stwo::core::poly::circle::CircleDomain;
 
 use super::artifact::{
     MetalArtifactRegistry, MetalComponentArtifact, MetalGeneratedInventory,
@@ -16,7 +17,9 @@ use super::witness::{
     generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
     MetalWideFibonacciTraceRequest,
 };
-use super::workload_contract::MetalWorkloadStageAssignment;
+use super::workload_contract::{
+    MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
+};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RegisteredMetalExecutionPlan {
@@ -107,6 +110,17 @@ pub(crate) enum RegisteredMetalExecutionSeedError {
     MissingSpecializationKey {
         component_name: &'static str,
         missing_key: &'static str,
+    },
+    PlanNotMetalCapable {
+        component_name: &'static str,
+        plan: MetalExecutionPlan,
+    },
+    UnsupportedCpuOwnership {
+        component_name: &'static str,
+        stage: MetalWorkloadStage,
+    },
+    NonCanonicDomain {
+        component_name: &'static str,
     },
 }
 
@@ -255,6 +269,54 @@ impl RegisteredMetalExecutionBinding {
 }
 
 impl RegisteredMetalExecutionSeed {
+    pub(crate) fn stage_ownership(
+        self,
+        stage: MetalWorkloadStage,
+    ) -> Option<MetalWorkloadOwnership> {
+        self.stage_assignments
+            .iter()
+            .find(|assignment| assignment.stage == stage)
+            .map(|assignment| assignment.ownership)
+    }
+
+    pub fn allow_cpu_fri_ready_evaluation(
+        self,
+        domain: CircleDomain,
+    ) -> Result<(), RegisteredMetalExecutionSeedError> {
+        if !matches!(
+            self.plan,
+            MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull
+        ) {
+            return Err(RegisteredMetalExecutionSeedError::PlanNotMetalCapable {
+                component_name: self.component_name,
+                plan: self.plan,
+            });
+        }
+        if !domain.is_canonic() {
+            return Err(RegisteredMetalExecutionSeedError::NonCanonicDomain {
+                component_name: self.component_name,
+            });
+        }
+
+        Ok(())
+    }
+
+    pub fn allow_cpu_quotient_evaluation(
+        self,
+        domain: CircleDomain,
+    ) -> Result<(), RegisteredMetalExecutionSeedError> {
+        if self.stage_ownership(MetalWorkloadStage::QuotientEval)
+            != Some(MetalWorkloadOwnership::CpuOwned)
+        {
+            return Err(RegisteredMetalExecutionSeedError::UnsupportedCpuOwnership {
+                component_name: self.component_name,
+                stage: MetalWorkloadStage::QuotientEval,
+            });
+        }
+
+        self.allow_cpu_fri_ready_evaluation(domain)
+    }
+
     pub fn wide_fibonacci_trace_request<'a>(
         self,
         input_a: &'a [BaseField],
@@ -410,6 +472,7 @@ pub(crate) fn plan_registered_metal_operation<'a>(
 #[cfg(test)]
 mod tests {
     use stwo::core::fields::m31::BaseField;
+    use stwo::core::poly::circle::CanonicCoset;
 
     use super::{
         plan_registered_metal_component_prove, plan_registered_metal_prove,
@@ -702,6 +765,39 @@ mod tests {
                 component_name: "blake_example",
                 witness_hook: None,
             }
+        );
+    }
+
+    #[test]
+    fn registered_execution_seed_allows_canonic_cpu_handoffs_for_hybrid_fibonacci() {
+        let seed = registered_execution_seed(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+            MetalGeneratedRouteKind::WorkloadBoundary,
+        )
+        .unwrap();
+        let domain = CanonicCoset::new(5).circle_domain();
+
+        assert_eq!(seed.allow_cpu_fri_ready_evaluation(domain), Ok(()));
+        assert_eq!(seed.allow_cpu_quotient_evaluation(domain), Ok(()));
+    }
+
+    #[test]
+    fn registered_execution_seed_rejects_cpu_handoffs_for_cpu_only_plan() {
+        let seed = registered_execution_seed(
+            MetalExecutionIntent::ForceCpu,
+            "fibonacci_example",
+            MetalGeneratedRouteKind::WorkloadBoundary,
+        )
+        .unwrap();
+        let domain = CanonicCoset::new(5).circle_domain();
+
+        assert_eq!(
+            seed.allow_cpu_fri_ready_evaluation(domain),
+            Err(RegisteredMetalExecutionSeedError::PlanNotMetalCapable {
+                component_name: "fibonacci_example",
+                plan: MetalExecutionPlan::CpuOnly,
+            })
         );
     }
 }

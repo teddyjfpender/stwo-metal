@@ -28,6 +28,49 @@ Superseded by:
 
 ## Entries
 
+### DEC-0092: Execution seeds must own workload staging truth before PCS staging grows
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Before G5 widens into prove-values or PCS staging, the execution seed must own
+the existing workload staging laws for FRI-ready and quotient-evaluation
+handoff, and workload boundaries must stop carrying a parallel copy of the same
+runtime plan and stage metadata.
+
+Context:
+
+The seventh G5 slice proved that the execution seed could drive one live
+runtime helper for witness generation. The next immediate risk was allowing
+evaluation and quotient staging to keep their own local capability logic,
+which would recreate the split metadata problem at the next layer up. Folding
+those checks and the duplicated workload boundary state into the seed keeps the
+lowering path linear before PCS staging begins.
+
+Alternatives rejected:
+
+- let evaluation and quotient staging keep their own local plan and ownership
+  checks
+- start prove-values staging while workload boundaries still mirror execution
+  metadata locally
+- introduce a second staging-only metadata struct beside the execution seed
+
+Impact:
+
+- witness, evaluation, and quotient staging now share one generated runtime
+  authority
+- workload boundaries treat the execution seed as the runtime source of truth
+- the next honest G5 slice is the first PCS prove-values staging helper
+
+Superseded by:
+
+- none
+
 ### DEC-0091: The first live execution-seed helper must be shared before G5 widens into later staging
 
 - Date: `2026-03-10`
