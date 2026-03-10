@@ -28,6 +28,45 @@ Superseded by:
 
 ## Entries
 
+### DEC-0084: Generated lowering must start from one checked registration object rather than raw manifest fragments
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The first lowering-oriented G5 work must start from one checked generated
+registration object derived from the shared artifact registry. Lowering code
+may not reach back into raw manifest fragments or reconstruct inventory fields
+ad hoc.
+
+Context:
+
+By the end of G4, the registry carried explicit ABI symbols, build inventory,
+witness hooks, and specialization keys, and declarations already consumed that
+richer inventory. The next semantic risk was that lowering work would bypass
+that contract and start reading raw manifest state again. Introducing one
+checked registration object keeps generated lowering attached to the same seam.
+
+Alternatives rejected:
+
+- let lowering code read raw manifest rows directly
+- keep artifact, route, and inventory as separate loose values in lowering
+- delay the registration object until after G5 lowering had already widened
+
+Impact:
+
+- G4 now closes on a stable generated registration surface
+- G5 starts from one checked lowering-facing unit instead of manifest
+  reassembly
+
+Superseded by:
+
+- none
+
 ### DEC-0083: Workload and benchmark declarations must consume generated ABI and specialization inventory through the shared registry seam
 
 - Date: `2026-03-10`

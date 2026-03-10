@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G4 third slice: derive one lowering-facing generated registration object
-  from the shared registry without inventing side metadata surfaces`
+  `G5 first slice: lower one generated registration into a stable planning
+  input for the next runtime-facing execution-plan work`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -57,9 +57,9 @@ Invariants:
   private shared support boundary
 - there is not yet a declared policy for how generated output becomes durable
   and hand-tunable within this repository
-- generated inventory now names ABI symbols and specialization keys and is
-  consumed by workload and benchmark declarations, but lowering does not yet
-  consume one shared generated-registration object derived from that same seam
+- generated inventory now names ABI symbols and specialization keys, is
+  consumed by workload and benchmark declarations, and has one lowering-facing
+  registration object, but runtime-facing lowering has not started yet
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -80,12 +80,12 @@ Invariants:
 
 ## Next three deliverables
 
-1. Derive one lowering-facing generated registration object from the shared
-   registry so later lowering slices do not reach back into raw manifest data.
+1. Lower one generated registration into a stable planning input for the next
+   runtime-facing execution-plan work.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
-   generated registration surfaces widen.
+   G5 starts lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate
-   ownership while G4 builds the generated lane above it.
+   ownership while the generated lane grows above it.
 
 ## Explicitly not doing now
 

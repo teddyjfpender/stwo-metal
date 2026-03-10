@@ -119,8 +119,8 @@ The superseded `T0` through `T8` sequence now lives in:
 | G1 | Freeze the codegen input schema and fail-closed contract | `completed` | the required producer artifact, consumer subset, and unsupported-component behavior are specified |
 | G2 | Build the backend planning and registration surface | `completed` | `stwo-metal` owns a stable internal artifact-registry and execution-plan boundary with explicit schema compatibility checks |
 | G3 | Move acceptance coverage onto the stable generic path | `completed` | example-backed support no longer depends on architecture-local example shims where shared backend boundaries should exist |
-| G4 | Land the generated fast-path registration and ABI inventory | `in_progress` | generated artifacts can register component identity, ABI, build inventory, and specialization keys through a stable surface |
-| G5 | Lower generated artifacts into Metal runtime execution plans | `planned` | generated proving components drive Metal trace, evaluation, lookup, quotient, FRI, and commitment scheduling through the stable planning boundary |
+| G4 | Land the generated fast-path registration and ABI inventory | `completed` | generated artifacts can register component identity, ABI, build inventory, and specialization keys through a stable surface |
+| G5 | Lower generated artifacts into Metal runtime execution plans | `in_progress` | generated proving components drive Metal trace, evaluation, lookup, quotient, FRI, and commitment scheduling through the stable planning boundary |
 | G6 | Separate benchmark lanes and optimize against the right target | `planned` | generic and generated benchmark rows are measured separately and optimization work no longer conflates them |
 | G7 | Retire temporary compatibility shims | `planned` | acceptance-local adapters and example-specific wrappers are removed or reduced to non-architectural fixtures |
 | G8 | Harden the contract against `stark-v` workloads | `planned` | a real downstream Stwo consumer uses the same generic/generated contract successfully |
@@ -132,12 +132,8 @@ not “more benchmark-local seams.”
 
 The next active work is:
 
-- widen the generated artifact registry from route-eligibility metadata into
-  stable ABI and specialization inventory
-- make workload and benchmark declarations consume that richer inventory
-  through the shared planning seam rather than side lookups
-- derive one lowering-facing generated registration object from that same seam
-  before execution-plan lowering widens further
+- lower one generated registration into a stable planning input for runtime-
+  facing execution-plan work
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

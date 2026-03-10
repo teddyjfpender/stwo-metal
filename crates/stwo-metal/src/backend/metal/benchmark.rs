@@ -1,7 +1,7 @@
 use stwo::core::fields::m31::BaseField;
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
-use super::execution_plan::registered_generated_artifact;
+use super::execution_plan::registered_generated_component;
 use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::witness::{
     generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
@@ -157,7 +157,7 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
     intent: MetalExecutionIntent,
     target: MetalBenchmarkTarget,
 ) -> Result<MetalWideFibonacciBenchmarkBoundary, MetalPlannerError<'static>> {
-    let artifact = registered_generated_artifact(
+    let registration = registered_generated_component(
         target.workload_name,
         match target.operation {
             MetalBenchmarkOperation::TraceGeneration => {
@@ -173,10 +173,16 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
         MetalBenchmarkOperation::ProveVerify => MetalRegisteredBenchmarkOperation::ProveVerify,
     };
 
-    assert_eq!(artifact.workload_family, target.family);
-    assert!(artifact
+    assert_eq!(registration.artifact.workload_family, target.family);
+    assert!(registration
+        .artifact
         .supported_benchmark_operations
         .contains(&benchmark_operation));
+    assert_eq!(
+        registration.generated_inventory().registration_key,
+        target.workload_name
+    );
+    assert_eq!(registration.generated_inventory().abi_family, target.family);
 
     let workload_boundary = declare_exemplar_metal_workload_boundary(intent, target.workload_name)?;
     let inventory = workload_boundary.generated_inventory();

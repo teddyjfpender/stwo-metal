@@ -47,8 +47,8 @@ The superseded `T0` through `T8` sequence now lives in:
 | G1 | Freeze the codegen input schema and fail-closed contract | `completed` | the required producer artifact, consumer subset, and unsupported-component behavior are specified |
 | G2 | Build the backend planning and registration surface | `completed` | `stwo-metal` has a stable internal artifact-registry and execution-plan boundary with deterministic schema checks |
 | G3 | Move acceptance coverage onto the stable generic path | `completed` | acceptance coverage no longer depends on architecture-local example shims where shared backend boundaries should exist |
-| G4 | Land generated fast-path registration and ABI inventory | `in_progress` | generated artifacts register component identity, ABI, build inventory, and specialization keys through a stable surface |
-| G5 | Lower generated artifacts into Metal runtime execution plans | `planned` | generated components drive trace, evaluation, lookup, quotient, FRI, and commitment scheduling through backend planning surfaces |
+| G4 | Land generated fast-path registration and ABI inventory | `completed` | generated artifacts register component identity, ABI, build inventory, and specialization keys through a stable surface |
+| G5 | Lower generated artifacts into Metal runtime execution plans | `in_progress` | generated components drive trace, evaluation, lookup, quotient, FRI, and commitment scheduling through backend planning surfaces |
 | G6 | Separate benchmark lanes and optimize the right rows | `planned` | generic and generated benchmark rows are measured independently and optimization work targets the generated lane explicitly |
 | G7 | Retire temporary compatibility shims | `planned` | acceptance-local adapters and example-specific wrappers are removed or clearly reduced to non-architectural fixtures |
 | G8 | Harden the contract against `stark-v` workloads | `planned` | `stark-v` uses the same generic/generated backend contract successfully |
@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G4 third slice: derive one lowering-facing generated registration object from
-the shared registry without inventing side metadata surfaces`
+`G5 first slice: lower one generated registration into a stable planning input
+for the next runtime-facing execution-plan work`
 
 The active formal basis is:
 
@@ -111,6 +111,14 @@ The second G4 slice is now landed:
   specialization inventory rather than treating route support as sufficient
 - the richer generated inventory is now active declaration input, not passive
   manifest data
+
+The third G4 slice is now landed:
+
+- one lowering-facing generated registration object now exists in code
+- workload and benchmark declarations can consume checked generated inventory
+  through that shared registration object instead of reassembling raw manifest
+  fields
+- G4 is now complete and the next honest work moves to G5 lowering
 
 ## G2 progress snapshot
 

@@ -30,7 +30,7 @@ Target retirement point:
 
 ### TD-0026: Generated ABI and specialization inventory is registered but not yet consumed broadly enough by declarations and lowering
 
-- Status: `active`
+- Status: `retired`
 - Category: `generated registration adoption`
 - Introduced: `2026-03-10`
 - Owner area: `G4 generated fast-path registration`
@@ -38,15 +38,15 @@ Target retirement point:
 Why it exists now:
 
 The internal generated-artifact registry now records explicit ABI symbols and
-specialization keys. Workload and benchmark declarations now consume that
-richer inventory through the shared planning seam, but later lowering layers do
-not yet consume one shared generated-registration object derived from the same
-boundary.
+specialization keys. Workload and benchmark declarations consume that richer
+inventory through the shared planning seam, and one lowering-facing generated
+registration object now derives from the same boundary.
 
 Current containment:
 
 - `crates/stwo-metal/src/backend/metal/artifact.rs`
 - `crates/stwo-metal/src/backend/metal/planner_manifest_v1_generated.rs`
+- `crates/stwo-metal/src/backend/metal/execution_plan.rs`
 - `crates/stwo-metal/src/backend/metal/workload.rs`
 - `crates/stwo-metal/src/backend/metal/benchmark.rs`
 - `docs/controller.md`
@@ -54,16 +54,15 @@ Current containment:
 
 Risk if left in place:
 
-The repository could claim a richer generated contract in the registry while
-still let later lowering code reach around that contract or invent its own
-metadata shape, which would split the generated lane across multiple implicit
-layers again.
+This registration-adoption debt is now retired. The next remaining gap is G5
+lowering depth, not whether the richer generated registration contract is
+active.
 
 Exit condition:
 
-The first lowering-facing registration object exists and later lowering slices
-consume ABI and specialization inventory through that same stable planning
-seam.
+Workload declarations, benchmark declarations, and the first lowering-facing
+registration object all consume ABI and specialization inventory through the
+same stable planning seam.
 
 Target retirement point:
 
