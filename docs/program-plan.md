@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 second slice: consume the lowering-facing registration input in one
-runtime-planning helper without widening side metadata channels`
+`G5 third slice: use the canonical runtime-planning input in the first
+lowering-oriented execution helper beyond prove-plan selection`
 
 The active formal basis is:
 
@@ -129,6 +129,13 @@ The first G5 slice is now landed:
 - the lowering path no longer needs to reassemble workload family, ABI family,
   ABI symbols, build modules, witness hooks, and specialization keys from raw
   manifest fragments
+
+The second G5 slice is now landed:
+
+- one runtime-planning helper now consumes the canonical lowering-facing
+  registration input directly
+- prove-plan selection no longer bypasses the lowering input by jumping
+  straight from registrations to raw component plan inputs
 
 ## G2 progress snapshot
 

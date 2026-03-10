@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 second slice: consume the lowering-facing registration input in one
-  runtime-planning helper without widening side metadata channels`
+  `G5 third slice: use the canonical runtime-planning input in the first
+  lowering-oriented execution helper beyond prove-plan selection`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -58,9 +58,9 @@ Invariants:
 - there is not yet a declared policy for how generated output becomes durable
   and hand-tunable within this repository
 - generated inventory now names ABI symbols and specialization keys, is
-  consumed by workload and benchmark declarations, and has one lowering-facing
-  registration input, but runtime-facing lowering helpers still do not consume
-  that input directly
+  consumed by workload and benchmark declarations, and now feeds one canonical
+  runtime-planning helper, but no broader lowering-oriented execution helper
+  consumes that unit yet
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -81,8 +81,8 @@ Invariants:
 
 ## Next three deliverables
 
-1. Consume the lowering-facing registration input in one runtime-planning
-   helper so G5 stops at one canonical lowering unit.
+1. Use the canonical runtime-planning input in the first lowering-oriented
+   execution helper beyond prove-plan selection.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 starts lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate

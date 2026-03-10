@@ -7,8 +7,8 @@ use super::generated_policy::{
     resolve_generated_route_policy, MetalGeneratedRoutePolicy, UnsupportedGeneratedComponentReason,
 };
 use super::planner::{
-    plan_metal_operation, MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind,
-    MetalPlannerError, UnknownMetalComponent, UnsupportedGeneratedMetalRoute,
+    plan_metal_operation, MetalComponentPlanInput, MetalExecutionIntent, MetalExecutionPlan,
+    MetalOperationKind, MetalPlannerError, UnknownMetalComponent, UnsupportedGeneratedMetalRoute,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -48,6 +48,13 @@ pub(crate) struct RegisteredMetalLoweringInput {
     pub specialization_keys: &'static [&'static str],
 }
 
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct RegisteredMetalRuntimePlanInput {
+    pub lowering: RegisteredMetalLoweringInput,
+    pub operation: MetalOperationKind,
+    pub plan_input: MetalComponentPlanInput<'static>,
+}
+
 impl RegisteredMetalComponent {
     pub fn lowering_input(self) -> RegisteredMetalLoweringInput {
         let inventory = self.generated_inventory();
@@ -61,6 +68,17 @@ impl RegisteredMetalComponent {
             build_modules: inventory.build_modules,
             witness_hook: inventory.witness_hook,
             specialization_keys: inventory.specialization_keys,
+        }
+    }
+
+    pub fn runtime_plan_input(
+        self,
+        operation: MetalOperationKind,
+    ) -> RegisteredMetalRuntimePlanInput {
+        RegisteredMetalRuntimePlanInput {
+            lowering: self.lowering_input(),
+            operation,
+            plan_input: self.artifact.as_plan_input(operation),
         }
     }
 }
@@ -90,6 +108,15 @@ pub(crate) fn registered_generated_component<'a>(
     )
 }
 
+pub(crate) fn registered_runtime_plan_input<'a>(
+    component_name: &'a str,
+    route: MetalGeneratedRouteKind,
+    operation: MetalOperationKind,
+) -> Result<RegisteredMetalRuntimePlanInput, MetalPlannerError<'a>> {
+    registered_generated_component(component_name, route)
+        .map(|registration| registration.runtime_plan_input(operation))
+}
+
 pub(crate) fn plan_registered_metal_prove<'a>(
     intent: MetalExecutionIntent,
     component_names: &'a [&'a str],
@@ -107,17 +134,17 @@ pub(crate) fn plan_registered_metal_component_prove(
     intent: MetalExecutionIntent,
     component_name: &'static str,
 ) -> Result<RegisteredMetalExecutionPlan, MetalPlannerError<'static>> {
-    let registration =
-        registered_generated_component(component_name, MetalGeneratedRouteKind::RegisteredProve)?;
-    let input = registration
-        .artifact
-        .as_plan_input(MetalOperationKind::Prove);
-    let plan = plan_metal_operation(intent, MetalOperationKind::Prove, &[input])
+    let runtime_input = registered_runtime_plan_input(
+        component_name,
+        MetalGeneratedRouteKind::RegisteredProve,
+        MetalOperationKind::Prove,
+    )?;
+    let plan = plan_metal_operation(intent, runtime_input.operation, &[runtime_input.plan_input])
         .map_err(MetalPlannerError::Unsupported)?;
 
     Ok(RegisteredMetalExecutionPlan {
         schema_version: STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
-        operation: MetalOperationKind::Prove,
+        operation: runtime_input.operation,
         plan,
     })
 }
@@ -170,7 +197,7 @@ pub(crate) fn plan_registered_metal_operation<'a>(
                 component_name,
                 MetalGeneratedRouteKind::RegisteredProve,
             )
-            .map(|registration| registration.artifact.as_plan_input(operation))
+            .map(|registration| registration.runtime_plan_input(operation).plan_input)
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -189,11 +216,12 @@ mod tests {
     use super::{
         plan_registered_metal_component_prove, plan_registered_metal_prove,
         registered_generated_artifact, registered_generated_component,
+        registered_runtime_plan_input,
     };
     use crate::backend::metal::artifact::MetalGeneratedRouteKind;
     use crate::backend::metal::planner::{
-        MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError, UnknownMetalComponent,
-        UnsupportedGeneratedMetalRoute,
+        MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind, MetalPlannerError,
+        UnknownMetalComponent, UnsupportedGeneratedMetalRoute,
     };
 
     #[test]
@@ -290,6 +318,25 @@ mod tests {
         assert_eq!(
             lowering_input.witness_hook,
             Some("ingest_cpu_wide_fibonacci_witness")
+        );
+    }
+
+    #[test]
+    fn registered_runtime_plan_input_consumes_lowering_input() {
+        let runtime_input = registered_runtime_plan_input(
+            "fibonacci_example",
+            MetalGeneratedRouteKind::RegisteredProve,
+            MetalOperationKind::Prove,
+        )
+        .unwrap();
+
+        assert_eq!(runtime_input.lowering.component_name, "fibonacci_example");
+        assert_eq!(runtime_input.lowering.abi_family, "wide_fibonacci");
+        assert_eq!(runtime_input.operation, MetalOperationKind::Prove);
+        assert_eq!(runtime_input.plan_input.component_name, "fibonacci_example");
+        assert_eq!(
+            runtime_input.lowering.specialization_keys,
+            &["log_n_instances", "n_columns"]
         );
     }
 }

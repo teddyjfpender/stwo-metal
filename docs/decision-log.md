@@ -28,6 +28,43 @@ Superseded by:
 
 ## Entries
 
+### DEC-0086: Prove-plan selection must consume the canonical runtime-planning input
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Once the canonical runtime-planning input exists, prove-plan selection must use
+that input rather than jumping directly from checked registrations to raw
+component plan inputs.
+
+Context:
+
+The first G5 slice created a lowering-facing registration input, but that would
+still have been dead structure if the prove planner kept sidestepping it. The
+smallest semantics-preserving next step is to consume that input in one real
+runtime-planning helper before widening lowering any further.
+
+Alternatives rejected:
+
+- leave the runtime-planning input unused until later G5 slices
+- keep prove-plan selection on raw `MetalComponentArtifact::as_plan_input`
+- widen lowering first and normalize planning inputs later
+
+Impact:
+
+- G5 now has one canonical runtime-planning unit in live use
+- the next honest lowering work moves beyond prove-plan selection into broader
+  execution helpers
+
+Superseded by:
+
+- none
+
 ### DEC-0085: Runtime-facing lowering helpers must consume one canonical lowering input
 
 - Date: `2026-03-10`

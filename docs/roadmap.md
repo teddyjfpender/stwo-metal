@@ -136,6 +136,8 @@ The next active work is:
   facing execution-plan work
 - consume that lowering-facing input in one runtime-planning helper before
   widening lowering further
+- use that canonical runtime-planning input in the first broader lowering-
+  oriented execution helper beyond prove-plan selection
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs
