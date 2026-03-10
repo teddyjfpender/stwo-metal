@@ -4,12 +4,14 @@ use stwo::core::circle::CirclePoint;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::poly::utils::{fold, get_folding_alphas};
 use stwo::prover::backend::{Column, CpuBackend};
 use stwo::prover::poly::circle::{CircleCoefficients, PolyOps};
 use stwo_metal::{
     metal_runtime_support, MetalBackend, MetalBaseFieldVec, MetalRuntimeSupport,
     MetalSecureFieldVec,
 };
+use stwo_metal_sys::metal::U32Buffer;
 
 fn require_metal_runtime() {
     assert_eq!(
@@ -112,8 +114,8 @@ fn metal_poly_ops_cpu_bridge_matches_cpu_for_barycentric_weights_and_eval() {
 fn metal_poly_ops_batch_eval_matches_cpu_and_single_eval() {
     require_metal_runtime();
 
-    const LOG_SIZE: u32 = 7;
-    const N_POLYS: usize = 16;
+    const LOG_SIZE: u32 = 10;
+    const N_POLYS: usize = 8;
 
     let mut rng = SmallRng::seed_from_u64(19);
     let cpu_polys = (0..N_POLYS)
@@ -146,6 +148,98 @@ fn metal_poly_ops_batch_eval_matches_cpu_and_single_eval() {
 
     assert_eq!(metal_batch, cpu_expected);
     assert_eq!(metal_batch, metal_single);
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn metal_poly_ops_batch_eval_matches_cpu_for_large_multi_stage_native_reduction() {
+    require_metal_runtime();
+
+    const LOG_SIZE: u32 = 19;
+    const N_POLYS: usize = 4;
+
+    let mut rng = SmallRng::seed_from_u64(29);
+    let cpu_polys = (0..N_POLYS)
+        .map(|_| {
+            CircleCoefficients::<CpuBackend>::new((0..(1 << LOG_SIZE)).map(|_| rng.gen()).collect())
+        })
+        .collect::<Vec<_>>();
+    let metal_polys = cpu_polys
+        .iter()
+        .map(|poly| {
+            CircleCoefficients::<MetalBackend>::new(MetalBaseFieldVec::from_vec(
+                poly.coeffs.clone(),
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    let point = CirclePoint::get_point(1 << 16).into_ef::<SecureField>();
+    let cpu_refs = cpu_polys.iter().collect::<Vec<_>>();
+    let metal_refs = metal_polys.iter().collect::<Vec<_>>();
+
+    let cpu_expected = cpu_refs
+        .iter()
+        .map(|poly| CpuBackend::eval_at_point(poly, point))
+        .collect::<Vec<_>>();
+    let metal_batch = MetalBackend::batch_eval_at_point(&metal_refs, point);
+
+    assert_eq!(metal_batch, cpu_expected);
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn metal_poly_ops_single_eval_matches_cpu_for_large_native_path() {
+    require_metal_runtime();
+
+    const LOG_SIZE: u32 = 19;
+
+    let mut rng = SmallRng::seed_from_u64(37);
+    let coeffs = (0..(1 << LOG_SIZE)).map(|_| rng.gen()).collect::<Vec<_>>();
+    let cpu_poly = CircleCoefficients::<CpuBackend>::new(coeffs.clone());
+    let metal_poly = CircleCoefficients::<MetalBackend>::new(MetalBaseFieldVec::from_vec(coeffs));
+    let point = CirclePoint::get_point(1 << 16).into_ef::<SecureField>();
+
+    assert_eq!(
+        MetalBackend::eval_at_point(&metal_poly, point),
+        CpuBackend::eval_at_point(&cpu_poly, point)
+    );
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn metal_poly_ops_first_pass_partials_match_cpu_chunk_folds() {
+    require_metal_runtime();
+
+    const LOG_SIZE: u32 = 19;
+
+    let mut rng = SmallRng::seed_from_u64(31);
+    let coeffs: Vec<BaseField> = (0..(1 << LOG_SIZE)).map(|_| rng.gen()).collect();
+    let point = CirclePoint::get_point(1 << 16).into_ef::<SecureField>();
+    let folding_factors = get_folding_alphas(point, LOG_SIZE as usize);
+    let factor_limbs = folding_factors
+        .iter()
+        .copied()
+        .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+        .collect::<Vec<_>>();
+    let coeff_limbs = coeffs.iter().map(|value| value.0).collect::<Vec<_>>();
+
+    let coeffs_buffer = U32Buffer::from_slice(&coeff_limbs).unwrap();
+    let factors_buffer = U32Buffer::from_slice(&factor_limbs).unwrap();
+    let metal_partials = coeffs_buffer
+        .batch_eval_first_pass_base_field(&factors_buffer, LOG_SIZE, 1)
+        .unwrap()
+        .to_vec()
+        .unwrap()
+        .chunks_exact(4)
+        .map(|limbs| SecureField::from_u32_unchecked(limbs[0], limbs[1], limbs[2], limbs[3]))
+        .collect::<Vec<_>>();
+
+    let cpu_partials = coeffs
+        .chunks_exact(1 << 9)
+        .map(|chunk| fold(chunk, &folding_factors[(LOG_SIZE as usize - 9)..]))
+        .collect::<Vec<_>>();
+
+    assert_eq!(metal_partials, cpu_partials);
 }
 
 #[test]

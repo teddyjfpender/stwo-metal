@@ -29,7 +29,7 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T8 fourteenth implementation slice: borrowed host views and batched queried-value reads confirmed the remaining benchmark gap is now dominated by missing native point-evaluation work, not simple readback cloning`
+- Active tranche: `T8 fifteenth implementation slice: native Metal point evaluation is parity-tested and benchmark-active, and the next bottleneck remains above PolyOps in PCS prove-values and host-owned commitment work`
 - Objective:
   convert the now-truthful Metal benchmark row into benchmark-grade
   performance by reducing the dominant prove-stage bottlenecks without hiding
@@ -94,20 +94,24 @@ Invariants:
   for `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
   `warmups = 0`, and `samples = 1`
 - the end-to-end Apple Silicon benchmark row now also exists:
-  `wide_fibonacci_prove_verify_v1` completed in `45616.501417 ms`, with
-  `prove_ms = 45611.008417` and `verify_ms = 5.492999999999999`, under
+  `wide_fibonacci_prove_verify_v1` completed in `43262.562624 ms`, with
+  `prove_ms = 43257.033541` and `verify_ms = 5.529083`, under
   `STWO_METAL_MODE=metal-dev`, `warmups = 0`, and `samples = 1`
 - the benchmark boundary is now support-honest, but the measured dominant
   costs are still far from the `90 ms` north star:
-  `prove_core_prove_values_ms = 21835.479`,
-  `trace_commit_merkle_ms = 9168.181416`,
-  `prove_core_composition_generation_ms = 5236.126292`, and
-  `prove_core_composition_commit_ms = 3701.2050419999996`
+  `prove_core_prove_values_ms = 19427.014834`,
+  `trace_commit_merkle_ms = 9222.018333`,
+  `prove_core_composition_generation_ms = 5070.411875`, and
+  `prove_core_composition_commit_ms = 3682.173416`
 - the benchmark runner now enables the `parallel` proving surface for the
   Metal benchmark fixture, and the latest measured row used `threads = 14`
-- the end-to-end row is still approximately `32.8x` slower than the current
+- the end-to-end row is still approximately `31.1x` slower than the current
   SIMD reference at `log_n_instances = 20` (`1390 ms`) and still far from the
   historical GPU row (`87 ms`)
+- the native point-evaluation lane is now compile-active, parity-tested, and
+  used by large direct and batched `PolyOps` evaluation paths; coefficient
+  staging for that path now remains on Metal-backed buffers instead of using a
+  host round-trip
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
 - `AccumulationOps` and `QuotientOps` now avoid `CpuBackend` and use direct
@@ -123,12 +127,11 @@ Invariants:
 
 ## Next three deliverables
 
-1. Turn the new `45616.501417 ms` benchmark row into the next optimization
-   program by attacking the remaining `prove_core_prove_values_ms` structure
-   with a native point-evaluation lane rather than more host clone cleanup.
-2. Keep the host-owned commitment/hash path explicit while native point
-   evaluation and related prove-values structure become the next benchmark
-   facing structural win.
+1. Turn the new `43262.562624 ms` benchmark row into the next optimization
+   program by attacking PCS prove-values duplication above the now-native
+   point-evaluation lane.
+2. Keep the host-owned commitment/hash path explicit while Merkle and sampled
+   value work are reduced as separate benchmark-facing costs.
 3. Keep the acceptance-local adapter debt and the bounded small-domain
    `PolyOps` fallback explicit while T8 focuses on benchmark-grade
    performance.

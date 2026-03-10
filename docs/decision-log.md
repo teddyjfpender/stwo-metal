@@ -28,6 +28,61 @@ Superseded by:
 
 ## Entries
 
+### DEC-0061: Native Metal point evaluation is now a benchmark-active `PolyOps` surface, and coefficient staging must stay on Metal when possible
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`MetalBackend` now treats large-domain circle-polynomial point evaluation as a
+native Metal optimization surface. The active rule is:
+
+- use the mirrored `.metal` batch reduction lane for large-domain point
+  evaluation
+- stage coefficients through Metal-owned buffers rather than host readback and
+  re-upload when batched evaluation is already operating on Metal-backed
+  columns
+- allow secure-coordinate polynomial evaluation to batch through the same
+  backend surface instead of forcing four independent coordinate calls
+
+Context:
+
+After retiring the larger PCS bridges and consolidating host readbacks, the
+end-to-end wide-fibonacci row was still dominated by prove-values work. The
+first native point-evaluation cut exposed a correctness bug in the Metal
+reduction kernel, which was traced to a missing shared-memory read/write
+barrier. Once corrected, the native point-evaluation lane became parity-tested
+at both the partial-chunk and full multi-stage levels, and the best measured
+benchmark row on the current tree improved to
+`wide_fibonacci_prove_verify_v1 = 43262.562624 ms`, with
+`prove_ms = 43257.033541`, `verify_ms = 5.529083`, and
+`prove_core_prove_values_ms = 19427.014834`.
+
+Alternatives rejected:
+
+- keep point evaluation CPU-owned while claiming the next benchmark work is
+  deeper prover orchestration
+- ship a broken fully native reduction path rather than prove parity first
+- accept a pseudo-native path that still materializes coefficients on the host
+  before every batch
+
+Impact:
+
+- native point evaluation is now a real benchmark-facing Metal surface rather
+  than a planned future slice
+- secure polynomial evaluation may route through `batch_eval_at_point` to
+  amortize coordinate work
+- the next honest benchmark work remains above this layer:
+  further PCS prove-values duplication and the host-owned commitment/hash path
+
+Superseded by:
+
+- none
+
 ### DEC-0060: Host-readback consolidation is now an explicit optimization rule, and the next prove-values step must be native point evaluation
 
 - Date: `2026-03-10`

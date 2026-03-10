@@ -65,10 +65,10 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T8 twelfth implementation slice: batch point
-evaluation plus native accumulation and quotient PCS paths have materially
-reduced the end-to-end prove row, so the next work is the remaining
-prove-values structure, host-owned commitment cost, and bounded PolyOps
+The active tranche is `T8 fifteenth implementation slice: native Metal point
+evaluation is parity-tested, benchmark-active, and now keeps large
+coefficient staging on Metal, so the next work is the remaining PCS
+prove-values duplication, host-owned commitment cost, and bounded PolyOps
 fallback`,
 as tracked in
 [`controller.md`](./controller.md) and sequenced by

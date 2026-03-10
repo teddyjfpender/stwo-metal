@@ -24,12 +24,10 @@ impl<B: PolyOps> SecureCirclePoly<B> {
         &self,
         point: CirclePoint<SecureField>,
     ) -> [SecureField; SECURE_EXTENSION_DEGREE] {
-        [
-            self[0].eval_at_point(point),
-            self[1].eval_at_point(point),
-            self[2].eval_at_point(point),
-            self[3].eval_at_point(point),
-        ]
+        let polys = self.0.each_ref();
+        B::batch_eval_at_point(&polys, point)
+            .try_into()
+            .expect("secure circle polynomial evaluation should return one value per coordinate")
     }
 
     pub fn log_size(&self) -> u32 {

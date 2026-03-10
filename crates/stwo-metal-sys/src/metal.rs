@@ -300,6 +300,81 @@ impl U32Buffer {
         }
     }
 
+    pub fn batch_eval_at_point_base_field(
+        &self,
+        factors: &Self,
+        coeffs_log_len: u32,
+        n_polys: usize,
+    ) -> Result<Self, MetalError> {
+        let coeffs_size = 1usize << coeffs_log_len;
+        assert_eq!(
+            self.len,
+            coeffs_size * n_polys,
+            "batched point evaluation requires a flattened coefficient buffer with coeffs_size * n_polys base-field elements"
+        );
+        assert_eq!(
+            factors.len,
+            (coeffs_log_len as usize) * 4,
+            "batched point evaluation requires one qm31 folding factor per coefficient level"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(n_polys * 4)?;
+        unsafe {
+            ffi::batch_eval_at_point_base_field_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                factors.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                coeffs_log_len,
+                n_polys
+                    .try_into()
+                    .expect("batched point evaluation polynomial count should fit in u32"),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    pub fn batch_eval_first_pass_base_field(
+        &self,
+        factors: &Self,
+        coeffs_log_len: u32,
+        n_polys: usize,
+    ) -> Result<Self, MetalError> {
+        let coeffs_size = 1usize << coeffs_log_len;
+        let blocks_per_poly = if coeffs_log_len > 9 {
+            coeffs_size >> 9
+        } else {
+            1
+        };
+        assert_eq!(
+            self.len,
+            coeffs_size * n_polys,
+            "batched point-evaluation first pass requires a flattened coefficient buffer with coeffs_size * n_polys base-field elements"
+        );
+        assert_eq!(
+            factors.len,
+            (coeffs_log_len as usize) * 4,
+            "batched point-evaluation first pass requires one qm31 folding factor per coefficient level"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(blocks_per_poly * n_polys * 4)?;
+        unsafe {
+            ffi::batch_eval_first_pass_base_field_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                factors.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                coeffs_log_len,
+                n_polys.try_into().expect(
+                    "batched point-evaluation first-pass polynomial count should fit in u32",
+                ),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
     pub fn fix_first_variable_base_field(
         &self,
         assignment_limbs: [u32; 4],
@@ -977,6 +1052,26 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_batch_eval_at_point_base_field_u32(
+            runtime: *mut c_void,
+            flat_coeffs: *mut c_void,
+            factors: *mut c_void,
+            dst: *mut c_void,
+            coeffs_log_len: u32,
+            n_polys: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_batch_eval_first_pass_base_field_u32(
+            runtime: *mut c_void,
+            flat_coeffs: *mut c_void,
+            factors: *mut c_void,
+            dst: *mut c_void,
+            coeffs_log_len: u32,
+            n_polys: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_fix_first_variable_base_field_u32(
             runtime: *mut c_void,
             src: *mut c_void,
@@ -1386,6 +1481,58 @@ mod ffi {
             inverse_twiddles,
             values_log_len,
             scale_factor,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn batch_eval_at_point_base_field_u32(
+        runtime: *mut c_void,
+        flat_coeffs: *mut c_void,
+        factors: *mut c_void,
+        dst: *mut c_void,
+        coeffs_log_len: u32,
+        n_polys: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_batch_eval_at_point_base_field_u32(
+            runtime,
+            flat_coeffs,
+            factors,
+            dst,
+            coeffs_log_len,
+            n_polys,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn batch_eval_first_pass_base_field_u32(
+        runtime: *mut c_void,
+        flat_coeffs: *mut c_void,
+        factors: *mut c_void,
+        dst: *mut c_void,
+        coeffs_log_len: u32,
+        n_polys: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_batch_eval_first_pass_base_field_u32(
+            runtime,
+            flat_coeffs,
+            factors,
+            dst,
+            coeffs_log_len,
+            n_polys,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -1976,6 +2123,34 @@ mod ffi {
         _inverse_twiddles: *mut c_void,
         _values_log_len: u32,
         _scale_factor: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn batch_eval_at_point_base_field_u32(
+        _runtime: *mut c_void,
+        _flat_coeffs: *mut c_void,
+        _factors: *mut c_void,
+        _dst: *mut c_void,
+        _coeffs_log_len: u32,
+        _n_polys: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn batch_eval_first_pass_base_field_u32(
+        _runtime: *mut c_void,
+        _flat_coeffs: *mut c_void,
+        _factors: *mut c_void,
+        _dst: *mut c_void,
+        _coeffs_log_len: u32,
+        _n_polys: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

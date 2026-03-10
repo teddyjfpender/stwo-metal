@@ -732,14 +732,14 @@ Why it exists now:
 `wide_fibonacci_prove_verify_v1` now executes end to end through
 `MetalBackend` and verifies successfully on Apple Silicon, so the old
 benchmark-boundary debt is retired. The first measured support-honest result is
-still far from the declared north star, though: `45616.501417 ms` total, with
-`prove_ms = 45611.008417` and `verify_ms = 5.492999999999999`, at
+still far from the declared north star, though: `43262.562624 ms` total, with
+`prove_ms = 43257.033541` and `verify_ms = 5.529083`, at
 `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
 `warmups = 0`, `samples = 1`, and `threads = 14`. The dominant measured costs
-are `prove_core_prove_values_ms = 21835.479`,
-`trace_commit_merkle_ms = 9168.181416`,
-`prove_core_composition_generation_ms = 5236.126292`, and
-`prove_core_composition_commit_ms = 3701.2050419999996`.
+are `prove_core_prove_values_ms = 19427.014834`,
+`trace_commit_merkle_ms = 9222.018333`,
+`prove_core_composition_generation_ms = 5070.411875`, and
+`prove_core_composition_commit_ms = 3682.173416`.
 
 Current containment:
 
@@ -762,19 +762,18 @@ The project could confuse benchmark-boundary closure with performance closure,
 or it could optimize the wrong layer without using the measured phase
 breakdown. That would make the `90 ms` reference goal look arbitrary instead of
 turning it into a disciplined optimization program. The row is also still
-about `32.8x` slower than the current `log_n_instances = 20` SIMD reference
+about `31.1x` slower than the current `log_n_instances = 20` SIMD reference
 (`1390 ms`) and far from the historical GPU row (`87 ms`).
 
 Exit condition:
 
 The end-to-end `wide_fibonacci_prove_verify_v1` row has repeatable benchmark
 measurements in the declared environment and no longer spends the majority of
-its time in the currently dominant host-owned commitment and prove-value
+its time in the currently dominant host-owned commitment and PCS sampled-value
 stages, with progress evaluated against the recorded phase breakdown rather
-than against file-presence heuristics. The next expected structural retirement
-after the current host-readback tranche is a native point-evaluation lane for
-the prove-values path, because the latest borrowed-host-view cleanup only
-nudged the row after the larger readback consolidation win.
+than against file-presence heuristics. The native point-evaluation lane is now
+landed, so the next expected structural retirements are PCS prove-values
+duplication above that lane and the host-owned commitment/hash path.
 
 Target retirement point:
 

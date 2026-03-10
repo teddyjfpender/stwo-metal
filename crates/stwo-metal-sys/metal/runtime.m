@@ -753,6 +753,216 @@ bool stwo_metal_ifft_interpolate_u32(
     }
 }
 
+bool stwo_metal_batch_eval_at_point_base_field_u32(
+    void *runtime_ptr,
+    void *flat_coeffs_ptr,
+    void *factors_ptr,
+    void *dst_ptr,
+    uint32_t coeffs_log_len,
+    uint32_t n_polys,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *flat_coeffs = stwo_metal_buffer_box(flat_coeffs_ptr);
+        StwoMetalBufferBox *factors = stwo_metal_buffer_box(factors_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+
+        uint32_t coeffs_size = 1u << coeffs_log_len;
+        if (flat_coeffs.len != (NSUInteger)(coeffs_size * n_polys)) {
+            stwo_metal_write_error(error_message, error_message_len, @"Point evaluation expects a flattened coefficient buffer with coeffs_size * n_polys base-field values.");
+            return false;
+        }
+        if (factors.len != (NSUInteger)(coeffs_log_len * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"Point evaluation expects one qm31 folding factor per coefficient level.");
+            return false;
+        }
+        if (dst.len != (NSUInteger)(n_polys * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"Point evaluation expects a destination buffer with one qm31 result per polynomial.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> first_pass_pipeline =
+            stwo_metal_pipeline(runtime, @"batch_eval_at_point_first_pass_u32", error_message, error_message_len);
+        if (first_pass_pipeline == nil) {
+            return false;
+        }
+        id<MTLComputePipelineState> reduce_pipeline =
+            stwo_metal_pipeline(runtime, @"batch_eval_at_point_reduce_u32", error_message, error_message_len);
+        if (reduce_pipeline == nil) {
+            return false;
+        }
+        id<MTLComputePipelineState> finalize_pipeline =
+            stwo_metal_pipeline(runtime, @"batch_eval_at_point_finalize_u32", error_message, error_message_len);
+        if (finalize_pipeline == nil) {
+            return false;
+        }
+
+        uint32_t blocks_per_poly = coeffs_log_len > 9u ? (coeffs_size >> 9u) : 1u;
+        NSUInteger temp_len = (NSUInteger)(blocks_per_poly * n_polys * 4u);
+        id<MTLBuffer> temp_a = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
+                                                           options:MTLResourceStorageModeShared];
+        id<MTLBuffer> temp_b = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
+                                                           options:MTLResourceStorageModeShared];
+        if (temp_a == nil || temp_b == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal point-evaluation temporary buffers.");
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> first_encoder = [command_buffer computeCommandEncoder];
+        if (first_encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [first_encoder setComputePipelineState:first_pass_pipeline];
+        [first_encoder setBuffer:flat_coeffs.buffer offset:0 atIndex:0];
+        [first_encoder setBuffer:factors.buffer offset:0 atIndex:1];
+        [first_encoder setBuffer:temp_a offset:0 atIndex:2];
+        [first_encoder setBytes:&coeffs_log_len length:sizeof(coeffs_log_len) atIndex:3];
+        [first_encoder setBytes:&blocks_per_poly length:sizeof(blocks_per_poly) atIndex:4];
+        [first_encoder dispatchThreadgroups:MTLSizeMake(blocks_per_poly, n_polys, 1)
+                     threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+        [first_encoder endEncoding];
+
+        uint32_t current_stride = blocks_per_poly;
+        uint32_t remaining_log_len = coeffs_log_len > 9u ? coeffs_log_len - 9u : 0u;
+        id<MTLBuffer> current = temp_a;
+        id<MTLBuffer> next = temp_b;
+
+        while (current_stride > 1u) {
+            uint32_t output_stride = remaining_log_len > 9u ? (current_stride >> 9u) : 1u;
+            uint32_t factor_offset = remaining_log_len - 1u;
+
+            id<MTLComputeCommandEncoder> reduce_encoder = [command_buffer computeCommandEncoder];
+            if (reduce_encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                return false;
+            }
+
+            [reduce_encoder setComputePipelineState:reduce_pipeline];
+            [reduce_encoder setBuffer:current offset:0 atIndex:0];
+            [reduce_encoder setBuffer:factors.buffer offset:0 atIndex:1];
+            [reduce_encoder setBuffer:next offset:0 atIndex:2];
+            [reduce_encoder setBytes:&current_stride length:sizeof(current_stride) atIndex:3];
+            [reduce_encoder setBytes:&output_stride length:sizeof(output_stride) atIndex:4];
+            [reduce_encoder setBytes:&factor_offset length:sizeof(factor_offset) atIndex:5];
+            [reduce_encoder dispatchThreadgroups:MTLSizeMake(output_stride, n_polys, 1)
+                          threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+            [reduce_encoder endEncoding];
+
+            current_stride = output_stride;
+            remaining_log_len = remaining_log_len > 9u ? remaining_log_len - 9u : 0u;
+            id<MTLBuffer> swap = current;
+            current = next;
+            next = swap;
+        }
+
+        id<MTLComputeCommandEncoder> finalize_encoder = [command_buffer computeCommandEncoder];
+        if (finalize_encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [finalize_encoder setComputePipelineState:finalize_pipeline];
+        [finalize_encoder setBuffer:current offset:0 atIndex:0];
+        [finalize_encoder setBuffer:dst.buffer offset:0 atIndex:1];
+        [finalize_encoder setBytes:&current_stride length:sizeof(current_stride) atIndex:2];
+        [finalize_encoder setBytes:&n_polys length:sizeof(n_polys) atIndex:3];
+        [finalize_encoder dispatchThreads:MTLSizeMake(n_polys, 1, 1)
+                   threadsPerThreadgroup:MTLSizeMake(stwo_metal_threads_per_group(finalize_pipeline), 1, 1)];
+        [finalize_encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_batch_eval_first_pass_base_field_u32(
+    void *runtime_ptr,
+    void *flat_coeffs_ptr,
+    void *factors_ptr,
+    void *dst_ptr,
+    uint32_t coeffs_log_len,
+    uint32_t n_polys,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *flat_coeffs = stwo_metal_buffer_box(flat_coeffs_ptr);
+        StwoMetalBufferBox *factors = stwo_metal_buffer_box(factors_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+
+        uint32_t coeffs_size = 1u << coeffs_log_len;
+        uint32_t blocks_per_poly = coeffs_log_len > 9u ? (coeffs_size >> 9u) : 1u;
+        if (flat_coeffs.len != (NSUInteger)(coeffs_size * n_polys)) {
+            stwo_metal_write_error(error_message, error_message_len, @"Point-evaluation first pass expects a flattened coefficient buffer with coeffs_size * n_polys base-field values.");
+            return false;
+        }
+        if (factors.len != (NSUInteger)(coeffs_log_len * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"Point-evaluation first pass expects one qm31 folding factor per coefficient level.");
+            return false;
+        }
+        if (dst.len != (NSUInteger)(blocks_per_poly * n_polys * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"Point-evaluation first pass expects one qm31 partial result per 512-coefficient chunk.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> first_pass_pipeline =
+            stwo_metal_pipeline(runtime, @"batch_eval_at_point_first_pass_u32", error_message, error_message_len);
+        if (first_pass_pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:first_pass_pipeline];
+        [encoder setBuffer:flat_coeffs.buffer offset:0 atIndex:0];
+        [encoder setBuffer:factors.buffer offset:0 atIndex:1];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:2];
+        [encoder setBytes:&coeffs_log_len length:sizeof(coeffs_log_len) atIndex:3];
+        [encoder setBytes:&blocks_per_poly length:sizeof(blocks_per_poly) atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(blocks_per_poly, n_polys, 1)
+                     threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_fix_first_variable_base_field_u32(
     void *runtime_ptr,
     void *src_ptr,

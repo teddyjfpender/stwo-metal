@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use ark_std::Zero;
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
@@ -58,6 +60,57 @@ fn into_metal_circle_eval(
 
 fn point_xy(point: CirclePoint<BaseField>) -> [u32; 2] {
     [point.x.0, point.y.0]
+}
+
+fn folding_mappings(point: CirclePoint<SecureField>, log_size: u32) -> Vec<SecureField> {
+    let mut mappings = vec![point.y];
+    let mut x = point.x;
+    for _ in 1..log_size {
+        mappings.push(x);
+        x = CirclePoint::double_x(x);
+    }
+    mappings.reverse();
+    mappings
+}
+
+fn batch_eval_same_size_native(
+    polys: &[&CircleCoefficients<MetalBackend>],
+    point: CirclePoint<SecureField>,
+) -> Option<Vec<SecureField>> {
+    if polys.is_empty() {
+        return Some(Vec::new());
+    }
+
+    let coeffs_len = polys[0].coeffs.len();
+    let coeffs_log_len = coeffs_len.ilog2();
+    if coeffs_log_len <= 9 {
+        return None;
+    }
+
+    let factor_limbs = folding_mappings(point, coeffs_log_len)
+        .into_iter()
+        .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+        .collect_vec();
+    let mut flat_coeffs_buffer = U32Buffer::uninitialized(polys.len() * coeffs_len)
+        .expect("Metal batched point-evaluation buffer allocation should initialize");
+    for (index, poly) in polys.iter().enumerate() {
+        flat_coeffs_buffer
+            .copy_from_offset(&poly.coeffs.buffer, index * coeffs_len)
+            .expect("Metal batched point-evaluation coefficient staging should succeed");
+    }
+    let factors_buffer = U32Buffer::from_slice(&factor_limbs)
+        .expect("Metal batched point-evaluation factor upload should initialize");
+    let result_buffer = flat_coeffs_buffer
+        .batch_eval_at_point_base_field(&factors_buffer, coeffs_log_len, polys.len())
+        .expect("Metal batched point evaluation should succeed");
+    Some(
+        result_buffer
+            .to_vec()
+            .expect("Metal batched point-evaluation readback should succeed")
+            .chunks_exact(4)
+            .map(|limbs| SecureField::from_u32_unchecked(limbs[0], limbs[1], limbs[2], limbs[3]))
+            .collect(),
+    )
 }
 
 fn precompute_twiddles_native(coset: Coset) -> Result<TwiddleTree<MetalBackend>, MetalError> {
@@ -222,14 +275,12 @@ impl PolyOps for MetalBackend {
             return poly.coeffs.at(0).into();
         }
 
-        let mut mappings = vec![point.y];
-        let mut x = point.x;
-        for _ in 1..poly.log_size() {
-            mappings.push(x);
-            x = CirclePoint::double_x(x);
+        if poly.log_size() > 9 {
+            return batch_eval_same_size_native(&[poly], point)
+                .expect("Metal single point-evaluation batching should return one value")[0];
         }
-        mappings.reverse();
 
+        let mappings = folding_mappings(point, poly.log_size());
         fold(poly.coeffs.host_slice(), &mappings)
     }
 
@@ -237,12 +288,41 @@ impl PolyOps for MetalBackend {
         polys: &[&CircleCoefficients<Self>],
         point: CirclePoint<SecureField>,
     ) -> Vec<SecureField> {
-        #[cfg(not(feature = "parallel"))]
-        let iter = polys.iter();
-        #[cfg(feature = "parallel")]
-        let iter = polys.par_iter();
+        let mut grouped = BTreeMap::<usize, Vec<(usize, &CircleCoefficients<Self>)>>::new();
+        for (index, poly) in polys.iter().enumerate() {
+            grouped
+                .entry(poly.coeffs.len())
+                .or_default()
+                .push((index, *poly));
+        }
 
-        iter.map(|poly| Self::eval_at_point(poly, point)).collect()
+        let mut results = vec![SecureField::zero(); polys.len()];
+        for group in grouped.into_values() {
+            let group_polys = group.iter().map(|(_, poly)| *poly).collect_vec();
+            if let Some(native_values) = batch_eval_same_size_native(&group_polys, point) {
+                for ((index, _), value) in group.into_iter().zip(native_values) {
+                    results[index] = value;
+                }
+                continue;
+            }
+
+            #[cfg(not(feature = "parallel"))]
+            let fallback_values = group_polys
+                .iter()
+                .map(|poly| Self::eval_at_point(poly, point))
+                .collect_vec();
+            #[cfg(feature = "parallel")]
+            let fallback_values = group_polys
+                .par_iter()
+                .map(|poly| Self::eval_at_point(poly, point))
+                .collect::<Vec<_>>();
+
+            for ((index, _), value) in group.into_iter().zip(fallback_values) {
+                results[index] = value;
+            }
+        }
+
+        results
     }
 
     fn barycentric_weights(
