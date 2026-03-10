@@ -28,6 +28,47 @@ Superseded by:
 
 ## Entries
 
+### DEC-0076: The first G3 acceptance bridge must require a registered Metal workload lane
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The first G3 acceptance slice does not try to retire every local adapter at
+once. Instead, it requires the `wide_fibonacci` framework-component bridge to
+be constructed only from a registered Metal workload boundary and a checked
+acceptance lane.
+
+Context:
+
+G2 is now complete: the private artifact-registry, generated-route, policy, and
+execution-plan seam exists and is adopted by planner, workload, and benchmark
+declarations. The next honest architectural step is to make acceptance
+integration consume that seam instead of leaving the first example bridge fully
+local. `wide_fibonacci` is the safest first row because it already has a
+declared workload boundary in the shared backend.
+
+Alternatives rejected:
+
+- keep all acceptance bridges entirely local until every example can move at
+  once
+- expose the acceptance lane as a new public `stwo-metal` API immediately
+- treat the existing acceptance wrappers as “good enough” and skip G3
+
+Impact:
+
+- G2 is complete and G3 is now in progress
+- the first acceptance row is tied to the stable workload-boundary contract
+- the remaining framework and SIMD acceptance bridges stay explicit as debt
+
+Superseded by:
+
+- none
+
 ### DEC-0075: Unsupported generated support must have one explicit policy path in code before broader backend adoption
 
 - Date: `2026-03-10`

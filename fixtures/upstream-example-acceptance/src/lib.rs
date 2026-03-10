@@ -28,7 +28,7 @@ use stwo::prover::{
 use stwo_constraint_framework::{
     CpuDomainEvaluator, FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX,
 };
-use stwo_metal::{MetalBackend, MetalBaseFieldVec};
+use stwo_metal::{MetalBackend, MetalBaseFieldVec, MetalExecutionPlan, MetalWorkloadBoundary};
 
 #[derive(Debug)]
 pub enum SingleTraceCpuBridgeError {
@@ -81,6 +81,59 @@ impl core::fmt::Display for ComponentSetBackendError {
 
 impl std::error::Error for ComponentSetBackendError {}
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum AcceptanceMetalLaneError {
+    PlanNotMetalCapable {
+        workload_name: &'static str,
+        plan: MetalExecutionPlan,
+    },
+}
+
+impl core::fmt::Display for AcceptanceMetalLaneError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::PlanNotMetalCapable {
+                workload_name,
+                plan,
+            } => write!(
+                f,
+                "registered Metal workload boundary for {workload_name} is not Metal-capable: {plan:?}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for AcceptanceMetalLaneError {}
+
+#[derive(Clone, Copy, Debug)]
+pub struct AcceptanceMetalLane<'a> {
+    boundary: &'a MetalWorkloadBoundary,
+}
+
+impl AcceptanceMetalLane<'_> {
+    pub fn workload_name(&self) -> &'static str {
+        self.boundary.workload_name()
+    }
+
+    pub fn boundary(&self) -> &MetalWorkloadBoundary {
+        self.boundary
+    }
+}
+
+pub fn acceptance_registered_metal_lane(
+    boundary: &MetalWorkloadBoundary,
+) -> Result<AcceptanceMetalLane<'_>, AcceptanceMetalLaneError> {
+    match boundary.plan() {
+        MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull => {
+            Ok(AcceptanceMetalLane { boundary })
+        }
+        plan => Err(AcceptanceMetalLaneError::PlanNotMetalCapable {
+            workload_name: boundary.workload_name(),
+            plan,
+        }),
+    }
+}
+
 /// Local acceptance-only adapter for vendored upstream framework components.
 ///
 /// Inputs:
@@ -127,6 +180,14 @@ pub struct AcceptanceMetalSimdComponent<'a> {
 pub fn bridge_framework_component_to_metal<E: FrameworkEval>(
     component: &FrameworkComponent<E>,
 ) -> AcceptanceMetalFrameworkComponent<'_, E> {
+    AcceptanceMetalFrameworkComponent { inner: component }
+}
+
+pub fn bridge_registered_framework_component_to_metal<'a, E: FrameworkEval>(
+    component: &'a FrameworkComponent<E>,
+    lane: AcceptanceMetalLane<'a>,
+) -> AcceptanceMetalFrameworkComponent<'a, E> {
+    let _ = lane.workload_name();
     AcceptanceMetalFrameworkComponent { inner: component }
 }
 
@@ -630,4 +691,43 @@ fn accumulate_pointwise_cpu<E: FrameworkEval>(
         result.set(row, accum.at(row) + row_res * row_denom_inv);
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{acceptance_registered_metal_lane, AcceptanceMetalLaneError};
+    use stwo_metal::{declare_exemplar_metal_workload_boundary, MetalExecutionIntent, MetalExecutionPlan};
+
+    #[test]
+    fn registered_lane_accepts_metal_capable_boundary() {
+        let boundary = declare_exemplar_metal_workload_boundary(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+        )
+        .unwrap();
+
+        let lane = acceptance_registered_metal_lane(&boundary).unwrap();
+
+        assert_eq!(lane.workload_name(), "fibonacci_example");
+        assert_eq!(lane.boundary().plan(), MetalExecutionPlan::MetalFriHybrid);
+    }
+
+    #[test]
+    fn registered_lane_rejects_cpu_only_boundary() {
+        let boundary = declare_exemplar_metal_workload_boundary(
+            MetalExecutionIntent::ForceCpu,
+            "fibonacci_example",
+        )
+        .unwrap();
+
+        let error = acceptance_registered_metal_lane(&boundary).unwrap_err();
+
+        assert_eq!(
+            error,
+            AcceptanceMetalLaneError::PlanNotMetalCapable {
+                workload_name: "fibonacci_example",
+                plan: MetalExecutionPlan::CpuOnly,
+            }
+        );
+    }
 }

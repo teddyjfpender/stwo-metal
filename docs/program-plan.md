@@ -45,8 +45,8 @@ The superseded `T0` through `T8` sequence now lives in:
 | --- | --- | --- | --- |
 | G0 | Freeze the generic backend contract | `completed` | the architecture distinguishes generic substitution, generated fast path, and temporary wrappers |
 | G1 | Freeze the codegen input schema and fail-closed contract | `completed` | the required producer artifact, consumer subset, and unsupported-component behavior are specified |
-| G2 | Build the backend planning and registration surface | `in_progress` | `stwo-metal` has a stable internal artifact-registry and execution-plan boundary with deterministic schema checks |
-| G3 | Move acceptance coverage onto the stable generic path | `planned` | acceptance coverage no longer depends on architecture-local example shims where shared backend boundaries should exist |
+| G2 | Build the backend planning and registration surface | `completed` | `stwo-metal` has a stable internal artifact-registry and execution-plan boundary with deterministic schema checks |
+| G3 | Move acceptance coverage onto the stable generic path | `in_progress` | acceptance coverage no longer depends on architecture-local example shims where shared backend boundaries should exist |
 | G4 | Land generated fast-path registration and ABI inventory | `planned` | generated artifacts register component identity, ABI, build inventory, and specialization keys through a stable surface |
 | G5 | Lower generated artifacts into Metal runtime execution plans | `planned` | generated components drive trace, evaluation, lookup, quotient, FRI, and commitment scheduling through backend planning surfaces |
 | G6 | Separate benchmark lanes and optimize the right rows | `planned` | generic and generated benchmark rows are measured independently and optimization work targets the generated lane explicitly |
@@ -66,32 +66,28 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G2 second slice: widen the new private artifact-registry and execution-plan
-seam beyond exemplar prove planning so more of the backend routes through one
-shared fail-closed boundary`
+`G3 first slice: move the first acceptance workload onto the stable generic
+lane contract by requiring a registered Metal workload boundary for the
+acceptance bridge`
 
 The active formal basis is:
 
 - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
 
-## Current implementation obligations under G2
+## Current implementation obligations under G3
 
-- widen the internal Rust representation of the producer artifact beyond the
-  current planner-manifest subset
-- extend schema/version compatibility checks across the broader registration
-  path
-- widen the generated inventory and registration manifest boundary so it can
-  carry more than current exemplar prove metadata
-- extend the execution-plan lowering boundary from prove planning toward the
-  broader backend work graph
-- keep unsupported-component behavior and tests explicit as the seam expands
-- keep acceptance-local adapters and bounded CPU fallbacks explicit until G3 and
-  G7 retire them
+- move acceptance rows onto the stable workload-boundary and planning seam
+  instead of creating new harness-local bridge contracts
+- keep unsupported-component behavior and tests explicit as G3 expands
+- keep remaining acceptance-local adapters and bounded CPU fallbacks explicit
+  until G3 and G7 retire them
+- use the now-stable registry and execution-plan seam as the default contract
+  for new acceptance-facing integration work
 
 ## G2 progress snapshot
 
-The first G2 slice is now landed:
+G2 is now complete:
 
 - a private `ArtifactRegistry` boundary exists in code
 - a private `ExecutionPlan` lowering seam exists in code
@@ -110,6 +106,16 @@ The first G2 slice is now landed:
   directly
 - one explicit unsupported-generated-component policy path now exists in code
   and is tested privately beneath the execution-plan layer
+
+## G3 progress snapshot
+
+The first G3 slice is now landed:
+
+- the `wide_fibonacci` acceptance row now requires a registered Metal workload
+  boundary before constructing its framework-component bridge
+- the acceptance harness has one explicit `AcceptanceMetalLane` abstraction
+  instead of allowing the first registered workload bridge to float entirely
+  outside the shared backend contract
 
 ## Foundation already available
 

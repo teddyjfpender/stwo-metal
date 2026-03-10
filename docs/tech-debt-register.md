@@ -30,24 +30,18 @@ Target retirement point:
 
 ### TD-0024: The frozen generated-artifact contract is not yet implemented as a stable backend registry and execution-plan boundary
 
-- Status: `active`
+- Status: `retired`
 - Category: `architecture implementation gap`
 - Introduced: `2026-03-10`
 - Owner area: `generic/generated backend planning`
 
 Why it exists now:
 
-The project has now frozen the generic backend and codegen contract, including
-the required proving artifact fields, fail-closed behavior, and separation
-between generic, generated, and temporary acceptance-only paths. A first
-private registry and execution-plan seam now exists in code, and declared
-benchmark boundaries now read workload family and benchmark-operation metadata
-from that same seam. Workload-stage ownership metadata now lives there too, and
-per-component generated inventory now records registration key, ABI family,
-build inventory, and witness hooks through that same boundary. Generated-route
-compatibility is now explicit and fail-closed there too. The contract still
-only covers a limited planner-manifest subset and the prove-planning path; it
-is not yet the finished shared boundary for the broader backend.
+The project froze the generic backend and codegen contract first, then widened
+the private implementation until one stable internal artifact-registry and
+execution-plan seam existed in code with schema checks, per-component
+inventory, generated-route compatibility, and one explicit fail-closed policy
+path.
 
 Current containment:
 
@@ -60,12 +54,9 @@ Current containment:
 
 Risk if left in place:
 
-The project could now overstate the progress of the contract implementation:
-the seam exists, carries richer metadata, and is now consumed by planner,
-workload, and benchmark declarations, and one explicit unsupported-generated-
-component policy path now exists in code, but if broader backend routing does
-not move onto that same boundary, the implementation could still drift back
-into mixed planning paths.
+The implementation risk this entry tracked has now been retired. Remaining
+integration risk has shifted to acceptance-adapter cleanup rather than the
+existence of the planning seam itself.
 
 Exit condition:
 
@@ -661,17 +652,17 @@ Target retirement point:
 
 Why it exists now:
 
-The first direct `MetalBackend` upstream-example proof now uses an
-acceptance-local adapter around vendored `FrameworkComponent`. This is the
-smallest safe step because it avoids a nested-workspace dependency conflict in
-the main `stwo-metal` crate and keeps the remaining CPU-domain quotient path
-explicit, but it is not yet a reusable shared boundary for additional example
-rows.
+The first direct `MetalBackend` upstream-example proof uses an acceptance-local
+adapter around vendored `FrameworkComponent`. That remains the smallest safe
+step because it avoids a nested-workspace dependency conflict in the main
+`stwo-metal` crate and keeps the remaining CPU-domain quotient path explicit.
+The `wide_fibonacci` row now requires one registered Metal workload lane before
+constructing its local bridge, but the remaining framework-backed example rows
+still rely on purely acceptance-local adapters.
 
 Current containment:
 
 - `fixtures/upstream-example-acceptance/src/lib.rs`
-- `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
 - `fixtures/upstream-example-acceptance/tests/state_machine_prove_verify.rs`
 - `fixtures/upstream-example-acceptance/tests/blake_prove_verify.rs`
 

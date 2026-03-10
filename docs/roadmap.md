@@ -117,8 +117,8 @@ The superseded `T0` through `T8` sequence now lives in:
 | --- | --- | --- | --- |
 | G0 | Freeze the generic backend contract | `completed` | the architecture distinguishes generic substitution, generated fast path, and temporary wrappers |
 | G1 | Freeze the codegen input schema and fail-closed contract | `completed` | the required producer artifact, consumer subset, and unsupported-component behavior are specified |
-| G2 | Build the backend planning and registration surface | `in_progress` | `stwo-metal` owns a stable internal artifact-registry and execution-plan boundary with explicit schema compatibility checks |
-| G3 | Move acceptance coverage onto the stable generic path | `planned` | example-backed support no longer depends on architecture-local example shims where shared backend boundaries should exist |
+| G2 | Build the backend planning and registration surface | `completed` | `stwo-metal` owns a stable internal artifact-registry and execution-plan boundary with explicit schema compatibility checks |
+| G3 | Move acceptance coverage onto the stable generic path | `in_progress` | example-backed support no longer depends on architecture-local example shims where shared backend boundaries should exist |
 | G4 | Land the generated fast-path registration and ABI inventory | `planned` | generated artifacts can register component identity, ABI, build inventory, and specialization keys through a stable surface |
 | G5 | Lower generated artifacts into Metal runtime execution plans | `planned` | generated proving components drive Metal trace, evaluation, lookup, quotient, FRI, and commitment scheduling through the stable planning boundary |
 | G6 | Separate benchmark lanes and optimize against the right target | `planned` | generic and generated benchmark rows are measured separately and optimization work no longer conflates them |
@@ -132,10 +132,9 @@ not “more benchmark-local seams.”
 
 The next active work is:
 
-- widen the new private artifact-registry surface beyond the current
-  planner-manifest subset
-- widen the new private execution-plan surface beyond prove planning
-- bind more existing Metal runtime/kernel ownership to those surfaces
+- move acceptance rows onto the stable workload-boundary and planning seam
+- retire the first acceptance-local bridges by replacing them with shared
+  backend-owned boundaries where possible
 - keep examples only as validation and benchmark inputs
 
 ## Native runtime direction
