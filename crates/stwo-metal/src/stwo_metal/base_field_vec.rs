@@ -1,9 +1,12 @@
 use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
 use stwo_metal_sys::metal::U32Buffer;
+
+use super::SecureFieldVec;
 
 #[derive(Debug)]
 pub struct BaseFieldVec {
-    buffer: U32Buffer,
+    pub(crate) buffer: U32Buffer,
     size: usize,
 }
 
@@ -11,6 +14,11 @@ unsafe impl Send for BaseFieldVec {}
 unsafe impl Sync for BaseFieldVec {}
 
 impl BaseFieldVec {
+    pub(crate) fn from_buffer(buffer: U32Buffer) -> Self {
+        let size = buffer.len();
+        Self { buffer, size }
+    }
+
     pub fn from_vec(host_array: Vec<BaseField>) -> Self {
         let raw: Vec<u32> = host_array.into_iter().map(|value| value.0).collect();
         let size = raw.len();
@@ -79,6 +87,37 @@ impl BaseFieldVec {
             buffer,
             size: self.size,
         }
+    }
+
+    pub fn fix_first_variable(&self, assignment: SecureField) -> SecureFieldVec {
+        assert!(
+            self.size >= 2,
+            "Metal BaseFieldVec MLE fix-first-variable requires at least two evaluations"
+        );
+        let buffer = self
+            .buffer
+            .fix_first_variable_base_field(assignment.to_m31_array().map(|limb| limb.0))
+            .expect("Metal BaseFieldVec MLE fix-first-variable should succeed");
+        SecureFieldVec::from_buffer(buffer)
+    }
+
+    pub fn gkr_next_logup_multiplicities_layer(
+        &self,
+        denominators: &SecureFieldVec,
+    ) -> (SecureFieldVec, SecureFieldVec) {
+        let (next_numerators, next_denominators) =
+            U32Buffer::gkr_next_logup_multiplicities_layer(&self.buffer, &denominators.buffer)
+                .expect("Metal base-field multiplicities next-layer generation should succeed");
+        (
+            SecureFieldVec::from_buffer(next_numerators),
+            SecureFieldVec::from_buffer(next_denominators),
+        )
+    }
+
+    pub fn inclusive_prefix_sum_bit_rev_circle_domain(&mut self) {
+        self.buffer
+            .inclusive_prefix_sum_bit_rev_circle_domain_in_place()
+            .expect("Metal BaseFieldVec prefix sum should succeed");
     }
 
     pub fn extend(&mut self, other: &Self) {

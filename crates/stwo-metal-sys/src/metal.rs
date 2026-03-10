@@ -300,6 +300,218 @@ impl U32Buffer {
         }
     }
 
+    pub fn fix_first_variable_base_field(
+        &self,
+        assignment_limbs: [u32; 4],
+    ) -> Result<Self, MetalError> {
+        assert!(
+            self.len.is_power_of_two() && self.len >= 2,
+            "base-field MLE fix-first-variable requires a power-of-two buffer with at least two evaluations"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized((self.len / 2) * 4)?;
+        unsafe {
+            ffi::fix_first_variable_base_field_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                self.len.ilog2(),
+                assignment_limbs,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    pub fn fix_first_variable_secure_field(
+        &self,
+        assignment_limbs: [u32; 4],
+    ) -> Result<Self, MetalError> {
+        assert!(
+            self.len.is_multiple_of(4),
+            "secure-field MLE fix-first-variable requires four limbs per evaluation"
+        );
+        let element_len = self.len / 4;
+        assert!(
+            element_len.is_power_of_two() && element_len >= 2,
+            "secure-field MLE fix-first-variable requires a power-of-two element count with at least two evaluations"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized((element_len / 2) * 4)?;
+        unsafe {
+            ffi::fix_first_variable_secure_field_u32x4(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                element_len.ilog2(),
+                assignment_limbs,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    pub fn gkr_gen_eq_evals_from_factors(
+        factors: &Self,
+        y_size: usize,
+        v_limbs: [u32; 4],
+    ) -> Result<Self, MetalError> {
+        let eval_count = 1usize
+            .checked_shl(y_size as u32)
+            .expect("GKR eq-eval size should fit in usize");
+        assert_eq!(
+            factors.len,
+            y_size * 2 * 4,
+            "GKR eq-eval generation requires two qm31 factors per input coordinate"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(eval_count * 4)?;
+        unsafe {
+            ffi::gkr_gen_eq_evals_u32x4(
+                runtime.raw.as_ptr(),
+                factors.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                y_size
+                    .try_into()
+                    .expect("GKR eq-eval y-size should fit in u32"),
+                v_limbs,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    pub fn gkr_next_grand_product_layer(&self) -> Result<Self, MetalError> {
+        assert!(
+            self.len.is_multiple_of(8),
+            "GKR next grand-product layer requires an even number of secure-field evaluations"
+        );
+        let input_len = self.len / 4;
+        assert!(
+            input_len.is_power_of_two() && input_len >= 2,
+            "GKR next grand-product layer requires a power-of-two logical input length with at least two evaluations"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized((input_len / 2) * 4)?;
+        unsafe {
+            ffi::gkr_next_grand_product_layer_u32x4(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                input_len.ilog2(),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    pub fn gkr_next_logup_generic_layer(
+        numerators: &Self,
+        denominators: &Self,
+    ) -> Result<(Self, Self), MetalError> {
+        assert_eq!(
+            numerators.len, denominators.len,
+            "GKR next generic layer requires matching numerator and denominator lengths"
+        );
+        assert!(
+            numerators.len.is_multiple_of(8),
+            "GKR next generic layer requires an even number of secure-field evaluations"
+        );
+        let input_len = numerators.len / 4;
+        assert!(
+            input_len.is_power_of_two() && input_len >= 2,
+            "GKR next generic layer requires a power-of-two logical input length with at least two evaluations"
+        );
+        let runtime = shared_runtime()?;
+        let next_numerators = Self::uninitialized((input_len / 2) * 4)?;
+        let next_denominators = Self::uninitialized((input_len / 2) * 4)?;
+        unsafe {
+            ffi::gkr_next_logup_generic_layer_u32x4(
+                runtime.raw.as_ptr(),
+                numerators.raw.as_ptr(),
+                denominators.raw.as_ptr(),
+                next_numerators.raw.as_ptr(),
+                next_denominators.raw.as_ptr(),
+                input_len.ilog2(),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok((next_numerators, next_denominators))
+    }
+
+    pub fn gkr_next_logup_multiplicities_layer(
+        numerators: &Self,
+        denominators: &Self,
+    ) -> Result<(Self, Self), MetalError> {
+        assert!(
+            numerators.len * 4 == denominators.len,
+            "GKR next multiplicities layer requires one base-field numerator per secure-field denominator element"
+        );
+        assert!(
+            numerators.len.is_power_of_two() && numerators.len >= 2,
+            "GKR next multiplicities layer requires a power-of-two logical input length with at least two evaluations"
+        );
+        let runtime = shared_runtime()?;
+        let next_numerators = Self::uninitialized((numerators.len / 2) * 4)?;
+        let next_denominators = Self::uninitialized((numerators.len / 2) * 4)?;
+        unsafe {
+            ffi::gkr_next_logup_multiplicities_layer_u32(
+                runtime.raw.as_ptr(),
+                numerators.raw.as_ptr(),
+                denominators.raw.as_ptr(),
+                next_numerators.raw.as_ptr(),
+                next_denominators.raw.as_ptr(),
+                numerators.len.ilog2(),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok((next_numerators, next_denominators))
+    }
+
+    pub fn gkr_next_logup_singles_layer(denominators: &Self) -> Result<(Self, Self), MetalError> {
+        assert!(
+            denominators.len.is_multiple_of(8),
+            "GKR next singles layer requires an even number of secure-field evaluations"
+        );
+        let input_len = denominators.len / 4;
+        assert!(
+            input_len.is_power_of_two() && input_len >= 2,
+            "GKR next singles layer requires a power-of-two logical input length with at least two evaluations"
+        );
+        let runtime = shared_runtime()?;
+        let next_numerators = Self::uninitialized((input_len / 2) * 4)?;
+        let next_denominators = Self::uninitialized((input_len / 2) * 4)?;
+        unsafe {
+            ffi::gkr_next_logup_singles_layer_u32x4(
+                runtime.raw.as_ptr(),
+                denominators.raw.as_ptr(),
+                next_numerators.raw.as_ptr(),
+                next_denominators.raw.as_ptr(),
+                input_len.ilog2(),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok((next_numerators, next_denominators))
+    }
+
+    pub fn inclusive_prefix_sum_bit_rev_circle_domain_in_place(
+        &mut self,
+    ) -> Result<(), MetalError> {
+        assert!(
+            self.len.is_power_of_two(),
+            "prefix sum requires a power-of-two base-field buffer"
+        );
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::inclusive_prefix_sum_bit_rev_circle_domain_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                self.len.ilog2(),
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
     pub fn permute_coset_to_circle_domain_bit_reversed(&self) -> Result<Self, MetalError> {
         assert!(
             self.len.is_power_of_two(),
@@ -651,6 +863,77 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_fix_first_variable_base_field_u32(
+            runtime: *mut c_void,
+            src: *mut c_void,
+            dst: *mut c_void,
+            src_log_len: u32,
+            assignment_limbs: *const u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_fix_first_variable_secure_field_u32x4(
+            runtime: *mut c_void,
+            src: *mut c_void,
+            dst: *mut c_void,
+            src_log_len: u32,
+            assignment_limbs: *const u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_gkr_gen_eq_evals_u32x4(
+            runtime: *mut c_void,
+            factors: *mut c_void,
+            dst: *mut c_void,
+            y_size: u32,
+            v_limbs: *const u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_gkr_next_grand_product_layer_u32x4(
+            runtime: *mut c_void,
+            src: *mut c_void,
+            dst: *mut c_void,
+            input_log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_gkr_next_logup_generic_layer_u32x4(
+            runtime: *mut c_void,
+            numerators: *mut c_void,
+            denominators: *mut c_void,
+            next_numerators: *mut c_void,
+            next_denominators: *mut c_void,
+            input_log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_gkr_next_logup_multiplicities_layer_u32(
+            runtime: *mut c_void,
+            numerators: *mut c_void,
+            denominators: *mut c_void,
+            next_numerators: *mut c_void,
+            next_denominators: *mut c_void,
+            input_log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_gkr_next_logup_singles_layer_u32x4(
+            runtime: *mut c_void,
+            denominators: *mut c_void,
+            next_numerators: *mut c_void,
+            next_denominators: *mut c_void,
+            input_log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_inclusive_prefix_sum_bit_rev_circle_domain_u32(
+            runtime: *mut c_void,
+            buffer: *mut c_void,
+            log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_permute_coset_to_circle_domain_bit_reversed_u32(
             runtime: *mut c_void,
             src: *mut c_void,
@@ -975,6 +1258,196 @@ mod ffi {
         }
     }
 
+    pub unsafe fn fix_first_variable_base_field_u32(
+        runtime: *mut c_void,
+        src: *mut c_void,
+        dst: *mut c_void,
+        src_log_len: u32,
+        assignment_limbs: [u32; 4],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fix_first_variable_base_field_u32(
+            runtime,
+            src,
+            dst,
+            src_log_len,
+            assignment_limbs.as_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn fix_first_variable_secure_field_u32x4(
+        runtime: *mut c_void,
+        src: *mut c_void,
+        dst: *mut c_void,
+        src_log_len: u32,
+        assignment_limbs: [u32; 4],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fix_first_variable_secure_field_u32x4(
+            runtime,
+            src,
+            dst,
+            src_log_len,
+            assignment_limbs.as_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn gkr_gen_eq_evals_u32x4(
+        runtime: *mut c_void,
+        factors: *mut c_void,
+        dst: *mut c_void,
+        y_size: u32,
+        v_limbs: [u32; 4],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_gkr_gen_eq_evals_u32x4(
+            runtime,
+            factors,
+            dst,
+            y_size,
+            v_limbs.as_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn gkr_next_grand_product_layer_u32x4(
+        runtime: *mut c_void,
+        src: *mut c_void,
+        dst: *mut c_void,
+        input_log_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_gkr_next_grand_product_layer_u32x4(
+            runtime,
+            src,
+            dst,
+            input_log_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn gkr_next_logup_generic_layer_u32x4(
+        runtime: *mut c_void,
+        numerators: *mut c_void,
+        denominators: *mut c_void,
+        next_numerators: *mut c_void,
+        next_denominators: *mut c_void,
+        input_log_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_gkr_next_logup_generic_layer_u32x4(
+            runtime,
+            numerators,
+            denominators,
+            next_numerators,
+            next_denominators,
+            input_log_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn gkr_next_logup_multiplicities_layer_u32(
+        runtime: *mut c_void,
+        numerators: *mut c_void,
+        denominators: *mut c_void,
+        next_numerators: *mut c_void,
+        next_denominators: *mut c_void,
+        input_log_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_gkr_next_logup_multiplicities_layer_u32(
+            runtime,
+            numerators,
+            denominators,
+            next_numerators,
+            next_denominators,
+            input_log_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn gkr_next_logup_singles_layer_u32x4(
+        runtime: *mut c_void,
+        denominators: *mut c_void,
+        next_numerators: *mut c_void,
+        next_denominators: *mut c_void,
+        input_log_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_gkr_next_logup_singles_layer_u32x4(
+            runtime,
+            denominators,
+            next_numerators,
+            next_denominators,
+            input_log_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn inclusive_prefix_sum_bit_rev_circle_domain_u32(
+        runtime: *mut c_void,
+        buffer: *mut c_void,
+        log_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_inclusive_prefix_sum_bit_rev_circle_domain_u32(
+            runtime,
+            buffer,
+            log_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn fri_fold_circle_into_line_first_layer_u32x4(
         runtime: *mut c_void,
         src: *mut c_void,
@@ -1241,6 +1714,109 @@ mod ffi {
         _runtime: *mut c_void,
         _src: *mut c_void,
         _dst: *mut c_void,
+        _log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn fix_first_variable_base_field_u32(
+        _runtime: *mut c_void,
+        _src: *mut c_void,
+        _dst: *mut c_void,
+        _src_log_len: u32,
+        _assignment_limbs: [u32; 4],
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn fix_first_variable_secure_field_u32x4(
+        _runtime: *mut c_void,
+        _src: *mut c_void,
+        _dst: *mut c_void,
+        _src_log_len: u32,
+        _assignment_limbs: [u32; 4],
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn gkr_gen_eq_evals_u32x4(
+        _runtime: *mut c_void,
+        _factors: *mut c_void,
+        _dst: *mut c_void,
+        _y_size: u32,
+        _v_limbs: [u32; 4],
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn gkr_next_grand_product_layer_u32x4(
+        _runtime: *mut c_void,
+        _src: *mut c_void,
+        _dst: *mut c_void,
+        _input_log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn gkr_next_logup_generic_layer_u32x4(
+        _runtime: *mut c_void,
+        _numerators: *mut c_void,
+        _denominators: *mut c_void,
+        _next_numerators: *mut c_void,
+        _next_denominators: *mut c_void,
+        _input_log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn gkr_next_logup_multiplicities_layer_u32(
+        _runtime: *mut c_void,
+        _numerators: *mut c_void,
+        _denominators: *mut c_void,
+        _next_numerators: *mut c_void,
+        _next_denominators: *mut c_void,
+        _input_log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn gkr_next_logup_singles_layer_u32x4(
+        _runtime: *mut c_void,
+        _denominators: *mut c_void,
+        _next_numerators: *mut c_void,
+        _next_denominators: *mut c_void,
+        _input_log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn inclusive_prefix_sum_bit_rev_circle_domain_u32(
+        _runtime: *mut c_void,
+        _buffer: *mut c_void,
         _log_len: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {

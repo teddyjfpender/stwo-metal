@@ -1,9 +1,10 @@
+use ark_std::One;
 use stwo::core::fields::qm31::SecureField;
 use stwo_metal_sys::metal::U32Buffer;
 
 #[derive(Debug)]
 pub struct SecureFieldVec {
-    buffer: U32Buffer,
+    pub(crate) buffer: U32Buffer,
     size: usize,
 }
 
@@ -14,6 +15,30 @@ impl SecureFieldVec {
     pub(crate) fn from_buffer(buffer: U32Buffer) -> Self {
         let size = buffer.len() / 4;
         Self { buffer, size }
+    }
+
+    pub fn gkr_generate_eq_evals(y: &[SecureField], v: SecureField) -> Self {
+        if y.is_empty() {
+            return Self::from_vec(vec![v]);
+        }
+
+        let factors = y
+            .iter()
+            .flat_map(|y_i| {
+                let lhs = SecureField::one() - *y_i;
+                [lhs, *y_i]
+            })
+            .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+            .collect::<Vec<_>>();
+        let factors = U32Buffer::from_slice(&factors)
+            .expect("Metal GKR eq-eval factor upload should initialize");
+        let buffer = U32Buffer::gkr_gen_eq_evals_from_factors(
+            &factors,
+            y.len(),
+            v.to_m31_array().map(|limb| limb.0),
+        )
+        .expect("Metal GKR eq-eval generation should succeed");
+        Self::from_buffer(buffer)
     }
 
     pub fn from_vec(host_array: Vec<SecureField>) -> Self {
@@ -128,6 +153,46 @@ impl SecureFieldVec {
             buffer,
             size: self.size / 2,
         }
+    }
+
+    pub fn fix_first_variable(&self, assignment: SecureField) -> Self {
+        assert!(
+            self.size >= 2,
+            "Metal SecureFieldVec MLE fix-first-variable requires at least two evaluations"
+        );
+        let buffer = self
+            .buffer
+            .fix_first_variable_secure_field(assignment.to_m31_array().map(|limb| limb.0))
+            .expect("Metal SecureFieldVec MLE fix-first-variable should succeed");
+        Self::from_buffer(buffer)
+    }
+
+    pub fn gkr_next_grand_product_layer(&self) -> Self {
+        let buffer = self
+            .buffer
+            .gkr_next_grand_product_layer()
+            .expect("Metal GKR next grand-product layer should succeed");
+        Self::from_buffer(buffer)
+    }
+
+    pub fn gkr_next_logup_generic_layer(numerators: &Self, denominators: &Self) -> (Self, Self) {
+        let (next_numerators, next_denominators) =
+            U32Buffer::gkr_next_logup_generic_layer(&numerators.buffer, &denominators.buffer)
+                .expect("Metal GKR next generic layer should succeed");
+        (
+            Self::from_buffer(next_numerators),
+            Self::from_buffer(next_denominators),
+        )
+    }
+
+    pub fn gkr_next_logup_singles_layer(denominators: &Self) -> (Self, Self) {
+        let (next_numerators, next_denominators) =
+            U32Buffer::gkr_next_logup_singles_layer(&denominators.buffer)
+                .expect("Metal GKR next singles layer should succeed");
+        (
+            Self::from_buffer(next_numerators),
+            Self::from_buffer(next_denominators),
+        )
     }
 }
 

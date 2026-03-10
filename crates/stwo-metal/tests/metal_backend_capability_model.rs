@@ -99,11 +99,10 @@ fn first_metal_slice_marks_base_field_support_explicitly() {
     );
     assert_eq!(
         metal_backend_surface_status(MetalBackendSurface::MleOpsCpuBridge),
-        MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
+        MetalBackendSurfaceStatus::Supported
     );
     assert!(
-        metal_backend_surface_detail(MetalBackendSurface::MleOpsCpuBridge)
-            .contains("explicit CPU bridge")
+        metal_backend_surface_detail(MetalBackendSurface::MleOpsCpuBridge).contains("native Metal")
     );
     assert_eq!(
         metal_backend_surface_status(MetalBackendSurface::GkrOpsCpuBridge),

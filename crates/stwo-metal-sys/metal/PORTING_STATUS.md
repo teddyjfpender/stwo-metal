@@ -19,6 +19,9 @@ Current compile-active Metal sources wired by `build.rs`:
 - `quotients.metal`
 - `fold_circle_into_line.metal`
 - `fold_line.metal`
+- `mle.metal`
+- `gkr.metal`
+- `prefix_sum.metal`
 - `bit_reverse.metal`
 - `poly_order.metal`
 - `wide_fibonacci.metal`
@@ -34,12 +37,13 @@ Current parity-tested native files:
 - `quotients.metal`
 - `fold_circle_into_line.metal`
 - `fold_line.metal`
+- `mle.metal`
+- `gkr.metal`
+- `prefix_sum.metal`
 
 Current scaffold-only mirror files for the native hot path:
 
-- `prefix_sum.metal`
-- `mle.metal`
-- `gkr.metal`
+- none
 
 Historical non-mirrored Metal sources retained outside the compile-active set:
 
@@ -56,6 +60,6 @@ Declared port order:
 6. `quotients`
 7. `fold_circle_into_line`
 8. `fold_line`
-9. `prefix_sum`
-10. `mle`
-11. `gkr`
+9. `mle`
+10. `gkr`
+11. `prefix_sum`

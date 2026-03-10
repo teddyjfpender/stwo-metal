@@ -714,6 +714,605 @@ bool stwo_metal_ifft_interpolate_u32(
     }
 }
 
+bool stwo_metal_fix_first_variable_base_field_u32(
+    void *runtime_ptr,
+    void *src_ptr,
+    void *dst_ptr,
+    uint32_t src_log_len,
+    const uint32_t *assignment_limbs,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *src = stwo_metal_buffer_box(src_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        if (src_log_len == 0u) {
+            stwo_metal_write_error(error_message, error_message_len, @"MLE fix-first-variable expects at least one variable.");
+            return false;
+        }
+
+        uint32_t src_len = ((uint32_t)1) << src_log_len;
+        uint32_t midpoint = src_len >> 1u;
+        if (src.len != (NSUInteger)src_len || dst.len != (NSUInteger)(midpoint * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"Base-field MLE fix-first-variable expects a power-of-two source and a secure-field destination of half that logical length.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"fix_first_variable_base_field_u32", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:src.buffer offset:0 atIndex:0];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:1];
+        [encoder setBytes:assignment_limbs length:sizeof(uint32_t) * 4u atIndex:2];
+        [encoder setBytes:&midpoint length:sizeof(midpoint) atIndex:3];
+
+        MTLSize grid_size = MTLSizeMake(midpoint, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_fix_first_variable_secure_field_u32x4(
+    void *runtime_ptr,
+    void *src_ptr,
+    void *dst_ptr,
+    uint32_t src_log_len,
+    const uint32_t *assignment_limbs,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *src = stwo_metal_buffer_box(src_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        if (src_log_len == 0u) {
+            stwo_metal_write_error(error_message, error_message_len, @"MLE fix-first-variable expects at least one variable.");
+            return false;
+        }
+
+        uint32_t src_len = ((uint32_t)1) << src_log_len;
+        uint32_t midpoint = src_len >> 1u;
+        if (src.len != (NSUInteger)(src_len * 4u) || dst.len != (NSUInteger)(midpoint * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"Secure-field MLE fix-first-variable expects four limbs per source and destination element.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"fix_first_variable_secure_field_u32x4", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:src.buffer offset:0 atIndex:0];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:1];
+        [encoder setBytes:assignment_limbs length:sizeof(uint32_t) * 4u atIndex:2];
+        [encoder setBytes:&midpoint length:sizeof(midpoint) atIndex:3];
+
+        MTLSize grid_size = MTLSizeMake(midpoint, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_gkr_gen_eq_evals_u32x4(
+    void *runtime_ptr,
+    void *factors_ptr,
+    void *dst_ptr,
+    uint32_t y_size,
+    const uint32_t *v_limbs,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *factors = stwo_metal_buffer_box(factors_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        uint32_t eval_count = 1u << y_size;
+        if (factors.len != (NSUInteger)(y_size * 2u * 4u) || dst.len != (NSUInteger)(eval_count * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR eq-eval generation expects two qm31 factors per input coordinate and one qm31 output per hypercube point.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_gen_eq_evals_u32x4", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:factors.buffer offset:0 atIndex:0];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:1];
+        [encoder setBytes:v_limbs length:sizeof(uint32_t) * 4u atIndex:2];
+        [encoder setBytes:&y_size length:sizeof(y_size) atIndex:3];
+
+        MTLSize grid_size = MTLSizeMake(eval_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_gkr_next_grand_product_layer_u32x4(
+    void *runtime_ptr,
+    void *src_ptr,
+    void *dst_ptr,
+    uint32_t input_log_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *src = stwo_metal_buffer_box(src_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        if (input_log_len == 0u) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR next layer expects at least one input variable.");
+            return false;
+        }
+
+        uint32_t input_len = 1u << input_log_len;
+        uint32_t next_layer_size = input_len >> 1u;
+        if (src.len != (NSUInteger)(input_len * 4u) || dst.len != (NSUInteger)(next_layer_size * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR grand-product next layer expects secure-field source and destination buffers with half-size output.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_next_grand_product_layer_u32x4", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:src.buffer offset:0 atIndex:0];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:1];
+        [encoder setBytes:&next_layer_size length:sizeof(next_layer_size) atIndex:2];
+
+        MTLSize grid_size = MTLSizeMake(next_layer_size, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_gkr_next_logup_generic_layer_u32x4(
+    void *runtime_ptr,
+    void *numerators_ptr,
+    void *denominators_ptr,
+    void *next_numerators_ptr,
+    void *next_denominators_ptr,
+    uint32_t input_log_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *numerators = stwo_metal_buffer_box(numerators_ptr);
+        StwoMetalBufferBox *denominators = stwo_metal_buffer_box(denominators_ptr);
+        StwoMetalBufferBox *next_numerators = stwo_metal_buffer_box(next_numerators_ptr);
+        StwoMetalBufferBox *next_denominators = stwo_metal_buffer_box(next_denominators_ptr);
+        if (input_log_len == 0u) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR next layer expects at least one input variable.");
+            return false;
+        }
+
+        uint32_t input_len = 1u << input_log_len;
+        uint32_t next_layer_size = input_len >> 1u;
+        if (numerators.len != (NSUInteger)(input_len * 4u) ||
+            denominators.len != (NSUInteger)(input_len * 4u) ||
+            next_numerators.len != (NSUInteger)(next_layer_size * 4u) ||
+            next_denominators.len != (NSUInteger)(next_layer_size * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR generic next layer expects secure-field numerators and denominators with half-size secure-field outputs.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_next_logup_generic_layer_u32x4", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:numerators.buffer offset:0 atIndex:0];
+        [encoder setBuffer:denominators.buffer offset:0 atIndex:1];
+        [encoder setBuffer:next_numerators.buffer offset:0 atIndex:2];
+        [encoder setBuffer:next_denominators.buffer offset:0 atIndex:3];
+        [encoder setBytes:&next_layer_size length:sizeof(next_layer_size) atIndex:4];
+
+        MTLSize grid_size = MTLSizeMake(next_layer_size, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_gkr_next_logup_multiplicities_layer_u32(
+    void *runtime_ptr,
+    void *numerators_ptr,
+    void *denominators_ptr,
+    void *next_numerators_ptr,
+    void *next_denominators_ptr,
+    uint32_t input_log_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *numerators = stwo_metal_buffer_box(numerators_ptr);
+        StwoMetalBufferBox *denominators = stwo_metal_buffer_box(denominators_ptr);
+        StwoMetalBufferBox *next_numerators = stwo_metal_buffer_box(next_numerators_ptr);
+        StwoMetalBufferBox *next_denominators = stwo_metal_buffer_box(next_denominators_ptr);
+        if (input_log_len == 0u) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR next layer expects at least one input variable.");
+            return false;
+        }
+
+        uint32_t input_len = 1u << input_log_len;
+        uint32_t next_layer_size = input_len >> 1u;
+        if (numerators.len != (NSUInteger)input_len ||
+            denominators.len != (NSUInteger)(input_len * 4u) ||
+            next_numerators.len != (NSUInteger)(next_layer_size * 4u) ||
+            next_denominators.len != (NSUInteger)(next_layer_size * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR multiplicities next layer expects base-field numerators, secure-field denominators, and secure-field outputs.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_next_logup_multiplicities_layer_u32", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:numerators.buffer offset:0 atIndex:0];
+        [encoder setBuffer:denominators.buffer offset:0 atIndex:1];
+        [encoder setBuffer:next_numerators.buffer offset:0 atIndex:2];
+        [encoder setBuffer:next_denominators.buffer offset:0 atIndex:3];
+        [encoder setBytes:&next_layer_size length:sizeof(next_layer_size) atIndex:4];
+
+        MTLSize grid_size = MTLSizeMake(next_layer_size, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_gkr_next_logup_singles_layer_u32x4(
+    void *runtime_ptr,
+    void *denominators_ptr,
+    void *next_numerators_ptr,
+    void *next_denominators_ptr,
+    uint32_t input_log_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *denominators = stwo_metal_buffer_box(denominators_ptr);
+        StwoMetalBufferBox *next_numerators = stwo_metal_buffer_box(next_numerators_ptr);
+        StwoMetalBufferBox *next_denominators = stwo_metal_buffer_box(next_denominators_ptr);
+        if (input_log_len == 0u) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR next layer expects at least one input variable.");
+            return false;
+        }
+
+        uint32_t input_len = 1u << input_log_len;
+        uint32_t next_layer_size = input_len >> 1u;
+        if (denominators.len != (NSUInteger)(input_len * 4u) ||
+            next_numerators.len != (NSUInteger)(next_layer_size * 4u) ||
+            next_denominators.len != (NSUInteger)(next_layer_size * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"GKR singles next layer expects secure-field denominators and secure-field outputs.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_next_logup_singles_layer_u32x4", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:denominators.buffer offset:0 atIndex:0];
+        [encoder setBuffer:next_numerators.buffer offset:0 atIndex:1];
+        [encoder setBuffer:next_denominators.buffer offset:0 atIndex:2];
+        [encoder setBytes:&next_layer_size length:sizeof(next_layer_size) atIndex:3];
+
+        MTLSize grid_size = MTLSizeMake(next_layer_size, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_inclusive_prefix_sum_bit_rev_circle_domain_u32(
+    void *runtime_ptr,
+    void *buffer_ptr,
+    uint32_t log_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *buffer = stwo_metal_buffer_box(buffer_ptr);
+        uint32_t len = ((uint32_t)1) << log_len;
+        if (buffer.len != (NSUInteger)len) {
+            stwo_metal_write_error(error_message, error_message_len, @"Prefix sum expects a power-of-two base-field buffer matching log_len.");
+            return false;
+        }
+
+        if (!stwo_metal_dispatch_unary_u32_kernel(
+                runtime,
+                @"bit_reverse_u32",
+                buffer,
+                log_len,
+                error_message,
+                error_message_len)) {
+            return false;
+        }
+
+        id<MTLComputePipelineState> circle_to_coset =
+            stwo_metal_pipeline(runtime, @"prefix_sum_circle_domain_order_to_coset_order_u32", error_message, error_message_len);
+        if (circle_to_coset == nil) {
+            return false;
+        }
+        id<MTLComputePipelineState> coset_to_circle =
+            stwo_metal_pipeline(runtime, @"prefix_sum_coset_order_to_circle_domain_order_u32", error_message, error_message_len);
+        if (coset_to_circle == nil) {
+            return false;
+        }
+        id<MTLComputePipelineState> inclusive_step =
+            stwo_metal_pipeline(runtime, @"prefix_sum_inclusive_step_u32", error_message, error_message_len);
+        if (inclusive_step == nil) {
+            return false;
+        }
+
+        NSUInteger bytes = (NSUInteger)len * sizeof(uint32_t);
+        id<MTLBuffer> coset_buffer =
+            [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> scan_buffer =
+            [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        if (coset_buffer == nil || scan_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal prefix-sum scratch buffers.");
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        uint32_t half_len = len >> 1u;
+        id<MTLComputeCommandEncoder> reorder_encoder = [command_buffer computeCommandEncoder];
+        if (reorder_encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+        [reorder_encoder setComputePipelineState:circle_to_coset];
+        [reorder_encoder setBuffer:buffer.buffer offset:0 atIndex:0];
+        [reorder_encoder setBuffer:coset_buffer offset:0 atIndex:1];
+        [reorder_encoder setBytes:&len length:sizeof(len) atIndex:2];
+        MTLSize reorder_grid = MTLSizeMake(MAX((uint32_t)1u, half_len), 1, 1);
+        MTLSize reorder_threads = MTLSizeMake(stwo_metal_threads_per_group(circle_to_coset), 1, 1);
+        [reorder_encoder dispatchThreads:reorder_grid threadsPerThreadgroup:reorder_threads];
+        [reorder_encoder endEncoding];
+
+        id<MTLBuffer> current = coset_buffer;
+        id<MTLBuffer> temp = scan_buffer;
+        for (uint32_t stride = 1u; stride < len; stride <<= 1u) {
+            id<MTLComputeCommandEncoder> scan_encoder = [command_buffer computeCommandEncoder];
+            if (scan_encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                return false;
+            }
+            [scan_encoder setComputePipelineState:inclusive_step];
+            [scan_encoder setBuffer:current offset:0 atIndex:0];
+            [scan_encoder setBuffer:temp offset:0 atIndex:1];
+            [scan_encoder setBytes:&len length:sizeof(len) atIndex:2];
+            [scan_encoder setBytes:&stride length:sizeof(stride) atIndex:3];
+            MTLSize scan_grid = MTLSizeMake(len, 1, 1);
+            MTLSize scan_threads = MTLSizeMake(stwo_metal_threads_per_group(inclusive_step), 1, 1);
+            [scan_encoder dispatchThreads:scan_grid threadsPerThreadgroup:scan_threads];
+            [scan_encoder endEncoding];
+
+            id<MTLBuffer> swap = current;
+            current = temp;
+            temp = swap;
+        }
+
+        id<MTLComputeCommandEncoder> restore_encoder = [command_buffer computeCommandEncoder];
+        if (restore_encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+        [restore_encoder setComputePipelineState:coset_to_circle];
+        [restore_encoder setBuffer:current offset:0 atIndex:0];
+        [restore_encoder setBuffer:buffer.buffer offset:0 atIndex:1];
+        [restore_encoder setBytes:&len length:sizeof(len) atIndex:2];
+        MTLSize restore_grid = MTLSizeMake(len, 1, 1);
+        MTLSize restore_threads = MTLSizeMake(stwo_metal_threads_per_group(coset_to_circle), 1, 1);
+        [restore_encoder dispatchThreads:restore_grid threadsPerThreadgroup:restore_threads];
+        [restore_encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return stwo_metal_dispatch_unary_u32_kernel(
+            runtime,
+            @"bit_reverse_u32",
+            buffer,
+            log_len,
+            error_message,
+            error_message_len
+        );
+    }
+}
+
 bool stwo_metal_permute_coset_to_circle_domain_bit_reversed_u32(
     void *runtime_ptr,
     void *src_ptr,

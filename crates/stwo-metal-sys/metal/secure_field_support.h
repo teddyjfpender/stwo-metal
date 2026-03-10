@@ -9,6 +9,10 @@ struct StwoMetalQm31 {
     uint d;
 };
 
+static inline StwoMetalQm31 stwo_metal_qm31_from_base(uint value) {
+    return StwoMetalQm31 { value, 0u, 0u, 0u };
+}
+
 static inline StwoMetalQm31 stwo_metal_qm31_add(StwoMetalQm31 lhs, StwoMetalQm31 rhs) {
     return StwoMetalQm31 {
         stwo_metal_m31_add(lhs.a, rhs.a),
@@ -95,4 +99,27 @@ static inline StwoMetalQm31 stwo_metal_fri_fold_pair(
     StwoMetalQm31 f1 =
         stwo_metal_qm31_mul_base(stwo_metal_qm31_sub(f_p, f_neg_p), inverse_factor);
     return stwo_metal_qm31_add(f0, stwo_metal_qm31_mul(alpha, f1));
+}
+
+static inline StwoMetalQm31 stwo_metal_fold_base_mle_pair(
+    uint lhs,
+    uint rhs,
+    StwoMetalQm31 assignment
+) {
+    uint delta = stwo_metal_m31_sub(rhs, lhs);
+    return stwo_metal_qm31_add(
+        stwo_metal_qm31_from_base(lhs),
+        stwo_metal_qm31_mul_base(assignment, delta)
+    );
+}
+
+static inline StwoMetalQm31 stwo_metal_fold_secure_mle_pair(
+    StwoMetalQm31 lhs,
+    StwoMetalQm31 rhs,
+    StwoMetalQm31 assignment
+) {
+    return stwo_metal_qm31_add(
+        lhs,
+        stwo_metal_qm31_mul(assignment, stwo_metal_qm31_sub(rhs, lhs))
+    );
 }

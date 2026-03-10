@@ -254,34 +254,36 @@ fn claim_logup_singles(
 }
 
 #[test]
-fn metal_mle_ops_cpu_bridge_matches_cpu_for_fix_first_variable() {
+fn metal_mle_ops_native_matches_cpu_for_fix_first_variable() {
     require_metal_runtime();
 
     let assignment = sf(91);
 
-    let base_cpu = Mle::<CpuBackend, BaseField>::new(base_values(1 << 6, 5));
-    let base_expected = CpuBackend::fix_first_variable(base_cpu.clone(), assignment);
-    let base_actual = MetalBackend::fix_first_variable(
-        Mle::<MetalBackend, BaseField>::new(MetalBaseFieldVec::from_vec(base_cpu.into_evals())),
-        assignment,
-    );
-    assert_eq!(
-        base_actual.into_evals().to_cpu(),
-        base_expected.into_evals()
-    );
+    for log_len in [1u32, 6u32] {
+        let base_cpu = Mle::<CpuBackend, BaseField>::new(base_values(1 << log_len, 5));
+        let base_expected = CpuBackend::fix_first_variable(base_cpu.clone(), assignment);
+        let base_actual = MetalBackend::fix_first_variable(
+            Mle::<MetalBackend, BaseField>::new(MetalBaseFieldVec::from_vec(base_cpu.into_evals())),
+            assignment,
+        );
+        assert_eq!(
+            base_actual.into_evals().to_cpu(),
+            base_expected.into_evals()
+        );
 
-    let secure_cpu = Mle::<CpuBackend, SecureField>::new(secure_values(1 << 6, 17));
-    let secure_expected = CpuBackend::fix_first_variable(secure_cpu.clone(), assignment);
-    let secure_actual = MetalBackend::fix_first_variable(
-        Mle::<MetalBackend, SecureField>::new(MetalSecureFieldVec::from_vec(
-            secure_cpu.into_evals(),
-        )),
-        assignment,
-    );
-    assert_eq!(
-        secure_actual.into_evals().to_cpu(),
-        secure_expected.into_evals()
-    );
+        let secure_cpu = Mle::<CpuBackend, SecureField>::new(secure_values(1 << log_len, 17));
+        let secure_expected = CpuBackend::fix_first_variable(secure_cpu.clone(), assignment);
+        let secure_actual = MetalBackend::fix_first_variable(
+            Mle::<MetalBackend, SecureField>::new(MetalSecureFieldVec::from_vec(
+                secure_cpu.into_evals(),
+            )),
+            assignment,
+        );
+        assert_eq!(
+            secure_actual.into_evals().to_cpu(),
+            secure_expected.into_evals()
+        );
+    }
 }
 
 #[test]

@@ -13,6 +13,9 @@ const METAL_SOURCES: &[&str] = &[
     "quotients",
     "fold_circle_into_line",
     "fold_line",
+    "mle",
+    "gkr",
+    "prefix_sum",
     "bit_reverse",
     "poly_order",
     "wide_fibonacci",
@@ -111,6 +114,9 @@ fn main() {
     println!("cargo:rerun-if-changed=metal/quotients.metal");
     println!("cargo:rerun-if-changed=metal/fold_circle_into_line.metal");
     println!("cargo:rerun-if-changed=metal/fold_line.metal");
+    println!("cargo:rerun-if-changed=metal/mle.metal");
+    println!("cargo:rerun-if-changed=metal/gkr.metal");
+    println!("cargo:rerun-if-changed=metal/prefix_sum.metal");
     println!("cargo:rerun-if-changed=metal/bit_reverse.metal");
     println!("cargo:rerun-if-changed=metal/poly_order.metal");
     println!("cargo:rerun-if-changed=metal/wide_fibonacci.metal");

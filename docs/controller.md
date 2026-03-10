@@ -29,7 +29,7 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T8 fourth implementation slice: move from mirrored quotient and fold files into the remaining lookup/support kernels`
+- Active tranche: `T8 sixth implementation slice: the mirrored hot-path set is complete, so the next work is benchmark activation and the remaining non-mirrored CPU bridges`
 - Objective:
   return from acceptance closure to native performance work by mirroring the
   active CUDA hot-path structure into `stwo-metal-sys/metal` and porting it in
@@ -65,8 +65,16 @@ Invariants:
   and `rfft.metal` / `ifft.metal` / `poly_utils.metal` now carry the native
   evaluate/interpolate core, and mirrored `quotients.metal`,
   `fold_circle_into_line.metal`, and `fold_line.metal` now carry the active
-  native proving kernels, but `prefix_sum`, `mle`, and `gkr` are still
-  scaffold-only
+  native proving kernels
+- `mle.metal` is now compile-active and parity-tested, and the explicit
+  `MleOps` CPU bridge is retired
+- `gkr.metal` is now compile-active and parity-tested for native eq-eval
+  generation plus native next-layer construction, but
+  `sum_as_poly_in_first_variable` still crosses an explicit CPU bridge
+- `prefix_sum.metal` is now compile-active and parity-tested as a support
+  kernel over bit-reversed circle-domain base-field columns
+- the mirrored `metal/` hot-path set recorded in `PORTING_STATUS.md` is now
+  structurally complete
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
@@ -83,14 +91,13 @@ Invariants:
 
 ## Next three deliverables
 
-1. Land the mirrored native file set under
-   `crates/stwo-metal-sys/metal` for the remaining support tranche:
-   `prefix_sum`, `mle`, and `gkr`.
-2. Keep the mirrored native proving files recorded as compile-active and
-   parity-tested so the repo does not regress to the old non-mirrored Metal
-   islands.
-3. Use the remaining support tranche to keep shrinking CPU-bridged proving
-   surfaces after the mirrored FFT, quotient, and fold lanes.
+1. Decide which remaining explicit CPU bridge is the next measured bottleneck
+   after mirrored hot-path completion:
+   `GkrOps` oracle evaluation, `FriOps`, `PolyOps`, or Blake2s lifted hashing.
+2. Turn the mirrored hot-path completion into benchmark-active measurement for
+   the wide-fibonacci north star instead of stopping at parity-only support.
+3. Keep the remaining adapter-local and oracle-evaluation bridges explicit
+   while the next benchmark-facing replacement slice is chosen.
 
 ## Explicitly not doing now
 

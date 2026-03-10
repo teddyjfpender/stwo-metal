@@ -65,8 +65,9 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T8 third implementation slice: move from native FFT/poly
-into mirrored quotient and fold files`, as tracked in
+The active tranche is `T8 sixth implementation slice: convert mirrored
+hot-path completion into benchmark-active measurement and the next remaining
+CPU-bridge retirement`, as tracked in
 [`controller.md`](./controller.md) and sequenced by
 [`roadmap.md`](./roadmap.md).
 
@@ -217,12 +218,26 @@ The first active T8 supporting slices are:
   FRI fold kernel previously isolated in the non-mirrored Metal proving lane
 - `fold_line.metal` now carries the compile-active mirrored line-fold kernel
   previously isolated in the non-mirrored Metal proving lane
+- `mle.metal` now carries compile-active native first-variable fixing for both
+  base-field and secure-field multilinear evaluations
+- the explicit `MleOps` CPU bridge is now retired, with deterministic parity
+  over both edge-size and normal-size multilinear evaluations
+- `gkr.metal` now carries compile-active native eq-eval generation and next-layer
+  construction for `GrandProduct`, `LogUpGeneric`, `LogUpMultiplicities`, and
+  `LogUpSingles`
+- the remaining `GkrOps` CPU bridge is now explicitly narrowed to
+  `sum_as_poly_in_first_variable`
+- `prefix_sum.metal` now carries compile-active native inclusive prefix-sum
+  support for bit-reversed circle-domain base-field columns
+- `PORTING_STATUS.md` no longer has any scaffold-only mirrored hot-path files
 
 The next required T8 boundary is:
 
-- keep compile-active Metal files explicit and separate from scaffold-only
-  mirror files
-- begin real mirrored support-kernel implementation at `prefix_sum`, `mle`,
-  and `gkr`
+- keep the completed mirrored hot-path set explicit and parity-tested while it
+  begins carrying benchmark-active work
+- decide which remaining explicit CPU bridge is the next benchmark-facing
+  bottleneck after mirror completion
+- keep the remaining `GkrOps` oracle-evaluation bridge explicit while
+  `gkr.metal` owns eq-evals and next-layer generation
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

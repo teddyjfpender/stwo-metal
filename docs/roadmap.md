@@ -213,9 +213,9 @@ Port order for the next native tranche:
 6. `quotients`
 7. `fold_circle_into_line`
 8. `fold_line`
-9. `prefix_sum`
-10. `mle`
-11. `gkr`
+9. `mle`
+10. `gkr`
+11. `prefix_sum`
 
 Why this order:
 
@@ -505,8 +505,15 @@ Current next slice inside T8:
   boundary
 - treat mirrored `quotients.metal`, `fold_circle_into_line.metal`, and
   `fold_line.metal` as the active native proving lane after the FFT core
-- move directly into `prefix_sum`, `mle`, and `gkr` after the mirrored proving
-  files are compile-active
+- treat `mle.metal` as compile-active and parity-tested, with the previous
+  `MleOps` CPU bridge retired
+- treat `gkr.metal` as compile-active and parity-tested for eq-eval generation
+  plus next-layer construction, while keeping the remaining
+  `sum_as_poly_in_first_variable` bridge explicit
+- treat `prefix_sum.metal` as compile-active and parity-tested support rather
+  than leaving any mirrored hot-path file scaffold-only
+- with the mirrored hot-path set complete, move the next T8 decision to
+  benchmark activation and remaining explicit CPU-bridge retirement
 
 ## Sequencing rules
 
@@ -520,9 +527,9 @@ Current next slice inside T8:
 
 ## Current next three planning deliverables
 
-1. Land the mirrored native `prefix_sum` slice where it is actually required by
-   the remaining proving path.
-2. Land the mirrored native `mle` slice with deterministic parity against the
-   vendored CPU backend.
-3. Land the mirrored native `gkr` slice before calling the hot-path mirror
-   complete.
+1. Turn the completed mirrored native hot-path set into benchmark-active
+   measurement against the wide-fibonacci north star.
+2. Keep the mirrored native `mle`, `gkr`, and `prefix_sum` slices parity-tested
+   and support-honest in the capability model and docs.
+3. Choose the next remaining explicit CPU bridge to retire after mirror
+   completion, starting from the measured bottleneck rather than file presence.

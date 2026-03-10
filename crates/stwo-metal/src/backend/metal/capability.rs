@@ -148,7 +148,6 @@ pub const fn metal_backend_surface_status(
         MetalBackendSurface::AccumulationOpsCpuBridge
         | MetalBackendSurface::QuotientOpsCpuBridge
         | MetalBackendSurface::FriOpsCpuBridge
-        | MetalBackendSurface::MleOpsCpuBridge
         | MetalBackendSurface::GkrOpsCpuBridge
         | MetalBackendSurface::Blake2sHashColumnCpuBridge
         | MetalBackendSurface::Blake2sMerkleOpsLiftedCpuBridge
@@ -156,6 +155,7 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::Blake2sBackendForChannelCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
+        MetalBackendSurface::MleOpsCpuBridge => MetalBackendSurfaceStatus::Supported,
         MetalBackendSurface::QuotientAccumulate => MetalBackendSurfaceStatus::UnsupportedPlanned,
     }
 }
@@ -187,10 +187,10 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
             "The `FriOps` boundary is supported through an explicit CPU bridge that repacks Metal-owned secure columns into the bounded Metal fold kernels and uses the vendored CPU backend for decomposition."
         }
         MetalBackendSurface::MleOpsCpuBridge => {
-            "The `MleOps` boundary is supported through an explicit CPU bridge over Metal-owned multilinear-evaluation storage."
+            "Legacy capability name retained for API stability: `MleOps::fix_first_variable` is now implemented through native Metal kernels over Metal-owned multilinear-evaluation storage, and the old explicit CPU bridge is retired."
         }
         MetalBackendSurface::GkrOpsCpuBridge => {
-            "The `GkrOps` boundary is supported through an explicit CPU bridge over Metal-owned lookup-layer storage and CPU-owned oracle evaluation."
+            "The `GkrOps` boundary now uses native Metal eq-eval generation and next-layer construction over Metal-owned lookup storage, while `sum_as_poly_in_first_variable` remains an explicit CPU bridge over the oracle-evaluation boundary."
         }
         MetalBackendSurface::Blake2sHashColumnCpuBridge => {
             "The `ColumnOps<Blake2sHash>` boundary is supported through an explicit CPU bridge over host-owned Blake2s hash columns."

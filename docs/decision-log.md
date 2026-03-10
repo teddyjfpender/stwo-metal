@@ -28,6 +28,97 @@ Superseded by:
 
 ## Entries
 
+### DEC-0049: Mirrored hot-path completion may stop at parity-tested support for `prefix_sum`, and the next native decision moves from file presence to benchmark bottlenecks
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`prefix_sum.metal` is now compile-active and parity-tested as a support kernel
+for bit-reversed circle-domain base-field columns. That is enough to mark the
+mirrored hot-path set complete in `PORTING_STATUS.md`; the next T8 choice is no
+longer “which mirrored file is missing?” but “which remaining explicit CPU
+bridge is the real measured bottleneck for the benchmark-active path?”
+
+Context:
+
+After native `mle` and the bounded native `gkr` subset landed, `prefix_sum`
+was the only mirrored hot-path file still scaffold-only. It is useful support
+in the copied CUDA subsystem, but not yet the architecture driver for the
+current proving row. Completing it as parity-tested support keeps the mirror
+truthful without over-claiming benchmark ownership.
+
+Alternatives rejected:
+
+- leave `prefix_sum.metal` scaffold-only and keep `PORTING_STATUS.md`
+  permanently incomplete
+- claim `prefix_sum` as benchmark-critical ownership before measurement shows
+  it is on the active bottleneck path
+- keep sequencing T8 by file presence after the mirrored hot-path set is
+  already complete
+
+Impact:
+
+- `PORTING_STATUS.md` now has no scaffold-only mirrored hot-path files
+- the next honest native tranche is benchmark activation plus retirement of the
+  next measured explicit CPU bridge
+- mirrored file completion is no longer the gating question for T8
+
+Superseded by:
+
+- none
+
+### DEC-0048: The next mirrored lookup tranche retires native MLE completely and narrows GKR to the remaining oracle-evaluation bridge
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`mle.metal` is now compile-active and parity-tested for both base-field and
+secure-field `fix_first_variable`, so the explicit `MleOps` CPU bridge is
+retired. `gkr.metal` is also now compile-active and parity-tested for
+`gen_eq_evals` and `next_layer` across every current `Layer` variant, but
+`sum_as_poly_in_first_variable` remains an explicit CPU bridge until the
+oracle-evaluation boundary has its own bounded native replacement.
+
+Context:
+
+After the mirrored quotient and fold files landed, the smallest truthful
+bridge-retirement step was `MleOps`. The natural adjacent step inside the same
+lookup tranche was not all of `GkrOps`, but the parts that are already
+pointwise layer transforms with clear deterministic CPU oracles: eq-eval
+generation and next-layer construction.
+
+Alternatives rejected:
+
+- leave `mle.metal` scaffold-only while moving directly to `prefix_sum`
+- claim full `GkrOps` native support before the sumcheck-oracle boundary is
+  implemented
+- keep the old broad `GkrOps` CPU-bridge wording after native eq-evals and
+  next-layer support had landed
+
+Impact:
+
+- the compile-active mirrored hot-path set now includes `mle.metal` and
+  `gkr.metal`
+- `MleOps` no longer depends on an explicit CPU bridge
+- `GkrOps` is now a narrower and more truthful CPU bridge, limited to
+  `sum_as_poly_in_first_variable`
+- `prefix_sum.metal` is the only remaining scaffold-only mirrored hot-path
+  file in `PORTING_STATUS.md`
+
+Superseded by:
+
+- none
+
 ### DEC-0047: Native quotient and fold kernels must live in mirrored Metal file names before the remaining support tranche proceeds
 
 - Date: `2026-03-10`
