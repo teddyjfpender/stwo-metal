@@ -49,7 +49,9 @@ use stwo_metal::{
     MetalWideFibonacciTrace,
 };
 #[cfg(feature = "metal-runtime")]
-use stwo_metal_benchmark_bridge::stage_wide_fibonacci_prove_values;
+use stwo_metal_benchmark_bridge::{
+    stage_wide_fibonacci_prove_values, wide_fibonacci_prove_values_lane,
+};
 #[cfg(feature = "metal-runtime")]
 use stwo_metal_standalone_benchmarks::support::summarize;
 use stwo_metal_standalone_benchmarks::support::{
@@ -787,8 +789,13 @@ fn prove_with_breakdown(
     let composition_commit_ms = composition_commit_start.elapsed().as_secs_f64() * 1000.0;
 
     let execution_authority = benchmark_boundary.execution_authority();
+    let prove_values_lane = wide_fibonacci_prove_values_lane(
+        benchmark_boundary.target().workload_name,
+        execution_authority,
+    )
+    .expect("registered benchmark boundary must satisfy the prove-values lane contract");
     let prove_values_stage = stage_wide_fibonacci_prove_values(
-        &execution_authority,
+        &prove_values_lane,
         components,
         channel,
         &commitment_scheme,

@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 sixteenth slice: choose the first support-bridge path that can move below
-the transitional public authority onto a lower workspace-private seam`
+`G5 seventeenth slice: choose whether the upstream acceptance lane or the
+remaining benchmark lane is the next path to move below the public authority`
 
 The active formal basis is:
 
@@ -257,6 +257,17 @@ The fifteenth G5 slice is now landed:
 - the next honest G5 work is choosing the first support-bridge path that can
   move below that public surface without breaking the private support-crate
   ownership model
+
+The sixteenth G5 slice is now landed:
+
+- the benchmark prove-values bridge now validates one workspace-private
+  `WideFibonacciProveValuesLane` contract and stages from that lower contract
+  instead of consuming `MetalExecutionAuthority` directly
+- the wide-fibonacci benchmark row now constructs that private lane contract at
+  the edge and hands the live helper only the validated support-bridge seam it
+  actually needs
+- the next honest G5 work is deciding whether the upstream acceptance lane is
+  the next public-authority consumer to lower
 
 ## G2 progress snapshot
 

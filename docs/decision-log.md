@@ -28,6 +28,45 @@ Superseded by:
 
 ## Entries
 
+### DEC-0100: The first support-bridge path lowered below `MetalExecutionAuthority` should be the benchmark prove-values bridge
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The first private support-bridge path to move below `MetalExecutionAuthority`
+should be the benchmark prove-values bridge, using a workspace-private
+validated lane contract.
+
+Context:
+
+After the first in-crate live helper moved below the public authority, the next
+honest G5 target was a private support-bridge path. The benchmark prove-values
+bridge was the safest candidate because it already needed only a narrow subset
+of execution law and already lived in a private support crate. Lowering it
+first proves that support-bridge contracts can shrink without widening the
+public `stwo-metal` API or disrupting the bridge-law ownership model.
+
+Alternatives rejected:
+
+- lower the upstream acceptance lane first
+- keep the benchmark prove-values bridge directly on `MetalExecutionAuthority`
+- widen the public API with a benchmark-specific lane contract
+
+Impact:
+
+- one support-bridge path now stages from a lower workspace-private contract
+- the next honest G5 question is whether the upstream acceptance lane is the
+  next remaining public-authority consumer worth lowering
+
+Superseded by:
+
+- none
+
 ### DEC-0099: The first live path below `MetalExecutionAuthority` should be an in-crate helper before any support-bridge lowering
 
 - Date: `2026-03-10`

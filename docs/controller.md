@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 sixteenth slice: choose the first support-bridge path that can move below
-  the transitional public authority onto a lower workspace-private seam`
+  `G5 seventeenth slice: choose whether the upstream acceptance lane or the
+  remaining benchmark lane is the next path to move below the public authority`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -65,8 +65,10 @@ Invariants:
   themselves on a transitional public `MetalExecutionAuthority` surface instead
   of directly on a lower private generated execution contract; the first
   workload-side live helpers have now moved below that public surface onto the
-  private execution seed, but support-bridge lanes still depend on the
-  transitional authority
+  private execution seed, and the benchmark prove-values bridge now depends on
+  its own workspace-private validated lane contract instead of consuming
+  `MetalExecutionAuthority` directly; the upstream acceptance lane remains the
+  clearest public-authority consumer still standing
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -87,9 +89,9 @@ Invariants:
 
 ## Next three deliverables
 
-1. Choose the first support-bridge path that should move below
-   `MetalExecutionAuthority`, starting with either the benchmark prove-values
-   bridge or the upstream acceptance lane validation path.
+1. Decide whether the upstream acceptance lane should be the next path to move
+   below `MetalExecutionAuthority`, or whether another benchmark-local helper
+   deserves the next lowering step first.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate

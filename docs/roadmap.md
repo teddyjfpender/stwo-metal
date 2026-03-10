@@ -167,6 +167,8 @@ The next active work is:
 - once one live helper sits below the public authority, decide which
   support-bridge path moves next without violating the private support-crate
   boundary
+- once the first support-bridge path is lowered, identify the next remaining
+  direct consumer of `MetalExecutionAuthority` and continue shrinking that set
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs
