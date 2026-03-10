@@ -821,6 +821,47 @@ Target retirement point:
 
 - `T8`
 
+### TD-0023: Lifted Blake2s leaf construction is still host-owned and dominates current commitment cost
+
+- Status: `active`
+- Category: `host-owned hash path`
+- Introduced: `2026-03-10`
+- Owner area: `T8 benchmark optimization`
+
+Why it exists now:
+
+The benchmark row is now close to SIMD, but the current Apple Silicon profile
+still shows Blake2s lifted `build_leaves` dominating the commitment path for
+the large trace and composition trees. The backend now batches per-leaf update
+bytes more efficiently, but leaf hashing is still host-owned Rust
+orchestration rather than a GPU-side hash pipeline or an equivalent
+lower-overhead host path.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/blake2s.rs`
+- `vendor/stwo-upstream-dev-62b228e/crates/stwo/src/prover/vcs_lifted/prover.rs`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
+- `docs/controller.md`
+
+Risk if left in place:
+
+The project can keep improving arithmetic and still miss SIMD parity because
+the dominant remaining commitment wall is outside the native polynomial and FRI
+lanes. That would bias effort toward the wrong kernels while the measured
+trace and composition leaf-hash path remains the main host bottleneck.
+
+Exit condition:
+
+The large-tree lifted Blake2s leaf path is no longer a first-order benchmark
+cost on the production `wide_fibonacci_prove_verify_v1` row, either because it
+is replaced by a lower-overhead implementation or because measured evidence
+shows another stage has become dominant.
+
+Target retirement point:
+
+- `T8`
+
 ### TD-0018: Poseidon acceptance is blocked by a vendored lifted-protocol AIR-degree limit
 
 - Status: `active`

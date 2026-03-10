@@ -1,6 +1,7 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
 use num_traits::Zero;
+use std::time::Instant;
 use tracing::instrument;
 
 use crate::core::channel::{Channel, MerkleChannel};
@@ -101,12 +102,33 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         column: &'a SecureEvaluation<B, BitReversedOrder>,
         twiddles: &TwiddleTree<B>,
     ) -> Self {
+        let profile_fri_commit = std::env::var_os("STWO_METAL_PROFILE_FRI_COMMIT").is_some();
+        let emit_timing = |phase: &str, elapsed_ms: f64| {
+            if profile_fri_commit {
+                eprintln!("fri_commit_timing phase={phase} ms={elapsed_ms}");
+            }
+        };
         assert!(column.domain.is_canonic(), "not canonic");
 
+        let first_layer_start = Instant::now();
         let first_layer = Self::commit_first_layer(channel, column);
+        emit_timing(
+            "first_layer",
+            first_layer_start.elapsed().as_secs_f64() * 1000.0,
+        );
+        let inner_layers_start = Instant::now();
         let (inner_layers, last_layer_evaluation) =
             Self::commit_inner_layers(channel, config, column, twiddles);
+        emit_timing(
+            "inner_layers",
+            inner_layers_start.elapsed().as_secs_f64() * 1000.0,
+        );
+        let last_layer_start = Instant::now();
         let last_layer_poly = Self::commit_last_layer(channel, config, last_layer_evaluation);
+        emit_timing(
+            "last_layer",
+            last_layer_start.elapsed().as_secs_f64() * 1000.0,
+        );
 
         Self {
             config,
@@ -135,6 +157,12 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         column: &SecureEvaluation<B, BitReversedOrder>,
         twiddles: &TwiddleTree<B>,
     ) -> (Vec<FriInnerLayerProver<B, MC::H>>, LineEvaluation<B>) {
+        let profile_fri_layers = std::env::var_os("STWO_METAL_PROFILE_FRI_LAYERS").is_some();
+        let emit_layer_timing = |phase: &str, layer_index: usize, elapsed_ms: f64| {
+            if profile_fri_layers {
+                eprintln!("fri_inner_layer_timing phase={phase} layer={layer_index} ms={elapsed_ms}");
+            }
+        };
         let first_inner_layer_log_size = column.domain.log_size() - CIRCLE_TO_LINE_FOLD_STEP;
         let first_inner_layer_domain =
             LineDomain::new(Coset::half_odds(first_inner_layer_log_size));
@@ -150,26 +178,52 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         if first_inner_layer_log_size == last_layer_log_domain_size {
             return (layers, layer_evaluation);
         }
+        let mut layer_index = 0usize;
         // While we can, skip `config.line_fold_step` layers.
         while layer_evaluation.len().ilog(2) > last_layer_log_domain_size + config.line_fold_step {
+            let layer_commit_start = Instant::now();
             let layer = FriInnerLayerProver::new(layer_evaluation, config.line_fold_step);
+            emit_layer_timing(
+                "commit",
+                layer_index,
+                layer_commit_start.elapsed().as_secs_f64() * 1000.0,
+            );
             MC::mix_root(channel, layer.merkle_tree.root());
             let folding_alpha = channel.draw_secure_felt();
+            let layer_fold_start = Instant::now();
             layer_evaluation = B::fold_line(
                 &layer.evaluation,
                 folding_alpha,
                 twiddles,
                 config.line_fold_step,
             );
+            emit_layer_timing(
+                "fold",
+                layer_index,
+                layer_fold_start.elapsed().as_secs_f64() * 1000.0,
+            );
             layers.push(layer);
+            layer_index += 1;
         }
 
         // Do one last fold (of size 0 < k <= config.line_fold_step) to reach the correct size.
         let last_fold_step = layer_evaluation.len().ilog2() - last_layer_log_domain_size;
+        let last_layer_commit_start = Instant::now();
         let layer = FriInnerLayerProver::new(layer_evaluation, last_fold_step);
+        emit_layer_timing(
+            "commit",
+            layer_index,
+            last_layer_commit_start.elapsed().as_secs_f64() * 1000.0,
+        );
         MC::mix_root(channel, layer.merkle_tree.root());
         let folding_alpha = channel.draw_secure_felt();
+        let last_layer_fold_start = Instant::now();
         layer_evaluation = B::fold_line(&layer.evaluation, folding_alpha, twiddles, last_fold_step);
+        emit_layer_timing(
+            "fold",
+            layer_index,
+            last_layer_fold_start.elapsed().as_secs_f64() * 1000.0,
+        );
         layers.push(layer);
 
         (layers, layer_evaluation)

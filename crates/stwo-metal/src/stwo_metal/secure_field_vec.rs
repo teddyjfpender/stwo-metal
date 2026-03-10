@@ -2,6 +2,8 @@ use ark_std::One;
 use stwo::core::fields::qm31::SecureField;
 use stwo_metal_sys::metal::U32Buffer;
 
+use super::BaseFieldVec;
+
 #[derive(Debug)]
 pub struct SecureFieldVec {
     pub(crate) buffer: U32Buffer,
@@ -49,6 +51,18 @@ impl SecureFieldVec {
         let size = raw.len() / 4;
         let buffer =
             U32Buffer::from_slice(&raw).expect("Metal SecureFieldVec upload should initialize");
+        Self { buffer, size }
+    }
+
+    pub fn from_base_coords(columns: [&BaseFieldVec; 4]) -> Self {
+        let size = columns[0].len();
+        let buffer = U32Buffer::pack_secure_column_coords([
+            &columns[0].buffer,
+            &columns[1].buffer,
+            &columns[2].buffer,
+            &columns[3].buffer,
+        ])
+        .expect("Metal secure-field packing should succeed");
         Self { buffer, size }
     }
 
@@ -117,6 +131,19 @@ impl SecureFieldVec {
             .collect()
     }
 
+    pub fn to_base_coords(&self) -> [BaseFieldVec; 4] {
+        let [coord_0, coord_1, coord_2, coord_3] = self
+            .buffer
+            .unpack_secure_column_coords()
+            .expect("Metal secure-field unpacking should succeed");
+        [
+            BaseFieldVec::from_buffer(coord_0),
+            BaseFieldVec::from_buffer(coord_1),
+            BaseFieldVec::from_buffer(coord_2),
+            BaseFieldVec::from_buffer(coord_3),
+        ]
+    }
+
     pub fn bit_reverse(&mut self) {
         self.buffer
             .bit_reverse_u32x4(self.size)
@@ -141,6 +168,72 @@ impl SecureFieldVec {
         }
     }
 
+    pub fn fold_circle_into_line_accumulate_into_base_coords(
+        &self,
+        dst_columns: &mut [BaseFieldVec; 4],
+        inverse_y_factors: &[u32],
+        alpha: SecureField,
+    ) {
+        let src_columns = self.to_base_coords();
+        Self::fold_circle_into_line_accumulate_base_coords(
+            [
+                &src_columns[0],
+                &src_columns[1],
+                &src_columns[2],
+                &src_columns[3],
+            ],
+            dst_columns,
+            inverse_y_factors,
+            alpha,
+        );
+    }
+
+    pub fn fold_circle_into_line_accumulate_base_coords(
+        src_columns: [&BaseFieldVec; 4],
+        dst_columns: &mut [BaseFieldVec; 4],
+        inverse_y_factors: &[u32],
+        alpha: SecureField,
+    ) {
+        let factors = U32Buffer::from_slice(inverse_y_factors)
+            .expect("Metal inverse-y factor upload should initialize");
+        Self::fold_circle_into_line_accumulate_base_coords_with_factor_buffer(
+            src_columns,
+            dst_columns,
+            &factors,
+            alpha,
+        );
+    }
+
+    pub fn fold_circle_into_line_accumulate_base_coords_with_factor_buffer(
+        src_columns: [&BaseFieldVec; 4],
+        dst_columns: &mut [BaseFieldVec; 4],
+        inverse_y_factors: &U32Buffer,
+        alpha: SecureField,
+    ) {
+        let alpha_limbs = alpha.to_m31_array().map(|limb| limb.0);
+        let alpha_sq_limbs = (alpha * alpha).to_m31_array().map(|limb| limb.0);
+        let [src_0, src_1, src_2, src_3] = src_columns;
+        let [dst_0, dst_1, dst_2, dst_3] = dst_columns;
+        U32Buffer::fri_fold_circle_into_line_accumulate_from_coords_u32x4(
+            [
+                &src_0.buffer,
+                &src_1.buffer,
+                &src_2.buffer,
+                &src_3.buffer,
+            ],
+            [
+                &mut dst_0.buffer,
+                &mut dst_1.buffer,
+                &mut dst_2.buffer,
+                &mut dst_3.buffer,
+            ],
+            inverse_y_factors,
+            alpha_limbs,
+            alpha_sq_limbs,
+        )
+        .expect("Metal FRI first-layer accumulation should succeed");
+    }
+
     pub fn fold_line_step(&self, inverse_x_factors: &[u32], alpha: SecureField) -> Self {
         let factors = U32Buffer::from_slice(inverse_x_factors)
             .expect("Metal inverse-x factor upload should initialize");
@@ -153,6 +246,42 @@ impl SecureFieldVec {
             buffer,
             size: self.size / 2,
         }
+    }
+
+    pub fn fold_line_step_base_coords(
+        src_columns: [&BaseFieldVec; 4],
+        inverse_x_factors: &[u32],
+        alpha: SecureField,
+    ) -> [BaseFieldVec; 4] {
+        let factors = U32Buffer::from_slice(inverse_x_factors)
+            .expect("Metal inverse-x factor upload should initialize");
+        Self::fold_line_step_base_coords_with_factor_buffer(src_columns, &factors, alpha)
+    }
+
+    pub fn fold_line_step_base_coords_with_factor_buffer(
+        src_columns: [&BaseFieldVec; 4],
+        inverse_x_factors: &U32Buffer,
+        alpha: SecureField,
+    ) -> [BaseFieldVec; 4] {
+        let alpha_limbs = alpha.to_m31_array().map(|limb| limb.0);
+        let [src_0, src_1, src_2, src_3] = src_columns;
+        let [dst_0, dst_1, dst_2, dst_3] = U32Buffer::fri_fold_line_step_from_coords_u32x4(
+            [
+                &src_0.buffer,
+                &src_1.buffer,
+                &src_2.buffer,
+                &src_3.buffer,
+            ],
+            inverse_x_factors,
+            alpha_limbs,
+        )
+        .expect("Metal FRI line-fold step should succeed");
+        [
+            BaseFieldVec::from_buffer(dst_0),
+            BaseFieldVec::from_buffer(dst_1),
+            BaseFieldVec::from_buffer(dst_2),
+            BaseFieldVec::from_buffer(dst_3),
+        ]
     }
 
     pub fn fix_first_variable(&self, assignment: SecureField) -> Self {

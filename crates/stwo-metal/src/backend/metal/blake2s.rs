@@ -1,6 +1,7 @@
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::time::Instant;
 use stwo::core::channel::{Blake2sChannelGeneric, Channel};
 use stwo::core::fields::m31::BaseField;
 use stwo::core::proof_of_work::GrindOps;
@@ -31,6 +32,8 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
     for MetalBackend
 {
     fn build_leaves(columns: &[&MetalBaseFieldVec], lifting_log_size: u32) -> Vec<Blake2sHash> {
+        let profile_merkle = std::env::var_os("STWO_METAL_PROFILE_MERKLE").is_some();
+        let build_leaves_start = Instant::now();
         let hasher = Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::default();
         if columns.is_empty() {
             return vec![hasher.finalize()];
@@ -39,18 +42,22 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         let host_columns = materialize_leaf_columns(columns);
 
         assert!(columns[0].len() >= 2, "A column must be of length >= 2.");
-        let mut prev_layer = vec![hasher; 2];
-        let mut prev_layer_log_size: u32 = 1;
+        let mut prev_layer = Vec::new();
+        let mut prev_layer_log_size: u32 = 0;
 
         for (log_size, group) in host_columns
             .iter()
             .group_by(|column| column.len().ilog2())
             .into_iter()
         {
-            let log_ratio = log_size - prev_layer_log_size;
-            prev_layer = (0..1 << log_size)
-                .map(|idx| prev_layer[(idx >> (log_ratio + 1) << 1) + (idx & 1)].clone())
-                .collect();
+            if prev_layer.is_empty() {
+                prev_layer = vec![hasher.clone(); 1 << log_size];
+            } else {
+                let log_ratio = log_size - prev_layer_log_size;
+                prev_layer = (0..1 << log_size)
+                    .map(|idx| prev_layer[(idx >> (log_ratio + 1) << 1) + (idx & 1)].clone())
+                    .collect();
+            }
 
             for chunk in &group.into_iter().chunks(16) {
                 let chunk_columns = chunk.into_iter().collect_vec();
@@ -60,9 +67,13 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                 let iter = prev_layer.par_iter_mut().enumerate();
 
                 iter.for_each(|(i, hasher)| {
+                    let mut chunk_bytes = [0u8; 16 * 4];
+                    let mut used = 0usize;
                     for column in &chunk_columns {
-                        hasher.update(&column[i].0.to_le_bytes());
+                        chunk_bytes[used..used + 4].copy_from_slice(&column[i].0.to_le_bytes());
+                        used += 4;
                     }
+                    hasher.update(&chunk_bytes[..used]);
                 });
             }
             prev_layer_log_size = log_size;
@@ -80,19 +91,38 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         #[cfg(feature = "parallel")]
         let iter = prev_layer.into_par_iter();
 
-        iter.map(|x| x.finalize()).collect()
+        let leaves = iter.map(|x| x.finalize()).collect();
+        if profile_merkle {
+            eprintln!(
+                "metal_merkle_timing phase=build_leaves columns={} lifting_log_size={} ms={}",
+                columns.len(),
+                lifting_log_size,
+                build_leaves_start.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        leaves
     }
 
     fn build_next_layer(prev_layer: &Vec<Blake2sHash>) -> Vec<Blake2sHash> {
+        let profile_merkle = std::env::var_os("STWO_METAL_PROFILE_MERKLE").is_some();
+        let build_next_layer_start = Instant::now();
         let log_size: u32 = prev_layer.len().ilog2() - 1;
-        stwo::parallel_iter!(0..(1 << log_size))
+        let next = stwo::parallel_iter!(0..(1 << log_size))
             .map(|i| {
                 Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::hash_children((
                     prev_layer[2 * i],
                     prev_layer[2 * i + 1],
                 ))
             })
-            .collect()
+            .collect();
+        if profile_merkle {
+            eprintln!(
+                "metal_merkle_timing phase=build_next_layer log_size={} ms={}",
+                log_size,
+                build_next_layer_start.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        next
     }
 }
 

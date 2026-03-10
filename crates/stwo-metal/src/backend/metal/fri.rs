@@ -1,4 +1,6 @@
 use std::array;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
@@ -12,10 +14,91 @@ use stwo::prover::poly::circle::SecureEvaluation;
 use stwo::prover::poly::twiddles::TwiddleTree;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::secure_column::SecureColumnByCoords;
+use stwo_metal_sys::metal::U32Buffer;
 
 use super::MetalBackend;
 use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
+
+type DomainFactorCache = Mutex<BTreeMap<(usize, usize, u32), Arc<U32Buffer>>>;
+
+fn line_inverse_x_factor_cache() -> &'static DomainFactorCache {
+    static CACHE: OnceLock<DomainFactorCache> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn circle_inverse_y_factor_cache() -> &'static DomainFactorCache {
+    static CACHE: OnceLock<DomainFactorCache> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn cached_line_inverse_x_factors(domain: LineDomain) -> Arc<U32Buffer> {
+    let coset = domain.coset();
+    let key = (coset.initial_index.0, coset.step_size.0, coset.log_size());
+    if let Some(factors) = line_inverse_x_factor_cache()
+        .lock()
+        .expect("line inverse-x factor cache mutex should not be poisoned")
+        .get(&key)
+        .cloned()
+    {
+        return factors;
+    }
+
+    let factors = Arc::new(
+        U32Buffer::from_slice(
+            &(0..(domain.size() >> 1))
+                .map(|i| {
+                    domain
+                        .at(bit_reverse_index(i << 1, domain.log_size()))
+                        .inverse()
+                        .0
+                })
+                .collect::<Vec<_>>(),
+        )
+        .expect("Metal inverse-x factor upload should initialize"),
+    );
+    line_inverse_x_factor_cache()
+        .lock()
+        .expect("line inverse-x factor cache mutex should not be poisoned")
+        .insert(key, factors.clone());
+    factors
+}
+
+fn cached_circle_inverse_y_factors(domain: CircleDomain) -> Arc<U32Buffer> {
+    let coset = domain.half_coset;
+    let key = (coset.initial_index.0, coset.step_size.0, domain.log_size());
+    if let Some(factors) = circle_inverse_y_factor_cache()
+        .lock()
+        .expect("circle inverse-y factor cache mutex should not be poisoned")
+        .get(&key)
+        .cloned()
+    {
+        return factors;
+    }
+
+    let factors = Arc::new(
+        U32Buffer::from_slice(
+            &(0..(domain.size() >> CIRCLE_TO_LINE_FOLD_STEP))
+                .map(|i| {
+                    domain
+                        .at(bit_reverse_index(
+                            i << CIRCLE_TO_LINE_FOLD_STEP,
+                            domain.log_size(),
+                        ))
+                        .y
+                        .inverse()
+                        .0
+                })
+                .collect::<Vec<_>>(),
+        )
+        .expect("Metal inverse-y factor upload should initialize"),
+    );
+    circle_inverse_y_factor_cache()
+        .lock()
+        .expect("circle inverse-y factor cache mutex should not be poisoned")
+        .insert(key, factors.clone());
+    factors
+}
 
 pub fn fold_circle_into_line_first_layer(
     src: &SecureFieldVec,
@@ -83,15 +166,6 @@ pub fn fold_line(
     current
 }
 
-fn pack_secure_column(values: &SecureColumnByCoords<MetalBackend>) -> SecureFieldVec {
-    let len = values.len();
-    let mut packed = SecureFieldVec::new_uninitialized(len);
-    for index in 0..len {
-        packed.set_data(index, values.at(index));
-    }
-    packed
-}
-
 fn metal_secure_column_from_values(values: Vec<SecureField>) -> SecureColumnByCoords<MetalBackend> {
     let mut columns = array::from_fn(|_| Vec::<BaseField>::with_capacity(values.len()));
     for value in values {
@@ -104,23 +178,11 @@ fn metal_secure_column_from_values(values: Vec<SecureField>) -> SecureColumnByCo
     }
 }
 
-fn metal_secure_column_from_packed(values: &SecureFieldVec) -> SecureColumnByCoords<MetalBackend> {
-    let len = values.len();
-    let mut columns = array::from_fn(|_| BaseFieldVec::new_uninitialized(len));
-    for index in 0..len {
-        let value = values.get_data(index);
-        for (column, coord) in columns.iter_mut().zip(value.to_m31_array()) {
-            column.set_data(index, coord);
-        }
-    }
-    SecureColumnByCoords { columns }
-}
-
-fn metal_line_evaluation_from_packed(
+fn metal_line_evaluation_from_base_coords(
     domain: LineDomain,
-    values: SecureFieldVec,
+    columns: [BaseFieldVec; 4],
 ) -> LineEvaluation<MetalBackend> {
-    LineEvaluation::new(domain, metal_secure_column_from_packed(&values))
+    LineEvaluation::new(domain, SecureColumnByCoords { columns })
 }
 
 impl FriOps for MetalBackend {
@@ -130,9 +192,26 @@ impl FriOps for MetalBackend {
         _twiddles: &TwiddleTree<Self>,
         fold_step: u32,
     ) -> LineEvaluation<Self> {
-        let packed = pack_secure_column(&eval.values);
-        let folded = fold_line(&packed, eval.domain(), alpha, fold_step);
-        metal_line_evaluation_from_packed(eval.domain().repeated_double(fold_step), folded)
+        let mut domain = eval.domain();
+        let mut current = [
+            eval.values.columns[0].clone(),
+            eval.values.columns[1].clone(),
+            eval.values.columns[2].clone(),
+            eval.values.columns[3].clone(),
+        ];
+        let mut current_alpha = alpha;
+        for _ in 0..fold_step {
+            let inverse_x_factors = cached_line_inverse_x_factors(domain);
+            current = SecureFieldVec::fold_line_step_base_coords_with_factor_buffer(
+                [&current[0], &current[1], &current[2], &current[3]],
+                inverse_x_factors.as_ref(),
+                current_alpha,
+            );
+            domain = domain.double();
+            current_alpha = current_alpha * current_alpha;
+        }
+
+        metal_line_evaluation_from_base_coords(domain, current)
     }
 
     fn fold_circle_into_line(
@@ -141,18 +220,18 @@ impl FriOps for MetalBackend {
         alpha: SecureField,
         _twiddles: &TwiddleTree<Self>,
     ) {
-        let alpha_sq = alpha * alpha;
-        let folded =
-            fold_circle_into_line_first_layer(&pack_secure_column(&src.values), src.domain, alpha);
-        let mut combined = SecureFieldVec::new_uninitialized(dst.values.len());
-        for index in 0..dst.values.len() {
-            combined.set_data(
-                index,
-                dst.values.at(index) * alpha_sq + folded.get_data(index),
-            );
-        }
-
-        *dst = LineEvaluation::new(dst.domain(), metal_secure_column_from_packed(&combined));
+        let inverse_y_factors = cached_circle_inverse_y_factors(src.domain);
+        SecureFieldVec::fold_circle_into_line_accumulate_base_coords_with_factor_buffer(
+            [
+                &src.values.columns[0],
+                &src.values.columns[1],
+                &src.values.columns[2],
+                &src.values.columns[3],
+            ],
+            &mut dst.values.columns,
+            inverse_y_factors.as_ref(),
+            alpha,
+        );
     }
 
     fn decompose(

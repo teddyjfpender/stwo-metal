@@ -127,6 +127,10 @@ impl MetalWideFibonacciQuotients {
         &self.values
     }
 
+    pub fn into_coordinate_base_columns(self) -> [BaseFieldVec; 4] {
+        self.values.to_base_coords()
+    }
+
     pub fn to_vec(&self) -> Vec<SecureField> {
         self.values.to_vec()
     }
@@ -231,50 +235,58 @@ impl QuotientOps for MetalBackend {
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     ) {
         let size = columns[0].len();
-        let host_columns = columns
-            .iter()
-            .map(|column| column.values.host_slice())
-            .collect_vec();
+        let mut flat_columns = U32Buffer::uninitialized(columns.len() * size)
+            .expect("Metal quotient column staging should allocate");
+        for (column_index, column) in columns.iter().enumerate() {
+            flat_columns
+                .copy_from_offset(&column.values.buffer, column_index * size)
+                .expect("Metal quotient column staging should copy");
+        }
         let quotient_constants = quotient_constants(sample_batches);
 
         for (batch, coeffs) in sample_batches
             .iter()
             .zip(quotient_constants.line_coeffs.into_iter())
         {
-            #[cfg(not(feature = "parallel"))]
-            let values = (0..size)
-                .map(|row| {
-                    let mut numerator = SecureField::zero();
-                    for (
-                        stwo::core::pcs::quotients::NumeratorData { column_index, .. },
-                        (_, b, c),
-                    ) in batch.cols_vals_randpows.iter().zip_eq(coeffs.iter())
-                    {
-                        numerator += host_columns[*column_index][row] * *c - *b;
-                    }
-                    numerator
+            let column_indices = batch
+                .cols_vals_randpows
+                .iter()
+                .map(|data| {
+                    data.column_index
+                        .try_into()
+                        .expect("Metal quotient column index should fit in u32")
                 })
-                .collect();
-            #[cfg(feature = "parallel")]
-            let values = (0..size)
-                .into_par_iter()
-                .map(|row| {
-                    let mut numerator = SecureField::zero();
-                    for (
-                        stwo::core::pcs::quotients::NumeratorData { column_index, .. },
-                        (_, b, c),
-                    ) in batch.cols_vals_randpows.iter().zip_eq(coeffs.iter())
-                    {
-                        numerator += host_columns[*column_index][row] * *c - *b;
-                    }
-                    numerator
-                })
-                .collect();
-
+                .collect::<Vec<u32>>();
+            let b_coeffs = coeffs
+                .iter()
+                .flat_map(|(_, b, _)| b.to_m31_array().map(|limb| limb.0))
+                .collect::<Vec<u32>>();
+            let c_coeffs = coeffs
+                .iter()
+                .flat_map(|(_, _, c)| c.to_m31_array().map(|limb| limb.0))
+                .collect::<Vec<u32>>();
+            let column_indices = U32Buffer::from_slice(&column_indices)
+                .expect("Metal quotient index upload should initialize");
+            let b_coeffs =
+                U32Buffer::from_slice(&b_coeffs).expect("Metal quotient b upload should initialize");
+            let c_coeffs =
+                U32Buffer::from_slice(&c_coeffs).expect("Metal quotient c upload should initialize");
+            let values = SecureFieldVec::from_buffer(
+                U32Buffer::accumulate_partial_numerators(
+                    &flat_columns,
+                    &column_indices,
+                    &b_coeffs,
+                    &c_coeffs,
+                    size,
+                )
+                .expect("Metal partial numerator accumulation should succeed"),
+            );
             let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
             accumulated_numerators_vec.push(AccumulatedNumerators {
                 sample_point: batch.point,
-                partial_numerators_acc: metal_secure_column_from_values(values),
+                partial_numerators_acc: stwo::prover::secure_column::SecureColumnByCoords {
+                    columns: values.to_base_coords(),
+                },
                 first_linear_term_acc,
             });
         }

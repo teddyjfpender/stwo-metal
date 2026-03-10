@@ -1,4 +1,5 @@
 use std::iter::zip;
+use std::time::Instant;
 
 use itertools::Itertools;
 use tracing::{span, Level};
@@ -78,7 +79,14 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     _log_blowup_factor: u32,
 ) -> SecureEvaluation<B, BitReversedOrder> {
     let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
+    let profile_quotients = std::env::var_os("STWO_METAL_PROFILE_QUOTIENTS").is_some();
+    let emit_timing = |phase: &str, elapsed_ms: f64| {
+        if profile_quotients {
+            eprintln!("quotients_timing phase={phase} ms={elapsed_ms}");
+        }
+    };
     let mut accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = vec![];
+    let samples_with_randomness_start = Instant::now();
     let samples_with_randomness = build_samples_with_randomness_and_periodicity(
         samples,
         columns
@@ -89,12 +97,17 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         lifting_log_size,
         random_coeff,
     );
+    emit_timing(
+        "samples_with_randomness",
+        samples_with_randomness_start.elapsed().as_secs_f64() * 1000.0,
+    );
 
     // Populate `accumulated_numerators_vec`, per (log_size, sample_point). After this iteration,
     // `accumulated_numerators_vec` will have length equal to
     //
     //   ∑_k (# of distinct sample points per log size k).
     //
+    let accumulate_numerators_start = Instant::now();
     zip(
         columns.iter().flatten(),
         samples_with_randomness.iter().flatten(),
@@ -108,10 +121,15 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         let sample_batches = ColumnSampleBatch::new_vec(&samples_with_randomness);
         B::accumulate_numerators(&columns, &sample_batches, &mut accumulated_numerators_vec)
     });
+    emit_timing(
+        "accumulate_numerators",
+        accumulate_numerators_start.elapsed().as_secs_f64() * 1000.0,
+    );
 
     // Group and accumulate the numerators per sample point: the accumulations (of different
     // lengths) get lifted and accumulated to a single vector. After this step, there is a single
     // accumulation per sample point.
+    let lift_and_accumulate_start = Instant::now();
     let accumulations_per_sample_point = accumulated_numerators_vec
         .into_iter()
         .sorted_by_key(|c| (c.sample_point.x, c.sample_point.y))
@@ -140,8 +158,18 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
             }
         })
         .collect_vec();
+    emit_timing(
+        "lift_and_accumulate",
+        lift_and_accumulate_start.elapsed().as_secs_f64() * 1000.0,
+    );
 
-    B::compute_quotients_and_combine(accumulations_per_sample_point, lifting_log_size)
+    let combine_start = Instant::now();
+    let quotients = B::compute_quotients_and_combine(accumulations_per_sample_point, lifting_log_size);
+    emit_timing(
+        "compute_quotients_and_combine",
+        combine_start.elapsed().as_secs_f64() * 1000.0,
+    );
+    quotients
 }
 
 #[cfg(test)]

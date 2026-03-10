@@ -45,7 +45,7 @@ use stwo::prover::{
 #[cfg(feature = "metal-runtime")]
 use stwo_metal::{
     accumulate_wide_fibonacci_quotients, declare_exemplar_metal_workload_boundary, MetalBackend,
-    MetalBaseFieldVec, MetalExecutionIntent, MetalWideFibonacciQuotientRequest,
+    MetalExecutionIntent, MetalWideFibonacciQuotientRequest,
     MetalWideFibonacciTrace,
 };
 use stwo_metal_standalone_benchmarks::support::{
@@ -495,21 +495,26 @@ impl ComponentProver<MetalBackend> for WideFibonacciBenchmarkComponent {
             );
         }
 
-        let twiddles = MetalBackend::precompute_twiddles(eval_domain.half_coset);
-        let trace_evaluations = trace_columns
+        let owned_trace_evaluations;
+        let trace1_evaluation_refs = if trace_columns
             .iter()
-            .map(|poly| {
-                if poly.evals.domain == eval_domain {
-                    CircleEvaluation::new(poly.evals.domain, poly.evals.values.clone())
-                } else {
-                    poly.get_evaluation_on_domain(eval_domain, &twiddles)
-                }
-            })
-            .collect::<Vec<_>>();
-        let trace1_evaluation_refs = trace_evaluations
-            .iter()
-            .map(|column| &column.values)
-            .collect::<Vec<_>>();
+            .all(|poly| poly.evals.domain == eval_domain)
+        {
+            trace_columns
+                .iter()
+                .map(|poly| &poly.evals.values)
+                .collect::<Vec<_>>()
+        } else {
+            let twiddles = MetalBackend::precompute_twiddles(eval_domain.half_coset);
+            owned_trace_evaluations = trace_columns
+                .iter()
+                .map(|poly| poly.get_evaluation_on_domain(eval_domain, &twiddles))
+                .collect::<Vec<_>>();
+            owned_trace_evaluations
+                .iter()
+                .map(|column| &column.values)
+                .collect::<Vec<_>>()
+        };
 
         let log_expand = eval_domain.log_size() - trace_domain.log_size();
         let mut denominator_inverses = (0..(1 << log_expand))
@@ -528,9 +533,9 @@ impl ComponentProver<MetalBackend> for WideFibonacciBenchmarkComponent {
             eval_domain_log_size: eval_domain.log_size(),
         })
         .expect("wide-fibonacci quotient accumulation should succeed through the native Metal path");
-        let quotient_columns = quotients.to_coordinate_columns();
+        let quotient_columns = quotients.into_coordinate_base_columns();
         for (dst, src) in accum.col.columns.iter_mut().zip(quotient_columns) {
-            *dst = MetalBaseFieldVec::from_vec(src);
+            *dst = src;
         }
     }
 }

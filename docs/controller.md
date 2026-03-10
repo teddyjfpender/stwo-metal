@@ -97,23 +97,26 @@ Invariants:
   non-plan benchmark measurements must use `cargo_profile = release` and
   `STWO_METAL_MODE=metal-prod` unless an override is set for diagnostic runs
 - the current production-grade Apple Silicon benchmark row is now:
-  `wide_fibonacci_prove_verify_v1 = 2823.8264590000003 ms`, with
-  `prove_ms = 2823.629792` and `verify_ms = 0.196667`,
+  `wide_fibonacci_prove_verify_v1 = 1554.695416 ms`, with
+  `prove_ms = 1554.391083` and `verify_ms = 0.304333`,
   under `cargo_profile = release`, `STWO_METAL_MODE=metal-prod`,
   `warmups = 0`, and `samples = 1`
 - the benchmark boundary is now support-honest, but the measured dominant
   costs are still far from the `90 ms` north star:
-  `prove_core_prove_values_ms = 1832.9360829999998`,
-  `trace_commit_ms = 409.924625`,
-  `prove_core_composition_generation_ms = 379.02112500000004`, and
-  `trace_commit_merkle_ms = 237.249916`
+  `prove_core_prove_values_ms = 923.508208`,
+  `trace_commit_ms = 307.498875`,
+  `prove_core_composition_generation_ms = 130.162416`, and
+  `trace_commit_merkle_ms = 152.435583`
 - the benchmark runner now enables the `parallel` proving surface for the
   Metal benchmark fixture, and the latest measured row used `threads = 14`
 - the direct Metal trace boundary is now benchmark-faithful:
   `trace_generation_ms = 65.444416` in the same production-grade row
-- the end-to-end row is still approximately `2.03x` slower than the current
+- the end-to-end row is now approximately `1.12x` slower than the current
   SIMD reference at `log_n_instances = 20` (`1390 ms`) and still far from the
   historical GPU row (`87 ms`)
+- profile-guided analysis now shows two first-order remaining walls:
+  host-owned Blake2s lifted leaf construction in `build_leaves`, and the first
+  large FRI inner-layer folds after the native point-evaluation lane
 - the native point-evaluation lane is now compile-active, parity-tested, and
   used by large direct and batched `PolyOps` evaluation paths; coefficient
   staging for that path now remains on Metal-backed buffers instead of using a
@@ -133,11 +136,11 @@ Invariants:
 
 ## Next three deliverables
 
-1. Turn the new production-grade `2823.8264590000003 ms` benchmark row into the next
-   optimization program by attacking the measured `prove_values` bottleneck
-   above the now-native point-evaluation lane.
-2. Reduce trace commitment cost now that trace generation is no longer a
-   first-order blocker.
+1. Turn the new production-grade `1554.695416 ms` benchmark row into the next
+   optimization program by attacking the measured FRI inner-layer and
+   Blake2s-leaf bottlenecks above the now-native point-evaluation lane.
+2. Reduce host-owned lifted commitment cost now that trace generation and
+   quotient accumulation are no longer the first-order blockers.
 3. Keep the acceptance-local adapter debt and the bounded small-domain
    `PolyOps` fallback explicit while T8 focuses on benchmark-grade
    performance.

@@ -208,6 +208,10 @@ impl U32Buffer {
         Ok(values)
     }
 
+    pub unsafe fn host_ptr(&self) -> *const u32 {
+        ffi::buffer_host_ptr(self.raw.as_ptr())
+    }
+
     pub fn read_indices(&self, indices: &[usize]) -> Result<Vec<u32>, MetalError> {
         let runtime = shared_runtime()?;
         assert!(
@@ -790,6 +794,66 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    pub fn pack_secure_column_coords(coord_columns: [&Self; 4]) -> Result<Self, MetalError> {
+        let [coord_0, coord_1, coord_2, coord_3] = coord_columns;
+        let len = coord_0.len;
+        assert_eq!(
+            coord_1.len, len,
+            "secure-column packing requires equal coordinate lengths"
+        );
+        assert_eq!(
+            coord_2.len, len,
+            "secure-column packing requires equal coordinate lengths"
+        );
+        assert_eq!(
+            coord_3.len, len,
+            "secure-column packing requires equal coordinate lengths"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(len * 4)?;
+        unsafe {
+            ffi::pack_secure_column_coords_u32x4(
+                runtime.raw.as_ptr(),
+                coord_0.raw.as_ptr(),
+                coord_1.raw.as_ptr(),
+                coord_2.raw.as_ptr(),
+                coord_3.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                len.try_into()
+                    .expect("secure-column packing logical length should fit in u32"),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    pub fn unpack_secure_column_coords(&self) -> Result<[Self; 4], MetalError> {
+        assert!(
+            self.len.is_multiple_of(4),
+            "secure-column unpacking requires four limbs per element"
+        );
+        let len = self.len / 4;
+        let runtime = shared_runtime()?;
+        let coord_0 = Self::uninitialized(len)?;
+        let coord_1 = Self::uninitialized(len)?;
+        let coord_2 = Self::uninitialized(len)?;
+        let coord_3 = Self::uninitialized(len)?;
+        unsafe {
+            ffi::unpack_secure_column_coords_u32x4(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                coord_0.raw.as_ptr(),
+                coord_1.raw.as_ptr(),
+                coord_2.raw.as_ptr(),
+                coord_3.raw.as_ptr(),
+                len.try_into()
+                    .expect("secure-column unpacking logical length should fit in u32"),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok([coord_0, coord_1, coord_2, coord_3])
+    }
+
     pub fn fri_fold_circle_into_line_first_layer_u32x4(
         &self,
         inverse_y_factors: &Self,
@@ -819,6 +883,100 @@ impl U32Buffer {
             )?;
         }
         Ok(dst)
+    }
+
+    pub fn fri_fold_circle_into_line_accumulate_from_coords_u32x4(
+        src_columns: [&Self; 4],
+        dst_columns: [&mut Self; 4],
+        inverse_y_factors: &Self,
+        alpha_limbs: [u32; 4],
+        alpha_sq_limbs: [u32; 4],
+    ) -> Result<(), MetalError> {
+        let [src_0, src_1, src_2, src_3] = src_columns;
+        let element_len = src_0.len;
+        assert_eq!(src_1.len, element_len);
+        assert_eq!(src_2.len, element_len);
+        assert_eq!(src_3.len, element_len);
+        assert!(
+            element_len.is_multiple_of(2),
+            "fri first-layer accumulation requires an even number of secure-field elements"
+        );
+        let output_len = element_len / 2;
+        assert_eq!(
+            inverse_y_factors.len, output_len,
+            "fri first-layer accumulation requires one inverse-y factor per output element"
+        );
+        let [dst_0, dst_1, dst_2, dst_3] = dst_columns;
+        assert_eq!(
+            dst_0.len, output_len,
+            "fri first-layer accumulation requires destination coordinate buffers sized to the output length"
+        );
+        assert_eq!(dst_1.len, output_len);
+        assert_eq!(dst_2.len, output_len);
+        assert_eq!(dst_3.len, output_len);
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::fri_fold_circle_into_line_accumulate_coords_u32x4(
+                runtime.raw.as_ptr(),
+                src_0.raw.as_ptr(),
+                src_1.raw.as_ptr(),
+                src_2.raw.as_ptr(),
+                src_3.raw.as_ptr(),
+                dst_0.raw.as_ptr(),
+                dst_1.raw.as_ptr(),
+                dst_2.raw.as_ptr(),
+                dst_3.raw.as_ptr(),
+                inverse_y_factors.raw.as_ptr(),
+                element_len.ilog2(),
+                alpha_limbs,
+                alpha_sq_limbs,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
+    pub fn fri_fold_line_step_from_coords_u32x4(
+        src_columns: [&Self; 4],
+        inverse_x_factors: &Self,
+        alpha_limbs: [u32; 4],
+    ) -> Result<[Self; 4], MetalError> {
+        let [src_0, src_1, src_2, src_3] = src_columns;
+        let element_len = src_0.len;
+        assert_eq!(src_1.len, element_len);
+        assert_eq!(src_2.len, element_len);
+        assert_eq!(src_3.len, element_len);
+        assert!(
+            element_len.is_multiple_of(2),
+            "fri line-fold step requires an even number of secure-field elements"
+        );
+        let output_len = element_len / 2;
+        assert_eq!(
+            inverse_x_factors.len, output_len,
+            "fri line-fold step requires one inverse-x factor per output element"
+        );
+        let runtime = shared_runtime()?;
+        let dst_0 = Self::uninitialized(output_len)?;
+        let dst_1 = Self::uninitialized(output_len)?;
+        let dst_2 = Self::uninitialized(output_len)?;
+        let dst_3 = Self::uninitialized(output_len)?;
+        unsafe {
+            ffi::fri_fold_line_step_coords_u32x4(
+                runtime.raw.as_ptr(),
+                src_0.raw.as_ptr(),
+                src_1.raw.as_ptr(),
+                src_2.raw.as_ptr(),
+                src_3.raw.as_ptr(),
+                dst_0.raw.as_ptr(),
+                dst_1.raw.as_ptr(),
+                dst_2.raw.as_ptr(),
+                dst_3.raw.as_ptr(),
+                inverse_x_factors.raw.as_ptr(),
+                element_len.ilog2(),
+                alpha_limbs,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok([dst_0, dst_1, dst_2, dst_3])
     }
 
     pub fn fri_fold_line_step_u32x4(
@@ -935,6 +1093,127 @@ impl U32Buffer {
                 domain_log_size,
                 eval_domain_log_size,
                 n_constraints,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    pub fn accumulate_partial_numerators(
+        columns: &Self,
+        column_indices: &Self,
+        b_coeffs: &Self,
+        c_coeffs: &Self,
+        row_count: usize,
+    ) -> Result<Self, MetalError> {
+        assert!(
+            row_count > 0,
+            "partial numerator accumulation requires a non-zero row count"
+        );
+        assert_eq!(
+            columns.len % row_count,
+            0,
+            "partial numerator accumulation expects flattened base columns with an integral number of rows"
+        );
+        assert_eq!(
+            column_indices.len * 4,
+            b_coeffs.len,
+            "partial numerator accumulation expects one qm31 b coefficient per column index"
+        );
+        assert_eq!(
+            column_indices.len * 4,
+            c_coeffs.len,
+            "partial numerator accumulation expects one qm31 c coefficient per column index"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(row_count * 4)?;
+        unsafe {
+            ffi::accumulate_partial_numerators_u32x4(
+                runtime.raw.as_ptr(),
+                columns.raw.as_ptr(),
+                column_indices.raw.as_ptr(),
+                b_coeffs.raw.as_ptr(),
+                c_coeffs.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                row_count
+                    .try_into()
+                    .expect("partial numerator accumulation row count should fit in u32"),
+                column_indices
+                    .len
+                    .try_into()
+                    .expect("partial numerator accumulation term count should fit in u32"),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    pub fn compute_quotients_and_combine(
+        partial_coord_columns: [&Self; 4],
+        sample_points: &Self,
+        first_linear_terms: &Self,
+        partial_log_sizes: &Self,
+        partial_offsets: &Self,
+        domain_x: &Self,
+        domain_y: &Self,
+        lifting_log_size: u32,
+    ) -> Result<Self, MetalError> {
+        let [partial_coord_0, partial_coord_1, partial_coord_2, partial_coord_3] =
+            partial_coord_columns;
+        let row_count = 1usize << lifting_log_size;
+        assert_eq!(
+            partial_coord_0.len, partial_coord_1.len,
+            "quotient combination requires equal flattened partial numerator coordinate lengths"
+        );
+        assert_eq!(partial_coord_0.len, partial_coord_2.len);
+        assert_eq!(partial_coord_0.len, partial_coord_3.len);
+        assert_eq!(
+            sample_points.len % 8,
+            0,
+            "quotient combination expects eight sample-point limbs per accumulation"
+        );
+        let n_accumulations = sample_points.len / 8;
+        assert_eq!(
+            first_linear_terms.len,
+            n_accumulations * 4,
+            "quotient combination expects one qm31 first-linear term per accumulation"
+        );
+        assert_eq!(
+            partial_log_sizes.len, n_accumulations,
+            "quotient combination expects one partial log-size per accumulation"
+        );
+        assert_eq!(
+            partial_offsets.len, n_accumulations,
+            "quotient combination expects one partial offset per accumulation"
+        );
+        assert_eq!(
+            domain_x.len, row_count,
+            "quotient combination expects one domain x-coordinate per lifting-domain row"
+        );
+        assert_eq!(
+            domain_y.len, row_count,
+            "quotient combination expects one domain y-coordinate per lifting-domain row"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(row_count * 4)?;
+        unsafe {
+            ffi::compute_quotients_and_combine_u32x4(
+                runtime.raw.as_ptr(),
+                partial_coord_0.raw.as_ptr(),
+                partial_coord_1.raw.as_ptr(),
+                partial_coord_2.raw.as_ptr(),
+                partial_coord_3.raw.as_ptr(),
+                sample_points.raw.as_ptr(),
+                first_linear_terms.raw.as_ptr(),
+                partial_log_sizes.raw.as_ptr(),
+                partial_offsets.raw.as_ptr(),
+                domain_x.raw.as_ptr(),
+                domain_y.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                lifting_log_size,
+                n_accumulations
+                    .try_into()
+                    .expect("quotient combination accumulation count should fit in u32"),
                 error_buffer_mut_ptr,
             )?;
         }
@@ -1062,6 +1341,7 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_u32_buffer_host_ptr(buffer: *mut c_void) -> *const u32;
         fn stwo_metal_u32_buffer_get(buffer: *mut c_void, index: usize) -> u32;
         fn stwo_metal_u32_buffer_set(buffer: *mut c_void, index: usize, value: u32);
         fn stwo_metal_u32_buffer_copy(
@@ -1275,11 +1555,66 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_pack_secure_column_coords_u32x4(
+            runtime: *mut c_void,
+            coord_0: *mut c_void,
+            coord_1: *mut c_void,
+            coord_2: *mut c_void,
+            coord_3: *mut c_void,
+            dst: *mut c_void,
+            element_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_unpack_secure_column_coords_u32x4(
+            runtime: *mut c_void,
+            src: *mut c_void,
+            coord_0: *mut c_void,
+            coord_1: *mut c_void,
+            coord_2: *mut c_void,
+            coord_3: *mut c_void,
+            element_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_fri_fold_circle_into_line_first_layer_u32x4(
             runtime: *mut c_void,
             src: *mut c_void,
             dst: *mut c_void,
             inverse_y_factors: *mut c_void,
+            src_log_len: u32,
+            alpha_limbs: *const u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_fri_fold_circle_into_line_accumulate_coords_u32x4(
+            runtime: *mut c_void,
+            src_0: *mut c_void,
+            src_1: *mut c_void,
+            src_2: *mut c_void,
+            src_3: *mut c_void,
+            dst_0: *mut c_void,
+            dst_1: *mut c_void,
+            dst_2: *mut c_void,
+            dst_3: *mut c_void,
+            inverse_y_factors: *mut c_void,
+            src_log_len: u32,
+            alpha_limbs: *const u32,
+            alpha_sq_limbs: *const u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_fri_fold_line_step_coords_u32x4(
+            runtime: *mut c_void,
+            src_0: *mut c_void,
+            src_1: *mut c_void,
+            src_2: *mut c_void,
+            src_3: *mut c_void,
+            dst_0: *mut c_void,
+            dst_1: *mut c_void,
+            dst_2: *mut c_void,
+            dst_3: *mut c_void,
+            inverse_x_factors: *mut c_void,
             src_log_len: u32,
             alpha_limbs: *const u32,
             error_message: *mut i8,
@@ -1314,6 +1649,36 @@ mod ffi {
             domain_log_size: u32,
             eval_domain_log_size: u32,
             n_constraints: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_accumulate_partial_numerators_u32x4(
+            runtime: *mut c_void,
+            columns: *mut c_void,
+            column_indices: *mut c_void,
+            b_coeffs: *mut c_void,
+            c_coeffs: *mut c_void,
+            dst: *mut c_void,
+            row_count: u32,
+            n_terms: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_compute_quotients_and_combine_u32x4(
+            runtime: *mut c_void,
+            partial_coord_0: *mut c_void,
+            partial_coord_1: *mut c_void,
+            partial_coord_2: *mut c_void,
+            partial_coord_3: *mut c_void,
+            sample_points: *mut c_void,
+            first_linear_terms: *mut c_void,
+            partial_log_sizes: *mut c_void,
+            partial_offsets: *mut c_void,
+            domain_x: *mut c_void,
+            domain_y: *mut c_void,
+            dst: *mut c_void,
+            lifting_log_size: u32,
+            n_accumulations: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -1414,6 +1779,10 @@ mod ffi {
         } else {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
+    }
+
+    pub unsafe fn buffer_host_ptr(buffer: *mut c_void) -> *const u32 {
+        stwo_metal_u32_buffer_host_ptr(buffer)
     }
 
     pub unsafe fn buffer_get(buffer: *mut c_void, index: usize) -> u32 {
@@ -1667,6 +2036,62 @@ mod ffi {
             src,
             dst,
             log_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn pack_secure_column_coords_u32x4(
+        runtime: *mut c_void,
+        coord_0: *mut c_void,
+        coord_1: *mut c_void,
+        coord_2: *mut c_void,
+        coord_3: *mut c_void,
+        dst: *mut c_void,
+        element_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_pack_secure_column_coords_u32x4(
+            runtime,
+            coord_0,
+            coord_1,
+            coord_2,
+            coord_3,
+            dst,
+            element_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn unpack_secure_column_coords_u32x4(
+        runtime: *mut c_void,
+        src: *mut c_void,
+        coord_0: *mut c_void,
+        coord_1: *mut c_void,
+        coord_2: *mut c_void,
+        coord_3: *mut c_void,
+        element_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_unpack_secure_column_coords_u32x4(
+            runtime,
+            src,
+            coord_0,
+            coord_1,
+            coord_2,
+            coord_3,
+            element_len,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -2006,6 +2431,84 @@ mod ffi {
         }
     }
 
+    pub unsafe fn fri_fold_circle_into_line_accumulate_coords_u32x4(
+        runtime: *mut c_void,
+        src_0: *mut c_void,
+        src_1: *mut c_void,
+        src_2: *mut c_void,
+        src_3: *mut c_void,
+        dst_0: *mut c_void,
+        dst_1: *mut c_void,
+        dst_2: *mut c_void,
+        dst_3: *mut c_void,
+        inverse_y_factors: *mut c_void,
+        src_log_len: u32,
+        alpha_limbs: [u32; 4],
+        alpha_sq_limbs: [u32; 4],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fri_fold_circle_into_line_accumulate_coords_u32x4(
+            runtime,
+            src_0,
+            src_1,
+            src_2,
+            src_3,
+            dst_0,
+            dst_1,
+            dst_2,
+            dst_3,
+            inverse_y_factors,
+            src_log_len,
+            alpha_limbs.as_ptr(),
+            alpha_sq_limbs.as_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn fri_fold_line_step_coords_u32x4(
+        runtime: *mut c_void,
+        src_0: *mut c_void,
+        src_1: *mut c_void,
+        src_2: *mut c_void,
+        src_3: *mut c_void,
+        dst_0: *mut c_void,
+        dst_1: *mut c_void,
+        dst_2: *mut c_void,
+        dst_3: *mut c_void,
+        inverse_x_factors: *mut c_void,
+        src_log_len: u32,
+        alpha_limbs: [u32; 4],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fri_fold_line_step_coords_u32x4(
+            runtime,
+            src_0,
+            src_1,
+            src_2,
+            src_3,
+            dst_0,
+            dst_1,
+            dst_2,
+            dst_3,
+            inverse_x_factors,
+            src_log_len,
+            alpha_limbs.as_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn fri_fold_line_step_u32x4(
         runtime: *mut c_void,
         src: *mut c_void,
@@ -2079,6 +2582,79 @@ mod ffi {
             domain_log_size,
             eval_domain_log_size,
             n_constraints,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn accumulate_partial_numerators_u32x4(
+        runtime: *mut c_void,
+        columns: *mut c_void,
+        column_indices: *mut c_void,
+        b_coeffs: *mut c_void,
+        c_coeffs: *mut c_void,
+        dst: *mut c_void,
+        row_count: u32,
+        n_terms: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_accumulate_partial_numerators_u32x4(
+            runtime,
+            columns,
+            column_indices,
+            b_coeffs,
+            c_coeffs,
+            dst,
+            row_count,
+            n_terms,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn compute_quotients_and_combine_u32x4(
+        runtime: *mut c_void,
+        partial_coord_0: *mut c_void,
+        partial_coord_1: *mut c_void,
+        partial_coord_2: *mut c_void,
+        partial_coord_3: *mut c_void,
+        sample_points: *mut c_void,
+        first_linear_terms: *mut c_void,
+        partial_log_sizes: *mut c_void,
+        partial_offsets: *mut c_void,
+        domain_x: *mut c_void,
+        domain_y: *mut c_void,
+        dst: *mut c_void,
+        lifting_log_size: u32,
+        n_accumulations: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_compute_quotients_and_combine_u32x4(
+            runtime,
+            partial_coord_0,
+            partial_coord_1,
+            partial_coord_2,
+            partial_coord_3,
+            sample_points,
+            first_linear_terms,
+            partial_log_sizes,
+            partial_offsets,
+            domain_x,
+            domain_y,
+            dst,
+            lifting_log_size,
+            n_accumulations,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -2172,6 +2748,10 @@ mod ffi {
         Err(MetalError::new(
             "Metal support was not linked into stwo-metal-sys.",
         ))
+    }
+
+    pub unsafe fn buffer_host_ptr(_buffer: *mut c_void) -> *const u32 {
+        core::ptr::null()
     }
 
     pub unsafe fn buffer_get(_buffer: *mut c_void, _index: usize) -> u32 {
@@ -2312,6 +2892,36 @@ mod ffi {
         _src: *mut c_void,
         _dst: *mut c_void,
         _log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn pack_secure_column_coords_u32x4(
+        _runtime: *mut c_void,
+        _coord_0: *mut c_void,
+        _coord_1: *mut c_void,
+        _coord_2: *mut c_void,
+        _coord_3: *mut c_void,
+        _dst: *mut c_void,
+        _element_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn unpack_secure_column_coords_u32x4(
+        _runtime: *mut c_void,
+        _src: *mut c_void,
+        _coord_0: *mut c_void,
+        _coord_1: *mut c_void,
+        _coord_2: *mut c_void,
+        _coord_3: *mut c_void,
+        _element_len: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(
@@ -2489,6 +3099,47 @@ mod ffi {
         ))
     }
 
+    pub unsafe fn fri_fold_circle_into_line_accumulate_coords_u32x4(
+        _runtime: *mut c_void,
+        _src_0: *mut c_void,
+        _src_1: *mut c_void,
+        _src_2: *mut c_void,
+        _src_3: *mut c_void,
+        _dst_0: *mut c_void,
+        _dst_1: *mut c_void,
+        _dst_2: *mut c_void,
+        _dst_3: *mut c_void,
+        _inverse_y_factors: *mut c_void,
+        _src_log_len: u32,
+        _alpha_limbs: [u32; 4],
+        _alpha_sq_limbs: [u32; 4],
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn fri_fold_line_step_coords_u32x4(
+        _runtime: *mut c_void,
+        _src_0: *mut c_void,
+        _src_1: *mut c_void,
+        _src_2: *mut c_void,
+        _src_3: *mut c_void,
+        _dst_0: *mut c_void,
+        _dst_1: *mut c_void,
+        _dst_2: *mut c_void,
+        _dst_3: *mut c_void,
+        _inverse_x_factors: *mut c_void,
+        _src_log_len: u32,
+        _alpha_limbs: [u32; 4],
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
     pub unsafe fn fri_fold_line_step_u32x4(
         _runtime: *mut c_void,
         _src: *mut c_void,
@@ -2526,6 +3177,45 @@ mod ffi {
         _domain_log_size: u32,
         _eval_domain_log_size: u32,
         _n_constraints: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn accumulate_partial_numerators_u32x4(
+        _runtime: *mut c_void,
+        _columns: *mut c_void,
+        _column_indices: *mut c_void,
+        _b_coeffs: *mut c_void,
+        _c_coeffs: *mut c_void,
+        _dst: *mut c_void,
+        _row_count: u32,
+        _n_terms: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn compute_quotients_and_combine_u32x4(
+        _runtime: *mut c_void,
+        _partial_coord_0: *mut c_void,
+        _partial_coord_1: *mut c_void,
+        _partial_coord_2: *mut c_void,
+        _partial_coord_3: *mut c_void,
+        _sample_points: *mut c_void,
+        _first_linear_terms: *mut c_void,
+        _partial_log_sizes: *mut c_void,
+        _partial_offsets: *mut c_void,
+        _domain_x: *mut c_void,
+        _domain_y: *mut c_void,
+        _dst: *mut c_void,
+        _lifting_log_size: u32,
+        _n_accumulations: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

@@ -2,6 +2,7 @@ use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use std::time::Instant;
 use tracing::{info, span, Level};
 
 use crate::core::channel::{Channel, MerkleChannel};
@@ -193,9 +194,15 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         channel: &mut MC::C,
     ) -> ExtendedCommitmentSchemeProof<MC::H> {
         let debug_prove_values = std::env::var_os("STWO_CUDA_DEBUG_PROVE_VALUES").is_some();
+        let profile_prove_values = std::env::var_os("STWO_METAL_PROFILE_PROVE_VALUES").is_some();
         let debug_phase = |phase: &str| {
             if debug_prove_values {
                 eprintln!("prove_values_phase={phase}");
+            }
+        };
+        let emit_timing = |phase: &str, elapsed_ms: f64| {
+            if profile_prove_values {
+                eprintln!("prove_values_timing phase={phase} ms={elapsed_ms}");
             }
         };
 
@@ -215,6 +222,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             Some(self.build_weights_hash_map(&sampled_points, lifting_log_size))
         };
 
+        let samples_start = Instant::now();
         let samples: TreeVec<Vec<Vec<PointSample>>> = if self.store_polynomials_coefficients {
             let polynomials = self.polynomials();
 
@@ -303,9 +311,11 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                 .par_map_cols(eval_at_points);
             samples
         };
+        emit_timing("samples", samples_start.elapsed().as_secs_f64() * 1000.0);
 
         span.exit();
         debug_phase("samples_ready");
+        let sampled_values_start = Instant::now();
         let sampled_values = samples
             .as_cols_ref()
             .map_cols(|x| x.iter().map(|o| o.value).collect());
@@ -318,11 +328,16 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .copied()
             .collect_vec();
         channel.mix_felts(&flattened_sampled_values);
+        emit_timing(
+            "sampled_values_mix",
+            sampled_values_start.elapsed().as_secs_f64() * 1000.0,
+        );
         debug_phase("sampled_values_mixed");
 
         let columns = self.evaluations();
         print_column_size_histogram::<B, MC>(&columns);
         // Compute oods quotients for boundary constraints on the sampled points.
+        let quotients_start = Instant::now();
         let quotients = compute_fri_quotients(
             &columns,
             &samples,
@@ -330,28 +345,42 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             lifting_log_size,
             self.config.fri_config.log_blowup_factor,
         );
+        emit_timing("quotients", quotients_start.elapsed().as_secs_f64() * 1000.0);
         debug_phase("quotients_ready");
 
         // Run FRI commitment phase on the oods quotients.
+        let fri_commit_start = Instant::now();
         let fri_prover =
             FriProver::<B, MC>::commit(channel, self.config.fri_config, &quotients, self.twiddles);
+        emit_timing(
+            "fri_commit",
+            fri_commit_start.elapsed().as_secs_f64() * 1000.0,
+        );
         debug_phase("fri_commit_ready");
 
         // Proof of work.
         let span1 = span!(Level::INFO, "Grind", class = "Queries POW").entered();
+        let pow_start = Instant::now();
         let proof_of_work = B::grind(channel, self.config.pow_bits);
         span1.exit();
         channel.mix_u64(proof_of_work);
+        emit_timing("proof_of_work", pow_start.elapsed().as_secs_f64() * 1000.0);
         debug_phase("proof_of_work_ready");
 
         // FRI decommitment phase.
+        let fri_decommit_start = Instant::now();
         let FriDecommitResult {
             fri_proof,
             query_positions,
             unsorted_query_locations,
         } = fri_prover.decommit(channel);
+        emit_timing(
+            "fri_decommit",
+            fri_decommit_start.elapsed().as_secs_f64() * 1000.0,
+        );
         debug_phase("fri_decommit_ready");
         // Build the query position tree.
+        let query_tree_start = Instant::now();
         let query_positions_tree = TreeVec::new(
             self.trees
                 .iter()
@@ -364,10 +393,15 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                 })
                 .collect::<Vec<_>>(),
         );
+        emit_timing(
+            "query_position_tree",
+            query_tree_start.elapsed().as_secs_f64() * 1000.0,
+        );
         let commitments = self.roots();
         let mut queried_values = Vec::with_capacity(self.trees.len());
         let mut decommitments = Vec::with_capacity(self.trees.len());
         let mut aux = Vec::with_capacity(self.trees.len());
+        let tree_decommit_start = Instant::now();
         for (tree_index, (tree, query_positions)) in self
             .trees
             .as_ref()
@@ -387,6 +421,10 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                 eprintln!("prove_values_phase=tree_decommit_done:{tree_index}");
             }
         }
+        emit_timing(
+            "tree_decommit",
+            tree_decommit_start.elapsed().as_secs_f64() * 1000.0,
+        );
         debug_phase("tree_decommit_ready");
 
         // Return evaluation buffers to the memory pool for reuse (owned trees only).

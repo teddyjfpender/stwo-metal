@@ -18,6 +18,15 @@ unsafe impl Sync for BaseFieldVec {}
 
 impl BaseFieldVec {
     pub(crate) fn host_slice(&self) -> &[BaseField] {
+        if let Some(values) = self.host_cache.get() {
+            return values;
+        }
+
+        let raw = unsafe { self.buffer.host_ptr() };
+        if !raw.is_null() {
+            return unsafe { std::slice::from_raw_parts(raw.cast::<BaseField>(), self.size) };
+        }
+
         self.host_cache.get_or_init(|| {
             self.buffer
                 .to_vec()

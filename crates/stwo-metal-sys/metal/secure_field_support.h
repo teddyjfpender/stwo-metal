@@ -9,6 +9,63 @@ struct StwoMetalQm31 {
     uint d;
 };
 
+struct StwoMetalCm31 {
+    uint a;
+    uint b;
+};
+
+static inline StwoMetalCm31 stwo_metal_cm31(uint a, uint b) {
+    return StwoMetalCm31 { a, b };
+}
+
+static inline StwoMetalCm31 stwo_metal_cm31_add(StwoMetalCm31 lhs, StwoMetalCm31 rhs) {
+    return StwoMetalCm31 {
+        stwo_metal_m31_add(lhs.a, rhs.a),
+        stwo_metal_m31_add(lhs.b, rhs.b),
+    };
+}
+
+static inline StwoMetalCm31 stwo_metal_cm31_sub(StwoMetalCm31 lhs, StwoMetalCm31 rhs) {
+    return StwoMetalCm31 {
+        stwo_metal_m31_sub(lhs.a, rhs.a),
+        stwo_metal_m31_sub(lhs.b, rhs.b),
+    };
+}
+
+static inline StwoMetalCm31 stwo_metal_cm31_neg(StwoMetalCm31 value) {
+    return StwoMetalCm31 {
+        stwo_metal_m31_neg(value.a),
+        stwo_metal_m31_neg(value.b),
+    };
+}
+
+static inline StwoMetalCm31 stwo_metal_cm31_mul_base(StwoMetalCm31 value, uint scalar) {
+    return StwoMetalCm31 {
+        stwo_metal_m31_mul(value.a, scalar),
+        stwo_metal_m31_mul(value.b, scalar),
+    };
+}
+
+static inline StwoMetalCm31 stwo_metal_cm31_mul(StwoMetalCm31 lhs, StwoMetalCm31 rhs) {
+    return StwoMetalCm31 {
+        stwo_metal_m31_sub(stwo_metal_m31_mul(lhs.a, rhs.a), stwo_metal_m31_mul(lhs.b, rhs.b)),
+        stwo_metal_m31_add(stwo_metal_m31_mul(lhs.a, rhs.b), stwo_metal_m31_mul(lhs.b, rhs.a)),
+    };
+}
+
+static inline StwoMetalCm31 stwo_metal_cm31_inverse(StwoMetalCm31 value) {
+    uint denom_inverse = stwo_metal_m31_inv(
+        stwo_metal_m31_add(
+            stwo_metal_m31_square(value.a),
+            stwo_metal_m31_square(value.b)
+        )
+    );
+    return stwo_metal_cm31_mul_base(
+        StwoMetalCm31 { value.a, stwo_metal_m31_neg(value.b) },
+        denom_inverse
+    );
+}
+
 static inline StwoMetalQm31 stwo_metal_qm31_from_base(uint value) {
     return StwoMetalQm31 { value, 0u, 0u, 0u };
 }
@@ -73,6 +130,12 @@ static inline StwoMetalQm31 stwo_metal_qm31_mul(StwoMetalQm31 lhs, StwoMetalQm31
         stwo_metal_m31_add(cross0, cross2),
         stwo_metal_m31_add(cross1, cross3),
     };
+}
+
+static inline StwoMetalQm31 stwo_metal_qm31_mul_cm31(StwoMetalQm31 lhs, StwoMetalCm31 rhs) {
+    StwoMetalCm31 lo = stwo_metal_cm31_mul(StwoMetalCm31 { lhs.a, lhs.b }, rhs);
+    StwoMetalCm31 hi = stwo_metal_cm31_mul(StwoMetalCm31 { lhs.c, lhs.d }, rhs);
+    return StwoMetalQm31 { lo.a, lo.b, hi.a, hi.b };
 }
 
 static inline StwoMetalQm31 stwo_metal_load_qm31(device const uint *values, uint index) {
