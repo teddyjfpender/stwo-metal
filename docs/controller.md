@@ -48,7 +48,7 @@ Invariants:
 
 - there is not yet a stable internal artifact-registry boundary for
   Stwo/codegen-produced proving artifacts beyond the current prove, benchmark,
-  and workload-stage subset
+  workload-stage, and generated-route subset
 - there is not yet a stable execution-plan boundary for operations beyond the
   current prove-planning path
 - generic and generated lanes are now encoded as a private planning seam, but
@@ -68,15 +68,14 @@ Invariants:
   generated contract instead of driving it
 - superseded milestone history has to stay out of the active control surface so
   the new sequence remains legible
-- per-component generated inventory now exists, but broader generated-operation
-  compatibility and fail-closed unsupported-operation behavior are not yet
-  routed through the same shared seam
+- per-component generated inventory and generated-route compatibility now exist,
+  but the shared seam is still not adopted broadly enough across backend
+  routing to count as a finished G2 surface
 
 ## Next three deliverables
 
-1. Add broader generated-operation compatibility and fail-closed
-   unsupported-operation behavior to the shared registry and execution-plan
-   seam.
+1. Push more declaration and routing surfaces through the shared execution-plan
+   seam so generated-route support is consumed consistently across the backend.
 2. Push more existing declaration surfaces through the execution-plan boundary
    so planner, workload, and benchmark routing share the same fail-closed seam.
 3. Keep acceptance-local adapters, bounded CPU fallbacks, and unsupported

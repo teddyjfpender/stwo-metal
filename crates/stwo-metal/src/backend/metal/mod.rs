@@ -49,7 +49,8 @@ pub use line::{MetalFriLayerDecommitment, MetalLineCommitment, MetalLineEvaluati
 pub use planner::{
     plan_exemplar_metal_prove_by_name, plan_metal_operation, MetalComponentCapability,
     MetalComponentPlanInput, MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind,
-    MetalPlannerError, MetalSupportTier, UnknownMetalComponent, UnsupportedMetalPlan,
+    MetalPlannerError, MetalSupportTier, UnknownMetalComponent,
+    UnsupportedGeneratedMetalRoute, UnsupportedMetalPlan,
 };
 pub use planner_manifest_v1_generated::STWO_METAL_PLANNER_COMPONENTS_V1;
 pub use poly::permute_coset_to_circle_domain_bit_reversed;

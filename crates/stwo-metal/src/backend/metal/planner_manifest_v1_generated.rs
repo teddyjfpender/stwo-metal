@@ -1,4 +1,4 @@
-use super::artifact::MetalRegisteredBenchmarkOperation;
+use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
 use super::planner::{MetalComponentCapability, MetalSupportTier};
 use super::workload_contract::{
     MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
@@ -24,6 +24,7 @@ pub struct GeneratedMetalPlannerComponent {
     pub declared_capabilities: &'static [MetalComponentCapability],
     pub required_prove_capabilities: &'static [MetalComponentCapability],
     pub supported_benchmark_operations: &'static [MetalRegisteredBenchmarkOperation],
+    pub supported_generated_routes: &'static [MetalGeneratedRouteKind],
     pub stage_assignments: &'static [MetalWorkloadStageAssignment],
     pub generated_inventory: GeneratedMetalInventoryEntry,
 }
@@ -55,6 +56,18 @@ const FIBONACCI_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS: &[MetalRegisteredBenchma
 ];
 
 const POSEIDON_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS: &[MetalRegisteredBenchmarkOperation] = &[];
+
+const FIBONACCI_EXAMPLE_SUPPORTED_GENERATED_ROUTES: &[MetalGeneratedRouteKind] = &[
+    MetalGeneratedRouteKind::RegisteredProve,
+    MetalGeneratedRouteKind::WorkloadBoundary,
+    MetalGeneratedRouteKind::BenchmarkTraceGeneration,
+    MetalGeneratedRouteKind::BenchmarkProveVerify,
+];
+
+const POSEIDON_EXAMPLE_SUPPORTED_GENERATED_ROUTES: &[MetalGeneratedRouteKind] = &[
+    MetalGeneratedRouteKind::RegisteredProve,
+    MetalGeneratedRouteKind::WorkloadBoundary,
+];
 
 const FIBONACCI_EXAMPLE_BUILD_MODULES: &[&str] = &[
     "planner_manifest_v1_generated",
@@ -134,6 +147,7 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
         declared_capabilities: FIBONACCI_EXAMPLE_DECLARED_CAPABILITIES,
         required_prove_capabilities: FIBONACCI_EXAMPLE_REQUIRED_PROVE_CAPABILITIES,
         supported_benchmark_operations: FIBONACCI_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS,
+        supported_generated_routes: FIBONACCI_EXAMPLE_SUPPORTED_GENERATED_ROUTES,
         stage_assignments: FIBONACCI_EXAMPLE_STAGE_ASSIGNMENTS,
         generated_inventory: GeneratedMetalInventoryEntry {
             registration_key: "fibonacci_example",
@@ -149,6 +163,7 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
         declared_capabilities: POSEIDON_EXAMPLE_DECLARED_CAPABILITIES,
         required_prove_capabilities: POSEIDON_EXAMPLE_REQUIRED_PROVE_CAPABILITIES,
         supported_benchmark_operations: POSEIDON_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS,
+        supported_generated_routes: POSEIDON_EXAMPLE_SUPPORTED_GENERATED_ROUTES,
         stage_assignments: POSEIDON_EXAMPLE_STAGE_ASSIGNMENTS,
         generated_inventory: GeneratedMetalInventoryEntry {
             registration_key: "poseidon_example",

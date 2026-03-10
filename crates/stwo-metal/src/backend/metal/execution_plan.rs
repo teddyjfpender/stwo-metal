@@ -1,10 +1,11 @@
 use super::artifact::{
-    MetalArtifactLookupError, MetalArtifactRegistry, STWO_METAL_ARTIFACT_REGISTRY_V1,
+    MetalArtifactLookupError, MetalArtifactRegistry, MetalArtifactSupportError,
+    MetalGeneratedRouteKind, STWO_METAL_ARTIFACT_REGISTRY_V1,
     STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
 };
 use super::planner::{
     plan_metal_operation, MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind,
-    MetalPlannerError, UnknownMetalComponent,
+    MetalPlannerError, UnknownMetalComponent, UnsupportedGeneratedMetalRoute,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -32,18 +33,33 @@ pub(crate) fn plan_registered_metal_component_prove(
     component_name: &'static str,
 ) -> Result<RegisteredMetalExecutionPlan, MetalPlannerError<'static>> {
     let artifact = STWO_METAL_ARTIFACT_REGISTRY_V1
-        .artifact_for_prove(component_name, STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1)
+        .artifact_supporting_generated_route(
+            component_name,
+            STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
+            MetalGeneratedRouteKind::RegisteredProve,
+        )
         .map_err(|error| match error {
-            MetalArtifactLookupError::SchemaMismatch { expected: _, found: _ } => {
+            MetalArtifactSupportError::Lookup(MetalArtifactLookupError::SchemaMismatch {
+                expected: _,
+                found: _,
+            }) => {
                 MetalPlannerError::UnknownComponent(UnknownMetalComponent {
                     component_name,
                     operation: MetalOperationKind::Prove,
                 })
             }
-            MetalArtifactLookupError::UnknownComponent { component_name } => {
+            MetalArtifactSupportError::Lookup(MetalArtifactLookupError::UnknownComponent {
+                component_name,
+            }) => {
                 MetalPlannerError::UnknownComponent(UnknownMetalComponent {
                     component_name,
                     operation: MetalOperationKind::Prove,
+                })
+            }
+            MetalArtifactSupportError::UnsupportedGeneratedRoute { component_name, route } => {
+                MetalPlannerError::UnsupportedGeneratedRoute(UnsupportedGeneratedMetalRoute {
+                    component_name,
+                    route,
                 })
             }
         })?;

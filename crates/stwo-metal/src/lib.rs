@@ -53,8 +53,8 @@ pub mod planner {
     pub use crate::backend::metal::{
         plan_exemplar_metal_prove_by_name, plan_metal_operation, MetalComponentCapability,
         MetalComponentPlanInput, MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind,
-        MetalPlannerError, MetalSupportTier, UnknownMetalComponent, UnsupportedMetalPlan,
-        STWO_METAL_PLANNER_COMPONENTS_V1,
+        MetalPlannerError, MetalSupportTier, UnknownMetalComponent,
+        UnsupportedGeneratedMetalRoute, UnsupportedMetalPlan, STWO_METAL_PLANNER_COMPONENTS_V1,
     };
 }
 
@@ -116,8 +116,9 @@ pub use planner::{
     CudaComponentCapability, CudaExecutionIntent, CudaExecutionPlan, CudaOperationKind,
     CudaPlannerError, CudaSupportTier, MetalComponentCapability, MetalComponentPlanInput,
     MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind, MetalPlannerError,
-    MetalSupportTier, UnknownCudaComponent, UnknownMetalComponent, UnsupportedCudaPlan,
-    UnsupportedMetalPlan, STWO_METAL_PLANNER_COMPONENTS_V1,
+    MetalSupportTier, UnknownCudaComponent, UnknownMetalComponent,
+    UnsupportedCudaPlan, UnsupportedGeneratedMetalRoute, UnsupportedMetalPlan,
+    STWO_METAL_PLANNER_COMPONENTS_V1,
 };
 #[cfg(feature = "prover")]
 pub use quotient::{

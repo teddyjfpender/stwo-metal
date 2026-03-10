@@ -103,6 +103,8 @@ The first G2 slice is now landed:
   generated registration manifest rather than in a second workload-local table
 - per-component generated inventory now records registration key, ABI family,
   build inventory, and witness hooks through the same registry seam
+- generated-route compatibility is now explicit and fail-closed for registered
+  prove, workload-boundary, and declared benchmark routes
 
 ## Foundation already available
 

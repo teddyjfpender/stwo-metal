@@ -1,10 +1,13 @@
 use stwo::core::fields::m31::BaseField;
 
 use super::artifact::{
-    MetalRegisteredBenchmarkOperation, STWO_METAL_ARTIFACT_REGISTRY_V1,
+    MetalArtifactSupportError, MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation,
+    STWO_METAL_ARTIFACT_REGISTRY_V1,
     STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
 };
-use super::planner::{MetalExecutionIntent, MetalPlannerError};
+use super::planner::{
+    MetalExecutionIntent, MetalPlannerError, UnsupportedGeneratedMetalRoute,
+};
 use super::witness::{
     generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
     MetalWideFibonacciTraceRequest,
@@ -162,28 +165,39 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
     target: MetalBenchmarkTarget,
 ) -> Result<MetalWideFibonacciBenchmarkBoundary, MetalPlannerError<'static>> {
     let artifact = STWO_METAL_ARTIFACT_REGISTRY_V1
-        .artifact_by_name(target.workload_name, STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1)
-        .map_err(|_| {
-            MetalPlannerError::UnknownComponent(super::planner::UnknownMetalComponent {
-                component_name: target.workload_name,
-                operation: super::planner::MetalOperationKind::Prove,
-            })
+        .artifact_supporting_generated_route(
+            target.workload_name,
+            STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
+            match target.operation {
+                MetalBenchmarkOperation::TraceGeneration => {
+                    MetalGeneratedRouteKind::BenchmarkTraceGeneration
+                }
+                MetalBenchmarkOperation::ProveVerify => {
+                    MetalGeneratedRouteKind::BenchmarkProveVerify
+                }
+            },
+        )
+        .map_err(|error| match error {
+            MetalArtifactSupportError::Lookup(_) => {
+                MetalPlannerError::UnknownComponent(super::planner::UnknownMetalComponent {
+                    component_name: target.workload_name,
+                    operation: super::planner::MetalOperationKind::Prove,
+                })
+            }
+            MetalArtifactSupportError::UnsupportedGeneratedRoute { component_name, route } => {
+                MetalPlannerError::UnsupportedGeneratedRoute(UnsupportedGeneratedMetalRoute {
+                    component_name,
+                    route,
+                })
+            }
         })?;
     let benchmark_operation = match target.operation {
         MetalBenchmarkOperation::TraceGeneration => MetalRegisteredBenchmarkOperation::TraceGeneration,
         MetalBenchmarkOperation::ProveVerify => MetalRegisteredBenchmarkOperation::ProveVerify,
     };
 
-    assert_eq!(
-        artifact.workload_family, target.family,
-        "declared benchmark target family must match the registered artifact family"
-    );
-    assert!(
-        artifact
-            .supported_benchmark_operations
-            .contains(&benchmark_operation),
-        "declared benchmark operation must be supported by the registered artifact"
-    );
+    assert_eq!(artifact.workload_family, target.family);
+    assert!(artifact.supported_benchmark_operations.contains(&benchmark_operation));
 
     let workload_boundary = declare_exemplar_metal_workload_boundary(intent, target.workload_name)?;
 
@@ -202,7 +216,11 @@ mod tests {
         MetalBenchmarkOperation, MetalBenchmarkReferencePlatform, MetalExecutionIntent,
         WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
     };
-    use crate::backend::metal::{MetalExecutionPlan, MetalWorkloadOwnership, MetalWorkloadStage};
+    use crate::backend::metal::{
+        MetalExecutionPlan, MetalPlannerError, MetalWorkloadOwnership, MetalWorkloadStage,
+        UnsupportedGeneratedMetalRoute,
+    };
+    use crate::backend::metal::artifact::MetalGeneratedRouteKind;
 
     #[test]
     fn wide_fibonacci_targets_are_fixed_to_log20_and_rtx4090_reference() {
@@ -263,6 +281,28 @@ mod tests {
                 actual_a: ok_len,
                 actual_b: ok_len - 1,
             }
+        );
+    }
+
+    #[test]
+    fn benchmark_boundary_fails_closed_for_unsupported_generated_route() {
+        let error = declare_wide_fibonacci_benchmark_boundary(
+            MetalExecutionIntent::PreferMetal,
+            super::MetalBenchmarkTarget {
+                workload_name: "poseidon_example",
+                family: "poseidon",
+                operation: MetalBenchmarkOperation::ProveVerify,
+                ..WIDE_FIBONACCI_PROVE_LOG20_TARGET
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            MetalPlannerError::UnsupportedGeneratedRoute(UnsupportedGeneratedMetalRoute {
+                component_name: "poseidon_example",
+                route: MetalGeneratedRouteKind::BenchmarkProveVerify,
+            })
         );
     }
 }

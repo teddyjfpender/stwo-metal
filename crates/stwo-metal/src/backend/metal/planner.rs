@@ -50,9 +50,16 @@ pub struct UnknownMetalComponent<'a> {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct UnsupportedGeneratedMetalRoute<'a> {
+    pub component_name: &'a str,
+    pub route: super::artifact::MetalGeneratedRouteKind,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalPlannerError<'a> {
     UnknownComponent(UnknownMetalComponent<'a>),
     Unsupported(UnsupportedMetalPlan<'a>),
+    UnsupportedGeneratedRoute(UnsupportedGeneratedMetalRoute<'a>),
 }
 
 #[derive(Copy, Clone, Debug)]

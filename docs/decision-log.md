@@ -28,6 +28,52 @@ Superseded by:
 
 ## Entries
 
+### DEC-0073: Generated-route compatibility must be explicit and fail closed through the shared registry seam
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Registered Metal component artifacts now declare which generated routes they
+support, and the shared private registry must reject unsupported routes
+explicitly:
+
+- registered prove
+- workload-boundary declaration
+- declared benchmark trace generation
+- declared benchmark prove/verify
+
+Context:
+
+After the earlier G2 slices, benchmark identity, workload-stage ownership, and
+per-component generated inventory all lived in the same contract seam, but
+route support was still implied by call-site convention. That left too much
+room for accidental support claims. Moving route compatibility into the
+registry keeps unsupported generated behavior deterministic without widening the
+public API.
+
+Alternatives rejected:
+
+- infer supported routes from workload names or benchmark constants
+- keep route support as ad hoc assertions inside benchmark and workload modules
+- postpone explicit route compatibility until after full generated fast-path
+  lowering
+
+Impact:
+
+- unsupported generated routes now fail closed through the same seam as schema
+  and identity checks
+- the next honest G2 gap is broader backend adoption of the seam, not route
+  guessing
+
+Superseded by:
+
+- none
+
 ### DEC-0072: Generated inventory must be recorded per component, not as one shared registry blob
 
 - Date: `2026-03-10`

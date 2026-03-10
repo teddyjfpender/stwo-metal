@@ -33,6 +33,14 @@ pub enum MetalRegisteredBenchmarkOperation {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalGeneratedRouteKind {
+    RegisteredProve,
+    WorkloadBoundary,
+    BenchmarkTraceGeneration,
+    BenchmarkProveVerify,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct MetalComponentArtifact {
     pub schema_version: u16,
     pub producer: MetalProducerIdentity,
@@ -42,6 +50,7 @@ pub struct MetalComponentArtifact {
     pub declared_capabilities: &'static [MetalComponentCapability],
     pub required_prove_capabilities: &'static [MetalComponentCapability],
     pub supported_benchmark_operations: &'static [MetalRegisteredBenchmarkOperation],
+    pub supported_generated_routes: &'static [MetalGeneratedRouteKind],
     pub stage_assignments: &'static [MetalWorkloadStageAssignment],
     pub generated_inventory: MetalGeneratedInventory,
 }
@@ -69,6 +78,15 @@ pub enum MetalArtifactLookupError<'a> {
     },
     UnknownComponent {
         component_name: &'a str,
+    },
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalArtifactSupportError<'a> {
+    Lookup(MetalArtifactLookupError<'a>),
+    UnsupportedGeneratedRoute {
+        component_name: &'a str,
+        route: MetalGeneratedRouteKind,
     },
 }
 
@@ -113,7 +131,17 @@ impl MetalArtifactRegistry {
         component_name: &'a str,
         expected_schema_version: u16,
     ) -> Result<MetalComponentArtifact, MetalArtifactLookupError<'a>> {
-        self.artifact_by_name(component_name, expected_schema_version)
+        self.artifact_supporting_generated_route(
+            component_name,
+            expected_schema_version,
+            MetalGeneratedRouteKind::RegisteredProve,
+        )
+        .map_err(|error| match error {
+            MetalArtifactSupportError::Lookup(error) => error,
+            MetalArtifactSupportError::UnsupportedGeneratedRoute { component_name, route: _ } => {
+                MetalArtifactLookupError::UnknownComponent { component_name }
+            }
+        })
     }
 
     pub fn artifact_by_name<'a>(
@@ -132,6 +160,26 @@ impl MetalArtifactRegistry {
         Ok(self.component_artifact(component))
     }
 
+    pub fn artifact_supporting_generated_route<'a>(
+        &self,
+        component_name: &'a str,
+        expected_schema_version: u16,
+        route: MetalGeneratedRouteKind,
+    ) -> Result<MetalComponentArtifact, MetalArtifactSupportError<'a>> {
+        let artifact = self
+            .artifact_by_name(component_name, expected_schema_version)
+            .map_err(MetalArtifactSupportError::Lookup)?;
+
+        if !artifact.supported_generated_routes.contains(&route) {
+            return Err(MetalArtifactSupportError::UnsupportedGeneratedRoute {
+                component_name,
+                route,
+            });
+        }
+
+        Ok(artifact)
+    }
+
     fn component_artifact(
         &self,
         component: &GeneratedMetalPlannerComponent,
@@ -145,6 +193,7 @@ impl MetalArtifactRegistry {
             declared_capabilities: component.declared_capabilities,
             required_prove_capabilities: component.required_prove_capabilities,
             supported_benchmark_operations: component.supported_benchmark_operations,
+            supported_generated_routes: component.supported_generated_routes,
             stage_assignments: component.stage_assignments,
             generated_inventory: self.generated_inventory(component.generated_inventory),
         }
@@ -169,8 +218,8 @@ impl MetalArtifactRegistry {
 #[cfg(test)]
 mod tests {
     use super::{
-        MetalArtifactLookupError, MetalOperationKind, MetalRegisteredBenchmarkOperation,
-        STWO_METAL_ARTIFACT_REGISTRY_V1,
+        MetalArtifactLookupError, MetalArtifactSupportError, MetalGeneratedRouteKind,
+        MetalOperationKind, MetalRegisteredBenchmarkOperation, STWO_METAL_ARTIFACT_REGISTRY_V1,
         STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
     };
     use crate::backend::metal::planner::{MetalComponentCapability, MetalSupportTier};
@@ -220,6 +269,11 @@ mod tests {
             ]
         );
         assert_eq!(artifact.stage_assignments.len(), 5);
+        assert!(
+            artifact
+                .supported_generated_routes
+                .contains(&MetalGeneratedRouteKind::RegisteredProve)
+        );
         assert_eq!(artifact.generated_inventory.registration_key, "fibonacci_example");
         assert_eq!(artifact.generated_inventory.abi_family, "wide_fibonacci");
         assert_eq!(
@@ -230,6 +284,25 @@ mod tests {
         assert_eq!(
             artifact.generated_inventory.witness_hook,
             Some("ingest_cpu_wide_fibonacci_witness")
+        );
+    }
+
+    #[test]
+    fn artifact_registry_rejects_unsupported_generated_route_explicitly() {
+        let error = STWO_METAL_ARTIFACT_REGISTRY_V1
+            .artifact_supporting_generated_route(
+                "poseidon_example",
+                STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
+                MetalGeneratedRouteKind::BenchmarkProveVerify,
+            )
+            .unwrap_err();
+
+        assert_eq!(
+            error,
+            MetalArtifactSupportError::UnsupportedGeneratedRoute {
+                component_name: "poseidon_example",
+                route: MetalGeneratedRouteKind::BenchmarkProveVerify,
+            }
         );
     }
 }

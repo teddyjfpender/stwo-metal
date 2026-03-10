@@ -7,9 +7,12 @@ use stwo::prover::fri::FriDecommitResult;
 use stwo::prover::poly::circle::SecureEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 
-use super::artifact::{STWO_METAL_ARTIFACT_REGISTRY_V1, STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1};
+use super::artifact::{
+    MetalArtifactSupportError, MetalGeneratedRouteKind, STWO_METAL_ARTIFACT_REGISTRY_V1,
+    STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
+};
 use super::planner::{
-    MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError,
+    MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError, UnsupportedGeneratedMetalRoute,
 };
 use super::execution_plan::plan_registered_metal_component_prove;
 use super::subpath::MetalFriBlake2sSubpath;
@@ -321,12 +324,27 @@ fn stage_assignments_for_workload(
 ) -> Result<&'static [MetalWorkloadStageAssignment], MetalPlannerError<'static>> {
     Ok(
         STWO_METAL_ARTIFACT_REGISTRY_V1
-            .artifact_by_name(workload_name, STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1)
-            .map_err(|_| {
-                MetalPlannerError::UnknownComponent(super::planner::UnknownMetalComponent {
-                    component_name: workload_name,
-                    operation: super::planner::MetalOperationKind::Prove,
-                })
+            .artifact_supporting_generated_route(
+                workload_name,
+                STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
+                MetalGeneratedRouteKind::WorkloadBoundary,
+            )
+            .map_err(|error| match error {
+                MetalArtifactSupportError::Lookup(_) => {
+                    MetalPlannerError::UnknownComponent(super::planner::UnknownMetalComponent {
+                        component_name: workload_name,
+                        operation: super::planner::MetalOperationKind::Prove,
+                    })
+                }
+                MetalArtifactSupportError::UnsupportedGeneratedRoute {
+                    component_name,
+                    route,
+                } => MetalPlannerError::UnsupportedGeneratedRoute(
+                    UnsupportedGeneratedMetalRoute {
+                        component_name,
+                        route,
+                    },
+                ),
             })?
             .stage_assignments,
     )
