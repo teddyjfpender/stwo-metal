@@ -8,17 +8,16 @@ use super::planner::{
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) struct RegisteredMetalExecutionPlan<'a> {
+pub(crate) struct RegisteredMetalExecutionPlan {
     pub schema_version: u16,
     pub operation: MetalOperationKind,
-    pub components: &'a [&'a str],
     pub plan: MetalExecutionPlan,
 }
 
 pub(crate) fn plan_registered_metal_prove<'a>(
     intent: MetalExecutionIntent,
     component_names: &'a [&'a str],
-) -> Result<RegisteredMetalExecutionPlan<'a>, MetalPlannerError<'a>> {
+) -> Result<RegisteredMetalExecutionPlan, MetalPlannerError<'a>> {
     plan_registered_metal_operation(
         &STWO_METAL_ARTIFACT_REGISTRY_V1,
         STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
@@ -28,22 +27,35 @@ pub(crate) fn plan_registered_metal_prove<'a>(
     )
 }
 
-pub(crate) fn plan_registered_metal_prove_static(
+pub(crate) fn plan_registered_metal_component_prove(
     intent: MetalExecutionIntent,
     component_name: &'static str,
-) -> Result<RegisteredMetalExecutionPlan<'static>, MetalPlannerError<'static>> {
-    let component_names = match component_name {
-        "fibonacci_example" => &["fibonacci_example"][..],
-        "poseidon_example" => &["poseidon_example"][..],
-        _ => {
-            return Err(MetalPlannerError::UnknownComponent(UnknownMetalComponent {
-                component_name,
-                operation: MetalOperationKind::Prove,
-            }))
-        }
-    };
+) -> Result<RegisteredMetalExecutionPlan, MetalPlannerError<'static>> {
+    let artifact = STWO_METAL_ARTIFACT_REGISTRY_V1
+        .artifact_for_prove(component_name, STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1)
+        .map_err(|error| match error {
+            MetalArtifactLookupError::SchemaMismatch { expected: _, found: _ } => {
+                MetalPlannerError::UnknownComponent(UnknownMetalComponent {
+                    component_name,
+                    operation: MetalOperationKind::Prove,
+                })
+            }
+            MetalArtifactLookupError::UnknownComponent { component_name } => {
+                MetalPlannerError::UnknownComponent(UnknownMetalComponent {
+                    component_name,
+                    operation: MetalOperationKind::Prove,
+                })
+            }
+        })?;
+    let input = artifact.as_plan_input(MetalOperationKind::Prove);
+    let plan = plan_metal_operation(intent, MetalOperationKind::Prove, &[input])
+        .map_err(MetalPlannerError::Unsupported)?;
 
-    plan_registered_metal_prove(intent, component_names)
+    Ok(RegisteredMetalExecutionPlan {
+        schema_version: STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
+        operation: MetalOperationKind::Prove,
+        plan,
+    })
 }
 
 pub(crate) fn plan_registered_metal_operation<'a>(
@@ -52,7 +64,7 @@ pub(crate) fn plan_registered_metal_operation<'a>(
     intent: MetalExecutionIntent,
     operation: MetalOperationKind,
     component_names: &'a [&'a str],
-) -> Result<RegisteredMetalExecutionPlan<'a>, MetalPlannerError<'a>> {
+) -> Result<RegisteredMetalExecutionPlan, MetalPlannerError<'a>> {
     let inputs = component_names
         .iter()
         .map(|component_name| {
@@ -81,14 +93,13 @@ pub(crate) fn plan_registered_metal_operation<'a>(
     Ok(RegisteredMetalExecutionPlan {
         schema_version: registry.schema_version(),
         operation,
-        components: component_names,
         plan,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{plan_registered_metal_prove, plan_registered_metal_prove_static};
+    use super::{plan_registered_metal_component_prove, plan_registered_metal_prove};
     use crate::backend::metal::planner::{
         MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError, UnknownMetalComponent,
     };
@@ -118,10 +129,12 @@ mod tests {
     }
 
     #[test]
-    fn static_registered_planner_supports_declared_components() {
-        let plan =
-            plan_registered_metal_prove_static(MetalExecutionIntent::PreferMetal, "poseidon_example")
-                .unwrap();
+    fn component_registered_planner_supports_declared_components() {
+        let plan = plan_registered_metal_component_prove(
+            MetalExecutionIntent::PreferMetal,
+            "poseidon_example",
+        )
+        .unwrap();
 
         assert_eq!(plan.plan, MetalExecutionPlan::MetalFriHybrid);
     }

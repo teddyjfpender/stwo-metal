@@ -10,7 +10,7 @@ use stwo::prover::poly::BitReversedOrder;
 use super::planner::{
     MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError,
 };
-use super::execution_plan::plan_registered_metal_prove_static;
+use super::execution_plan::plan_registered_metal_component_prove;
 use super::subpath::MetalFriBlake2sSubpath;
 use super::witness::{
     generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
@@ -410,7 +410,7 @@ pub fn declare_exemplar_metal_workload_boundary(
     intent: MetalExecutionIntent,
     workload_name: &'static str,
 ) -> Result<MetalWorkloadBoundary, MetalPlannerError<'static>> {
-    let plan = plan_registered_metal_prove_static(intent, workload_name)?.plan;
+    let plan = plan_registered_metal_component_prove(intent, workload_name)?.plan;
     let stage_assignments = stage_assignments_for_workload(workload_name)?;
 
     Ok(MetalWorkloadBoundary {
