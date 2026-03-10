@@ -19,7 +19,10 @@ use stwo::prover::{AccumulationOps, ComponentProver, DomainEvaluationAccumulator
 use stwo_constraint_framework::{
     CpuDomainEvaluator, FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX,
 };
-use stwo_metal::{MetalBackend, MetalBaseFieldVec, MetalExecutionPlan, MetalWorkloadBoundary};
+use stwo_metal::{
+    MetalBackend, MetalBaseFieldVec, MetalExecutionAuthority, MetalExecutionPlan,
+    MetalWorkloadBoundary,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum AcceptanceMetalLaneError {
@@ -47,25 +50,33 @@ impl std::error::Error for AcceptanceMetalLaneError {}
 
 #[derive(Clone, Copy, Debug)]
 pub struct AcceptanceMetalLane<'a> {
-    boundary: &'a MetalWorkloadBoundary,
+    workload_name: &'static str,
+    execution_authority: MetalExecutionAuthority,
+    _boundary: &'a MetalWorkloadBoundary,
 }
 
 impl AcceptanceMetalLane<'_> {
     pub fn workload_name(&self) -> &'static str {
-        self.boundary.workload_name()
+        self.workload_name
     }
 
-    pub fn boundary(&self) -> &MetalWorkloadBoundary {
-        self.boundary
+    pub fn execution_authority(&self) -> MetalExecutionAuthority {
+        self.execution_authority
     }
 }
 
 pub fn acceptance_registered_metal_lane(
     boundary: &MetalWorkloadBoundary,
 ) -> Result<AcceptanceMetalLane<'_>, AcceptanceMetalLaneError> {
-    match boundary.plan() {
+    let execution_authority = boundary.execution_authority();
+
+    match execution_authority.plan() {
         MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull => {
-            Ok(AcceptanceMetalLane { boundary })
+            Ok(AcceptanceMetalLane {
+                workload_name: boundary.workload_name(),
+                execution_authority,
+                _boundary: boundary,
+            })
         }
         plan => Err(AcceptanceMetalLaneError::PlanNotMetalCapable {
             workload_name: boundary.workload_name(),
@@ -87,8 +98,8 @@ pub fn acceptance_registered_metal_lane(
 /// - workload routing stays explicit; no ad hoc bridge construction exists outside this catalog
 ///
 /// Failure modes:
-/// - construction fails through `acceptance_registered_metal_lane` when the workload declaration
-///   is not Metal-capable
+/// - construction fails through `acceptance_registered_metal_lane` when the workload declaration is
+///   not Metal-capable
 #[derive(Clone, Copy, Debug)]
 pub struct AcceptanceMetalBridgeCatalog<'a> {
     lane: AcceptanceMetalLane<'a>,
@@ -418,10 +429,11 @@ fn accumulate_pointwise_cpu<E: FrameworkEval>(
 
 #[cfg(test)]
 mod tests {
-    use super::{acceptance_registered_metal_lane, AcceptanceMetalLaneError};
     use stwo_metal::{
         declare_exemplar_metal_workload_boundary, MetalExecutionIntent, MetalExecutionPlan,
     };
+
+    use super::{acceptance_registered_metal_lane, AcceptanceMetalLaneError};
 
     #[test]
     fn registered_lane_accepts_metal_capable_boundary() {
@@ -434,7 +446,10 @@ mod tests {
         let lane = acceptance_registered_metal_lane(&boundary).unwrap();
 
         assert_eq!(lane.workload_name(), "fibonacci_example");
-        assert_eq!(lane.boundary().plan(), MetalExecutionPlan::MetalFriHybrid);
+        assert_eq!(
+            lane.execution_authority().plan(),
+            MetalExecutionPlan::MetalFriHybrid
+        );
     }
 
     #[test]

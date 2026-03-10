@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 thirteenth slice: re-anchor the shared prove-values staging bridge on a
-minimal execution-authority contract below the public workload boundary`
+`G5 fourteenth slice: reuse the reduced execution-law surface across the
+remaining live staging helpers before lowering it further`
 
 The active formal basis is:
 
@@ -225,6 +225,17 @@ The twelfth G5 slice is now landed:
 - the next honest G5 work is consuming that same reduced execution-law surface
   in another live staging helper so G5 keeps moving downward without widening
   benchmark or workload contracts again
+
+The thirteenth G5 slice is now landed:
+
+- the private upstream-acceptance bridge now validates and carries the reduced
+  `MetalExecutionAuthority` instead of treating `MetalWorkloadBoundary` as its
+  live lane law
+- the benchmark witness boundary now consumes that same reduced
+  execution-authority surface, and the wide-fibonacci benchmark row now calls
+  it directly
+- the next honest G5 work is lowering the remaining workload-side helper
+  checks that only need plan and stage law off `MetalWorkloadBoundary`
 
 ## G2 progress snapshot
 

@@ -28,6 +28,46 @@ Superseded by:
 
 ## Entries
 
+### DEC-0097: The reduced execution-law surface must be shared across benchmark and acceptance lanes before further lowering
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Once `MetalExecutionAuthority` exists, the next semantics-preserving step is
+to reuse it across more than one live staging lane before attempting to lower
+the contract further.
+
+Context:
+
+The twelfth G5 slice created `MetalExecutionAuthority` and moved the shared
+prove-values bridge onto it. Leaving that surface as a one-off benchmark-only
+bridge would not prove that it is the right lower contract. Reusing it in the
+private upstream-acceptance bridge and the benchmark witness boundary
+demonstrates that the reduced execution-law surface is genuinely reusable
+without exposing the full internal execution seed.
+
+Alternatives rejected:
+
+- keep `MetalExecutionAuthority` as a benchmark-only prove-values detail
+- jump immediately to a lower private contract without validating reuse
+- keep new live helpers on `MetalWorkloadBoundary`
+
+Impact:
+
+- benchmark prove-values, acceptance lane validation, and benchmark witness
+  staging now share the same reduced execution-law surface
+- the next honest G5 slice is lowering the remaining workload-side helper
+  checks that only need plan and stage law
+
+Superseded by:
+
+- none
+
 ### DEC-0096: Live staging bridges may depend on a minimal execution-law surface before the lower private contract exists
 
 - Date: `2026-03-10`

@@ -160,6 +160,8 @@ The next active work is:
   surface that carries only plan and stage ownership for live staging helpers
 - consume that reduced execution-law surface in more than one live staging
   helper before deciding whether it remains public beyond G5
+- lower the remaining workload-side helpers that only need execution law so
+  `MetalWorkloadBoundary` stops being the default live staging authority
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

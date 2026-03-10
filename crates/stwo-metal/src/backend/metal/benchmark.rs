@@ -7,7 +7,9 @@ use super::execution_plan::{
 use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload::{declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary};
-use super::workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
+use super::workload_contract::{
+    MetalExecutionAuthority, MetalWorkloadOwnership, MetalWorkloadStage,
+};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalBenchmarkOperation {
@@ -79,6 +81,10 @@ impl MetalWideFibonacciBenchmarkBoundary {
         &self.workload_boundary
     }
 
+    pub fn execution_authority(&self) -> MetalExecutionAuthority {
+        self.workload_boundary.execution_authority()
+    }
+
     pub fn target(&self) -> &MetalBenchmarkTarget {
         &self.target
     }
@@ -89,7 +95,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
         input_b: &[BaseField],
     ) -> Result<MetalWideFibonacciWitnessInputs, MetalBenchmarkInputError> {
         if self
-            .workload_boundary
+            .execution_authority()
             .stage_ownership(MetalWorkloadStage::WitnessMain)
             != Some(MetalWorkloadOwnership::CpuOwned)
         {
@@ -258,12 +264,12 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            boundary.workload_boundary().plan(),
+            boundary.execution_authority().plan(),
             MetalExecutionPlan::MetalFriHybrid
         );
         assert_eq!(
             boundary
-                .workload_boundary()
+                .execution_authority()
                 .stage_ownership(MetalWorkloadStage::WitnessMain),
             Some(MetalWorkloadOwnership::CpuOwned)
         );
@@ -332,7 +338,7 @@ mod tests {
         assert_eq!(inputs.execution_seed.component_name, "fibonacci_example");
         assert_eq!(
             inputs.execution_seed.plan,
-            boundary.workload_boundary().plan()
+            boundary.execution_authority().plan()
         );
         assert_eq!(request.n_columns, target.n_columns);
     }
