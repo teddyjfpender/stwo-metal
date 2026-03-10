@@ -6,7 +6,6 @@ use stwo::core::fri::CIRCLE_TO_LINE_FOLD_STEP;
 use stwo::core::poly::circle::CircleDomain;
 use stwo::core::poly::line::LineDomain;
 use stwo::core::utils::bit_reverse_index;
-use stwo::prover::backend::CpuBackend;
 use stwo::prover::fri::FriOps;
 use stwo::prover::line::LineEvaluation;
 use stwo::prover::poly::circle::SecureEvaluation;
@@ -14,7 +13,6 @@ use stwo::prover::poly::twiddles::TwiddleTree;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::secure_column::SecureColumnByCoords;
 
-use super::accumulation::metal_secure_column_from_cpu;
 use super::MetalBackend;
 use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
@@ -146,12 +144,29 @@ impl FriOps for MetalBackend {
     fn decompose(
         eval: &SecureEvaluation<Self, BitReversedOrder>,
     ) -> (SecureEvaluation<Self, BitReversedOrder>, SecureField) {
-        let (decomposed, lambda) = CpuBackend::decompose(&eval.to_cpu());
+        let domain_size = eval.len();
+        let half_domain_size = domain_size / 2;
+
+        let a_sum = (0..half_domain_size)
+            .map(|i| eval.values.at(i))
+            .sum::<SecureField>();
+        let b_sum = (half_domain_size..domain_size)
+            .map(|i| eval.values.at(i))
+            .sum::<SecureField>();
+        let lambda = (a_sum - b_sum) / BaseField::from_u32_unchecked(domain_size as u32);
+
+        let values = (0..domain_size)
+            .map(|i| {
+                let value = eval.values.at(i);
+                if i < half_domain_size {
+                    value - lambda
+                } else {
+                    value + lambda
+                }
+            })
+            .collect();
         (
-            SecureEvaluation::new(
-                decomposed.domain,
-                metal_secure_column_from_cpu(decomposed.values),
-            ),
+            SecureEvaluation::new(eval.domain, metal_secure_column_from_values(values)),
             lambda,
         )
     }

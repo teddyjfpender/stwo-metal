@@ -185,7 +185,7 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
             "The `QuotientOps` boundary is supported through an explicit CPU bridge over Metal-owned evaluation and accumulation storage."
         }
         MetalBackendSurface::FriOpsCpuBridge => {
-            "The `FriOps` boundary is supported through an explicit CPU bridge that repacks Metal-owned secure columns into the bounded Metal fold kernels and uses the vendored CPU backend for decomposition."
+            "The `FriOps` boundary still contains an explicit CPU bridge for secure-column repacking and host-side fold accumulation, but bounded fold kernels and `decompose` are now native Metal-owned operations."
         }
         MetalBackendSurface::MleOpsCpuBridge => {
             "Legacy capability name retained for API stability: `MleOps::fix_first_variable` is now implemented through native Metal kernels over Metal-owned multilinear-evaluation storage, and the old explicit CPU bridge is retired."

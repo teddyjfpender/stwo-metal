@@ -72,6 +72,49 @@ Superseded by:
 
 - none
 
+### DEC-0052: `FriOps::decompose` is retired from `CpuBackend` before the wider FRI repacking bridge
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`FriOps::decompose` now executes directly over Metal-owned secure-column values
+instead of delegating to `CpuBackend`. The explicit `FriOps` bridge is
+therefore narrowed to secure-column repacking into the bounded fold kernels and
+the host-side accumulation path inside `fold_circle_into_line`.
+
+Context:
+
+After narrowing `PolyOps` and recording the first native trace benchmark
+baseline, the next semantically small FRI step was the decomposition law:
+compute the alternating-half lambda and shift the two domain halves by that
+lambda. That logic is explicit in the vendored CPU backend and can be ported
+without inventing a new `.metal` kernel or changing the fold interfaces.
+
+Alternatives rejected:
+
+- keep `decompose` on `CpuBackend` while claiming the remaining FRI bridge was
+  only about repacking
+- jump straight to a wider fold/repacking rewrite before retiring this smaller
+  algebraic handoff
+- create a new native kernel before proving the direct Metal-owned host
+  implementation was enough
+
+Impact:
+
+- `FriOps` no longer depends on `CpuBackend` for decomposition
+- the remaining explicit `FriOps` bridge is smaller and easier to measure
+- the next benchmark-facing proving bridges are now secure-column repacking in
+  `FriOps`, point-evaluation/barycentric `PolyOps`, and Blake2s lifted hashing
+
+Superseded by:
+
+- none
+
 ### DEC-0051: Benchmark activation records the first Apple Silicon native wide-fibonacci trace baseline before the prove row is closed
 
 - Date: `2026-03-10`

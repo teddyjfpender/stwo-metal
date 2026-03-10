@@ -232,6 +232,10 @@ The first active T8 supporting slices are:
 - `PolyOps::extend` and `split_at_mid` now avoid the vendored CPU backend and
   stay inside Metal-owned base-field storage, leaving point evaluation and
   barycentric helpers as the remaining explicit `PolyOps` bridge surface
+- `FriOps::decompose` now avoids the vendored CPU backend and stays inside
+  Metal-owned secure-column storage, leaving secure-column repacking plus the
+  host-side fold accumulation boundary as the remaining explicit `FriOps`
+  bridge surface
 - the first Apple Silicon benchmark activation run now exists for the native
   trace row: `wide_fibonacci_trace_generation_v1` completed in `66.61 ms` at
   `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,

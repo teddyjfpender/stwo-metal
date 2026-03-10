@@ -517,6 +517,9 @@ Current next slice inside T8:
   star: `wide_fibonacci_trace_generation_v1 = 66.61 ms` at
   `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
   `warmups = 0`, `samples = 1`
+- treat `FriOps::decompose` as a native Metal-owned operation, leaving
+  secure-column repacking and host-side fold accumulation as the remaining
+  explicit `FriOps` bridge surface
 - treat `prefix_sum.metal` as compile-active and parity-tested support rather
   than leaving any mirrored hot-path file scaffold-only
 - with the mirrored hot-path set complete, move the next T8 decision to
