@@ -500,8 +500,11 @@ Current next slice inside T8:
 - keep the mirrored native subsystem in place and explicit
 - treat `fields.metal` and `twiddles.metal` as compile-active,
   parity-tested replacements
-- move directly into `rfft`, `ifft`, and `poly_utils` as the next FFT/poly
-  tranche on top of the native twiddle boundary
+- treat `poly_utils.metal`, `rfft.metal`, and `ifft.metal` as the next
+  compile-active, parity-tested FFT/poly tranche on top of the native twiddle
+  boundary
+- move directly into mirrored `quotients`, `fold_circle_into_line`, and
+  `fold_line` after the FFT core
 
 ## Sequencing rules
 
@@ -515,8 +518,9 @@ Current next slice inside T8:
 
 ## Current next three planning deliverables
 
-1. Land the native `rfft` slice on top of parity-tested Metal twiddles.
-2. Land the native `ifft` slice with deterministic parity against the vendored
-   CPU backend.
-3. Move the FFT/poly tranche into `poly_utils` before widening quotient and
-   fold performance work.
+1. Land the mirrored native `quotients` slice on top of the now-native FFT
+   core.
+2. Land the mirrored native `fold_circle_into_line` slice with deterministic
+   parity against the vendored CPU backend.
+3. Land the mirrored native `fold_line` slice before widening deeper lookup or
+   quotient performance work.

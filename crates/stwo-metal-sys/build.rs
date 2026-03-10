@@ -7,6 +7,9 @@ const METAL_MODE_VAR: &str = "STWO_METAL_MODE";
 const METAL_SOURCES: &[&str] = &[
     "fields",
     "twiddles",
+    "poly_utils",
+    "rfft",
+    "ifft",
     "bit_reverse",
     "poly_order",
     "fri",
@@ -101,6 +104,9 @@ fn main() {
     println!("cargo:rerun-if-changed=metal/runtime.m");
     println!("cargo:rerun-if-changed=metal/fields.metal");
     println!("cargo:rerun-if-changed=metal/twiddles.metal");
+    println!("cargo:rerun-if-changed=metal/poly_utils.metal");
+    println!("cargo:rerun-if-changed=metal/rfft.metal");
+    println!("cargo:rerun-if-changed=metal/ifft.metal");
     println!("cargo:rerun-if-changed=metal/bit_reverse.metal");
     println!("cargo:rerun-if-changed=metal/poly_order.metal");
     println!("cargo:rerun-if-changed=metal/fri.metal");
@@ -263,6 +269,11 @@ fn write_metal_autogen_stub() {
          pub const STWO_METAL_BIT_REVERSE_U32X4_KERNEL: &str = \"bit_reverse_u32x4\";\n\
          pub const STWO_METAL_INVERT_M31_VALUES_U32_KERNEL: &str = \"invert_m31_values_u32\";\n\
          pub const STWO_METAL_PRECOMPUTE_TWIDDLE_LEVEL_U32_KERNEL: &str = \"precompute_twiddle_level_u32\";\n\
+         pub const STWO_METAL_RESCALE_M31_VALUES_U32_KERNEL: &str = \"rescale_m31_values_u32\";\n\
+         pub const STWO_METAL_RFFT_CIRCLE_PART_U32_KERNEL: &str = \"rfft_circle_part_u32\";\n\
+         pub const STWO_METAL_RFFT_LINE_PART_U32_KERNEL: &str = \"rfft_line_part_u32\";\n\
+         pub const STWO_METAL_IFFT_CIRCLE_PART_U32_KERNEL: &str = \"ifft_circle_part_u32\";\n\
+         pub const STWO_METAL_IFFT_LINE_PART_U32_KERNEL: &str = \"ifft_line_part_u32\";\n\
          pub const STWO_METAL_PERMUTE_COSET_TO_CIRCLE_DOMAIN_BIT_REVERSED_U32_KERNEL: &str = \"permute_coset_to_circle_domain_bit_reversed_u32\";\n\
          pub const STWO_METAL_FRI_FOLD_CIRCLE_INTO_LINE_FIRST_LAYER_U32X4_KERNEL: &str = \"fri_fold_circle_into_line_first_layer_u32x4\";\n\
          pub const STWO_METAL_FRI_FOLD_LINE_STEP_U32X4_KERNEL: &str = \"fri_fold_line_step_u32x4\";\n",
@@ -279,6 +290,11 @@ fn write_metal_autogen(metallib_path: &Path) {
          pub const STWO_METAL_BIT_REVERSE_U32X4_KERNEL: &str = \"bit_reverse_u32x4\";\n\
          pub const STWO_METAL_INVERT_M31_VALUES_U32_KERNEL: &str = \"invert_m31_values_u32\";\n\
          pub const STWO_METAL_PRECOMPUTE_TWIDDLE_LEVEL_U32_KERNEL: &str = \"precompute_twiddle_level_u32\";\n\
+         pub const STWO_METAL_RESCALE_M31_VALUES_U32_KERNEL: &str = \"rescale_m31_values_u32\";\n\
+         pub const STWO_METAL_RFFT_CIRCLE_PART_U32_KERNEL: &str = \"rfft_circle_part_u32\";\n\
+         pub const STWO_METAL_RFFT_LINE_PART_U32_KERNEL: &str = \"rfft_line_part_u32\";\n\
+         pub const STWO_METAL_IFFT_CIRCLE_PART_U32_KERNEL: &str = \"ifft_circle_part_u32\";\n\
+         pub const STWO_METAL_IFFT_LINE_PART_U32_KERNEL: &str = \"ifft_line_part_u32\";\n\
          pub const STWO_METAL_PERMUTE_COSET_TO_CIRCLE_DOMAIN_BIT_REVERSED_U32_KERNEL: &str = \"permute_coset_to_circle_domain_bit_reversed_u32\";\n\
          pub const STWO_METAL_FRI_FOLD_CIRCLE_INTO_LINE_FIRST_LAYER_U32X4_KERNEL: &str = \"fri_fold_circle_into_line_first_layer_u32x4\";\n\
          pub const STWO_METAL_FRI_FOLD_LINE_STEP_U32X4_KERNEL: &str = \"fri_fold_line_step_u32x4\";\n",

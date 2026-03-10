@@ -13,6 +13,9 @@ Current compile-active Metal sources wired by `build.rs`:
 
 - `fields.metal`
 - `twiddles.metal`
+- `poly_utils.metal`
+- `rfft.metal`
+- `ifft.metal`
 - `bit_reverse.metal`
 - `poly_order.metal`
 - `fri.metal`
@@ -24,12 +27,12 @@ Current parity-tested native files:
 
 - `fields.metal`
 - `twiddles.metal`
+- `poly_utils.metal`
+- `rfft.metal`
+- `ifft.metal`
 
 Current scaffold-only mirror files for the native hot path:
 
-- `rfft.metal`
-- `ifft.metal`
-- `poly_utils.metal`
 - `quotients.metal`
 - `fold_circle_into_line.metal`
 - `fold_line.metal`

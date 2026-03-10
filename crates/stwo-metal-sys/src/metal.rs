@@ -251,6 +251,55 @@ impl U32Buffer {
         }
     }
 
+    pub fn rfft_evaluate_in_place(&mut self, twiddles: &Self) -> Result<(), MetalError> {
+        assert!(
+            self.len.is_power_of_two(),
+            "RFFT evaluate requires a power-of-two value buffer"
+        );
+        assert_eq!(
+            twiddles.len,
+            self.len / 2,
+            "RFFT evaluate requires a twiddle slice with one half-coset tree tail"
+        );
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::rfft_evaluate_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                twiddles.raw.as_ptr(),
+                self.len.ilog2(),
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
+    pub fn ifft_interpolate_in_place(
+        &mut self,
+        inverse_twiddles: &Self,
+        scale_factor: u32,
+    ) -> Result<(), MetalError> {
+        assert!(
+            self.len.is_power_of_two(),
+            "IFFT interpolate requires a power-of-two value buffer"
+        );
+        assert_eq!(
+            inverse_twiddles.len,
+            self.len / 2,
+            "IFFT interpolate requires an inverse-twiddle slice with one half-coset tree tail"
+        );
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::ifft_interpolate_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                inverse_twiddles.raw.as_ptr(),
+                self.len.ilog2(),
+                scale_factor,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
     pub fn permute_coset_to_circle_domain_bit_reversed(&self) -> Result<Self, MetalError> {
         assert!(
             self.len.is_power_of_two(),
@@ -585,6 +634,23 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_rfft_evaluate_u32(
+            runtime: *mut c_void,
+            values: *mut c_void,
+            twiddles: *mut c_void,
+            values_log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_ifft_interpolate_u32(
+            runtime: *mut c_void,
+            values: *mut c_void,
+            inverse_twiddles: *mut c_void,
+            values_log_len: u32,
+            scale_factor: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_permute_coset_to_circle_domain_bit_reversed_u32(
             runtime: *mut c_void,
             src: *mut c_void,
@@ -832,6 +898,52 @@ mod ffi {
             step_xy[0],
             step_xy[1],
             level_log_size,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn rfft_evaluate_u32(
+        runtime: *mut c_void,
+        values: *mut c_void,
+        twiddles: *mut c_void,
+        values_log_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_rfft_evaluate_u32(
+            runtime,
+            values,
+            twiddles,
+            values_log_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn ifft_interpolate_u32(
+        runtime: *mut c_void,
+        values: *mut c_void,
+        inverse_twiddles: *mut c_void,
+        values_log_len: u32,
+        scale_factor: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_ifft_interpolate_u32(
+            runtime,
+            values,
+            inverse_twiddles,
+            values_log_len,
+            scale_factor,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -1093,6 +1205,31 @@ mod ffi {
         _initial_xy: [u32; 2],
         _step_xy: [u32; 2],
         _level_log_size: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn rfft_evaluate_u32(
+        _runtime: *mut c_void,
+        _values: *mut c_void,
+        _twiddles: *mut c_void,
+        _values_log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn ifft_interpolate_u32(
+        _runtime: *mut c_void,
+        _values: *mut c_void,
+        _inverse_twiddles: *mut c_void,
+        _values_log_len: u32,
+        _scale_factor: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

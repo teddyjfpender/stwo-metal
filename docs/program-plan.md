@@ -65,8 +65,8 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T8 second implementation slice: retire the twiddle CPU
-bridge and move into FFT/poly kernels`, as tracked in
+The active tranche is `T8 third implementation slice: move from native FFT/poly
+into mirrored quotient and fold files`, as tracked in
 [`controller.md`](./controller.md) and sequenced by
 [`roadmap.md`](./roadmap.md).
 
@@ -205,12 +205,18 @@ The first active T8 supporting slices are:
 - `MetalBackend::precompute_twiddles` now retires the host twiddle bridge and
   validates native twiddle and inverse-twiddle output directly against the
   vendored CPU oracle
+- `poly_utils.metal` now carries the first compile-active shared FFT helper
+  kernel for native rescaling
+- `rfft.metal` now carries the first compile-active native circle-evaluation
+  core for `MetalBackend::evaluate_into`
+- `ifft.metal` now carries the first compile-active native interpolation core
+  for `MetalBackend::interpolate`
 
 The next required T8 boundary is:
 
 - keep compile-active Metal files explicit and separate from scaffold-only
   mirror files
-- begin real FFT/poly implementation at `rfft` and `ifft`, then move directly
-  into `poly_utils` in the declared order
+- begin real mirrored quotient and fold implementation at `quotients`,
+  `fold_circle_into_line`, and `fold_line`
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

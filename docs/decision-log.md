@@ -28,6 +28,47 @@ Superseded by:
 
 ## Entries
 
+### DEC-0046: The second compile-active native T8 replacement lands the mirrored FFT core before quotient and fold work
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+After native twiddle precompute, the next compile-active mirrored T8 files are
+`poly_utils.metal`, `rfft.metal`, and `ifft.metal`. The core
+`MetalBackend::evaluate_into` and `MetalBackend::interpolate` paths now use
+this native FFT/poly lane before the project moves into mirrored quotient and
+fold files.
+
+Context:
+
+Once twiddle generation was native, the next highest-value CPU bridge to
+retire was the FFT/poly execution core itself. Porting the mirrored FFT files
+before quotient and fold work keeps the benchmark-facing proving path ordered
+around reusable primitives rather than workload-specific shortcuts.
+
+Alternatives rejected:
+
+- move directly into quotient or fold files while evaluate/interpolate still
+  bridge through the vendored CPU backend
+- land only `rfft` without the matching `ifft` and shared poly helper file
+- claim broader `PolyOps` completion than the current native scope supports
+
+Impact:
+
+- the compile-active mirrored Metal set now includes the FFT/poly core
+- the remaining `PolyOps` bridge is narrower and explicitly about point
+  evaluation, barycentric helpers, and host-side orchestration
+- the next honest native tranche is mirrored `quotients` plus fold files
+
+Superseded by:
+
+- none
+
 ### DEC-0045: The first compile-active native T8 replacement retires the Metal twiddle CPU bridge before FFT/poly kernels are attempted
 
 - Date: `2026-03-10`

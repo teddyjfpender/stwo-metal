@@ -21,6 +21,8 @@ pub enum MetalBackendSurface {
     BaseFieldColumnFromIterator,
     BaseFieldColumnBitReverse,
     BaseFieldTwiddlePrecomputeNative,
+    BaseFieldRfftEvaluateNative,
+    BaseFieldIfftInterpolateNative,
     BaseFieldCosetToCircleDomainBitReverse,
     SecureFieldColumnSet,
     SecureFieldColumnFromIterator,
@@ -75,6 +77,8 @@ pub const STWO_METAL_BACKEND_SURFACES_V1: &[MetalBackendSurface] = &[
     MetalBackendSurface::BaseFieldColumnFromIterator,
     MetalBackendSurface::BaseFieldColumnBitReverse,
     MetalBackendSurface::BaseFieldTwiddlePrecomputeNative,
+    MetalBackendSurface::BaseFieldRfftEvaluateNative,
+    MetalBackendSurface::BaseFieldIfftInterpolateNative,
     MetalBackendSurface::BaseFieldCosetToCircleDomainBitReverse,
     MetalBackendSurface::SecureFieldColumnSet,
     MetalBackendSurface::SecureFieldColumnFromIterator,
@@ -112,6 +116,8 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::BaseFieldColumnFromIterator
         | MetalBackendSurface::BaseFieldColumnBitReverse
         | MetalBackendSurface::BaseFieldTwiddlePrecomputeNative
+        | MetalBackendSurface::BaseFieldRfftEvaluateNative
+        | MetalBackendSurface::BaseFieldIfftInterpolateNative
         | MetalBackendSurface::BaseFieldCosetToCircleDomainBitReverse
         | MetalBackendSurface::SecureFieldColumnSet
         | MetalBackendSurface::SecureFieldColumnFromIterator
@@ -169,7 +175,7 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
             "The native Metal wide-fibonacci trace CPU bridge is supported and materializes ordinary CPU circle evaluations for unchanged upstream example prove/verify wiring."
         }
         MetalBackendSurface::PolyOpsCpuBridge => {
-            "The `PolyOps` boundary is supported through an explicit CPU bridge over Metal-owned column storage; native Metal twiddle precompute is implemented, but interpolation and evaluation still bridge through the vendored CPU backend."
+            "The `PolyOps` boundary still contains an explicit CPU bridge for point evaluation, barycentric helpers, and some host-side orchestration, but the core twiddle precompute plus in-place RFFT/IFFT evaluate/interpolate path is now native Metal."
         }
         MetalBackendSurface::AccumulationOpsCpuBridge => {
             "The `AccumulationOps` boundary is supported through an explicit CPU bridge over Metal-owned secure-column storage."
@@ -207,6 +213,12 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
         }
         MetalBackendSurface::BaseFieldTwiddlePrecomputeNative => {
             "Base-field twiddle precompute and inverse-twiddle generation are implemented through native Metal kernels and parity-tested against the vendored CPU oracle."
+        }
+        MetalBackendSurface::BaseFieldRfftEvaluateNative => {
+            "Base-field circle-domain evaluation is implemented through a native Metal RFFT lane for the in-place polynomial evaluation core."
+        }
+        MetalBackendSurface::BaseFieldIfftInterpolateNative => {
+            "Base-field circle-domain interpolation is implemented through a native Metal IFFT lane for the in-place polynomial interpolation core."
         }
         MetalBackendSurface::BaseFieldCosetToCircleDomainBitReverse => {
             "Base-field coset-order to circle-domain bit-reversed permutation is implemented through a native Metal kernel."

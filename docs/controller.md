@@ -29,7 +29,7 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T8 second implementation slice: retire the twiddle CPU bridge and move into FFT/poly kernels`
+- Active tranche: `T8 third implementation slice: move from native FFT/poly into mirrored quotient and fold files`
 - Objective:
   return from acceptance closure to native performance work by mirroring the
   active CUDA hot-path structure into `stwo-metal-sys/metal` and porting it in
@@ -62,7 +62,9 @@ Invariants:
   `stwo-metal-sys/cuda` is a full subsystem while `stwo-metal-sys/metal`
   remains a thin frontier
 - `fields.metal` and `twiddles.metal` are now compile-active and parity-tested,
-  but `rfft` / `ifft` and the rest of the FFT/poly path are still unported
+  and `rfft.metal` / `ifft.metal` / `poly_utils.metal` now carry the native
+  evaluate/interpolate core, but mirrored quotient and fold files are still
+  mostly scaffold-only
 - the declared `wide_fibonacci` benchmark target remains useful for
   performance, but it is not the architectural source of truth and must stop
   driving milestone sequencing
@@ -80,12 +82,13 @@ Invariants:
 ## Next three deliverables
 
 1. Land the mirrored native file set under
-   `crates/stwo-metal-sys/metal` for the FFT/poly tranche:
-   `rfft`, `ifft`, and `poly_utils`.
-2. Keep `fields.metal` and `twiddles.metal` recorded as compile-active and
-   parity-tested so the repo does not regress to a hidden CPU twiddle bridge.
-3. Start real FFT/poly implementation at `rfft` and `ifft`, then move through
-   `poly_utils` toward the benchmark-facing quotient and fold path.
+   `crates/stwo-metal-sys/metal` for the next native proving tranche:
+   `quotients`, `fold_circle_into_line`, and `fold_line`.
+2. Keep `fields.metal`, `twiddles.metal`, `poly_utils.metal`, `rfft.metal`,
+   and `ifft.metal` recorded as compile-active and parity-tested so the repo
+   does not regress to hidden CPU FFT/poly behavior.
+3. Start real mirrored quotient and fold implementation so the remaining
+   CPU-bridged `PolyOps` and FRI ownership shrinks after the FFT core.
 
 ## Explicitly not doing now
 

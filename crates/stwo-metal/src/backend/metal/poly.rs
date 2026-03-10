@@ -90,6 +90,108 @@ fn precompute_twiddles_native(coset: Coset) -> Result<TwiddleTree<MetalBackend>,
     })
 }
 
+fn tail_twiddle_buffer(values_len: usize, twiddles: &[BaseField]) -> Result<U32Buffer, MetalError> {
+    let eval_domain_size = values_len / 2;
+    assert!(
+        eval_domain_size <= twiddles.len(),
+        "twiddle tree tail length {} exceeds available twiddle len {}",
+        eval_domain_size,
+        twiddles.len()
+    );
+    let slice = &twiddles[twiddles.len() - eval_domain_size..];
+    let raw: Vec<u32> = slice.iter().map(|value| value.0).collect();
+    U32Buffer::from_slice(&raw)
+}
+
+fn evaluate_into_native(
+    poly: &CircleCoefficients<MetalBackend>,
+    domain: CircleDomain,
+    twiddles: &TwiddleTree<MetalBackend>,
+    mut buffer: BaseFieldVec,
+) -> Result<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>, MetalError> {
+    let domain_log_size = domain.log_size();
+    assert!(domain.half_coset.is_doubling_of(twiddles.root_coset));
+    assert_eq!(buffer.len(), domain.size());
+
+    if domain_log_size <= 3 {
+        let cpu_poly = to_cpu_circle_poly(poly);
+        let cpu_twiddles = to_cpu_twiddle_tree(twiddles);
+        let cpu_eval = CpuBackend::evaluate_into(
+            &cpu_poly,
+            domain,
+            &cpu_twiddles,
+            vec![BaseField::default(); domain.size()],
+        );
+        let metal_values = BaseFieldVec::from_vec(cpu_eval.values.clone());
+        buffer.copy_from(&metal_values);
+        return Ok(CircleEvaluation::new(cpu_eval.domain, buffer));
+    }
+
+    let extended = MetalBackend::extend(poly, domain_log_size);
+    buffer.copy_from(&extended.coeffs);
+
+    let mut values = U32Buffer::from_slice(
+        &buffer
+            .to_vec()
+            .into_iter()
+            .map(|value| value.0)
+            .collect::<Vec<_>>(),
+    )?;
+    let twiddle_tail = tail_twiddle_buffer(values.len(), &twiddles.twiddles)?;
+    values.rfft_evaluate_in_place(&twiddle_tail)?;
+    let native_values = BaseFieldVec::from_vec(
+        values
+            .to_vec()?
+            .into_iter()
+            .map(BaseField::from_u32_unchecked)
+            .collect(),
+    );
+    buffer.copy_from(&native_values);
+    Ok(CircleEvaluation::new(domain, buffer))
+}
+
+fn interpolate_native(
+    eval: CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>,
+    twiddles: &TwiddleTree<MetalBackend>,
+) -> Result<CircleCoefficients<MetalBackend>, MetalError> {
+    assert!(eval.domain.half_coset.is_doubling_of(twiddles.root_coset));
+
+    if eval.domain.log_size() <= 3 {
+        let cpu_eval = to_cpu_circle_eval(&eval);
+        let cpu_twiddles = to_cpu_twiddle_tree(twiddles);
+        return Ok(into_metal_circle_poly(CpuBackend::interpolate(
+            cpu_eval,
+            &cpu_twiddles,
+        )));
+    }
+
+    let mut values = U32Buffer::from_slice(
+        &eval
+            .values
+            .to_vec()
+            .into_iter()
+            .map(|value| value.0)
+            .collect::<Vec<_>>(),
+    )?;
+    let inverse_twiddle_tail = tail_twiddle_buffer(values.len(), &twiddles.itwiddles)?;
+    let scale_factor = BaseField::from_u32_unchecked(
+        values
+            .len()
+            .try_into()
+            .expect("IFFT scale length should fit in u32"),
+    )
+    .inverse()
+    .0;
+    values.ifft_interpolate_in_place(&inverse_twiddle_tail, scale_factor)?;
+    Ok(CircleCoefficients::new(BaseFieldVec::from_vec(
+        values
+            .to_vec()?
+            .into_iter()
+            .map(BaseField::from_u32_unchecked)
+            .collect(),
+    )))
+}
+
 impl PolyOps for MetalBackend {
     type Twiddles = Vec<BaseField>;
 
@@ -97,9 +199,8 @@ impl PolyOps for MetalBackend {
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
         twiddles: &TwiddleTree<Self>,
     ) -> CircleCoefficients<Self> {
-        let cpu_twiddles = to_cpu_twiddle_tree(twiddles);
-        let cpu_eval = CpuCircleEvaluation::new(eval.domain, eval.values.to_vec());
-        into_metal_circle_poly(CpuBackend::interpolate(cpu_eval, &cpu_twiddles))
+        interpolate_native(eval, twiddles)
+            .expect("Metal interpolate should complete through the native RFFT/IFFT lane")
     }
 
     fn eval_at_point(
@@ -154,20 +255,10 @@ impl PolyOps for MetalBackend {
         poly: &CircleCoefficients<Self>,
         domain: CircleDomain,
         twiddles: &TwiddleTree<Self>,
-        mut buffer: Col<Self, BaseField>,
+        buffer: Col<Self, BaseField>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
-        let cpu_poly = to_cpu_circle_poly(poly);
-        let cpu_twiddles = to_cpu_twiddle_tree(twiddles);
-        let cpu_eval = CpuBackend::evaluate_into(
-            &cpu_poly,
-            domain,
-            &cpu_twiddles,
-            vec![BaseField::default(); domain.size()],
-        );
-
-        let metal_values = BaseFieldVec::from_vec(cpu_eval.values.clone());
-        buffer.copy_from(&metal_values);
-        CircleEvaluation::new(cpu_eval.domain, buffer)
+        evaluate_into_native(poly, domain, twiddles, buffer)
+            .expect("Metal evaluate should complete through the native RFFT/IFFT lane")
     }
 
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self> {
