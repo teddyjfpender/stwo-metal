@@ -230,7 +230,7 @@ impl PolyOps for MetalBackend {
         }
         mappings.reverse();
 
-        fold(&poly.coeffs.to_vec(), &mappings)
+        fold(poly.coeffs.host_slice(), &mappings)
     }
 
     fn batch_eval_at_point(

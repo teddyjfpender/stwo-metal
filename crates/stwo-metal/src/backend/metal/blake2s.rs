@@ -2,6 +2,7 @@ use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use stwo::core::channel::{Blake2sChannelGeneric, Channel};
+use stwo::core::fields::m31::BaseField;
 use stwo::core::proof_of_work::GrindOps;
 use stwo::core::utils::bit_reverse;
 use stwo::core::vcs::blake2_hash::Blake2sHash;
@@ -9,10 +10,14 @@ use stwo::core::vcs_lifted::blake2_merkle::{
     Blake2sM31MerkleChannel, Blake2sMerkleChannel, Blake2sMerkleHasherGeneric,
 };
 use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use stwo::prover::backend::{BackendForChannel, Column, ColumnOps};
+use stwo::prover::backend::{BackendForChannel, ColumnOps};
 use stwo::prover::vcs_lifted::ops::MerkleOpsLifted;
 
 use super::{MetalBackend, MetalBaseFieldVec};
+
+fn materialize_leaf_columns<'a>(columns: &'a [&'a MetalBaseFieldVec]) -> Vec<&'a [BaseField]> {
+    columns.iter().map(|column| column.host_slice()).collect()
+}
 
 impl ColumnOps<Blake2sHash> for MetalBackend {
     type Column = Vec<Blake2sHash>;
@@ -31,25 +36,33 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
             return vec![hasher.finalize()];
         }
 
+        let host_columns = materialize_leaf_columns(columns);
+
         assert!(columns[0].len() >= 2, "A column must be of length >= 2.");
         let mut prev_layer = vec![hasher; 2];
         let mut prev_layer_log_size: u32 = 1;
 
-        for (log_size, group) in columns.iter().group_by(|c| c.len().ilog2()).into_iter() {
+        for (log_size, group) in host_columns
+            .iter()
+            .group_by(|column| column.len().ilog2())
+            .into_iter()
+        {
             let log_ratio = log_size - prev_layer_log_size;
             prev_layer = (0..1 << log_size)
                 .map(|idx| prev_layer[(idx >> (log_ratio + 1) << 1) + (idx & 1)].clone())
                 .collect();
 
             for chunk in &group.into_iter().chunks(16) {
-                let vec = chunk.into_iter().collect_vec();
+                let chunk_columns = chunk.into_iter().collect_vec();
                 #[cfg(not(feature = "parallel"))]
                 let iter = prev_layer.iter_mut().enumerate();
                 #[cfg(feature = "parallel")]
                 let iter = prev_layer.par_iter_mut().enumerate();
 
                 iter.for_each(|(i, hasher)| {
-                    hasher.update_leaf(&vec.iter().map(|column| column.at(i)).collect_vec());
+                    for column in &chunk_columns {
+                        hasher.update(&column[i].0.to_le_bytes());
+                    }
                 });
             }
             prev_layer_log_size = log_size;

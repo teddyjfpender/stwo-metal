@@ -64,7 +64,7 @@ This benchmark target is a planning objective, not a correctness gate, not the
 architecture source of truth, and not the only support claim for `stwo-metal`.
 The row now executes end to end through `MetalBackend` on Apple Silicon, but
 its current measured result is still far from the target:
-`wide_fibonacci_prove_verify_v1 = 64588.605875 ms` at `log_n_instances = 20`,
+`wide_fibonacci_prove_verify_v1 = 45616.501417 ms` at `log_n_instances = 20`,
 `n_columns = 100`, `STWO_METAL_MODE=metal-dev`, `warmups = 0`, and
 `samples = 1`, with `threads = 14`.
 
@@ -409,8 +409,8 @@ Current completed slice:
 - the standalone `wide_fibonacci_prove` row now executes through
   `MetalBackend` end to end and verifies successfully
 - the first declared Apple Silicon measurement for that support-honest row is
-  `wide_fibonacci_prove_verify_v1 = 64588.605875 ms`, with
-  `prove_ms = 64582.99775` and `verify_ms = 5.608125`, at
+  `wide_fibonacci_prove_verify_v1 = 45616.501417 ms`, with
+  `prove_ms = 45611.008417` and `verify_ms = 5.492999999999999`, at
   `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
   `warmups = 0`, `samples = 1`, and `threads = 14`
 - the benchmark boundary is therefore closed as a correctness and execution
@@ -549,7 +549,7 @@ Current next slice inside T8:
 - treat the lifted Blake2s Merkle and proof-of-work boundaries as direct
   Metal-owned host orchestration with no `CpuBackend` dependency
 - record the current Apple Silicon end-to-end benchmark result for the
-  declared north-star row: `wide_fibonacci_prove_verify_v1 = 64588.605875 ms`,
+  declared north-star row: `wide_fibonacci_prove_verify_v1 = 45616.501417 ms`,
   with the dominant prove costs currently in `prove_core_prove_values_ms`,
   `trace_commit_merkle_ms`, `prove_core_composition_generation_ms`, and
   `prove_core_composition_commit_ms`
@@ -573,7 +573,8 @@ Current next slice inside T8:
 
 1. Reduce the dominant prove-stage costs in the end-to-end
    `wide_fibonacci_prove_verify_v1` row, starting from the now-dominant
-   `prove_core_prove_values_ms` path rather than from Merkle leaf hashing.
+   `prove_core_prove_values_ms` path and the missing native point-evaluation
+   lane rather than from more host readback cleanup.
 2. Keep the completed mirrored native hot-path set parity-tested and
    support-honest while it carries benchmark-active work.
 3. Retire the next benchmark-relevant structural debt, starting with the

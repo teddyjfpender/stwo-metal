@@ -55,6 +55,11 @@ impl Column<BaseField> for BaseFieldVec {
         self.get_data(index)
     }
 
+    fn batch_at(&self, indices: &[usize]) -> Vec<BaseField> {
+        let host_values = self.host_slice();
+        indices.iter().map(|&index| host_values[index]).collect()
+    }
+
     fn set(&mut self, index: usize, value: BaseField) {
         self.set_data(index, value);
     }

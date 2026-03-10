@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo_metal_sys::metal::U32Buffer;
@@ -8,15 +10,31 @@ use super::SecureFieldVec;
 pub struct BaseFieldVec {
     pub(crate) buffer: U32Buffer,
     size: usize,
+    host_cache: OnceLock<Vec<BaseField>>,
 }
 
 unsafe impl Send for BaseFieldVec {}
 unsafe impl Sync for BaseFieldVec {}
 
 impl BaseFieldVec {
+    pub(crate) fn host_slice(&self) -> &[BaseField] {
+        self.host_cache.get_or_init(|| {
+            self.buffer
+                .to_vec()
+                .expect("Metal BaseFieldVec readback should succeed")
+                .into_iter()
+                .map(BaseField::from_u32_unchecked)
+                .collect()
+        })
+    }
+
     pub(crate) fn from_buffer(buffer: U32Buffer) -> Self {
         let size = buffer.len();
-        Self { buffer, size }
+        Self {
+            buffer,
+            size,
+            host_cache: OnceLock::new(),
+        }
     }
 
     pub fn from_vec(host_array: Vec<BaseField>) -> Self {
@@ -24,19 +42,37 @@ impl BaseFieldVec {
         let size = raw.len();
         let buffer =
             U32Buffer::from_slice(&raw).expect("Metal BaseFieldVec upload should initialize");
-        Self { buffer, size }
+        let cached = raw
+            .into_iter()
+            .map(BaseField::from_u32_unchecked)
+            .collect::<Vec<_>>();
+        let host_cache = OnceLock::new();
+        let _ = host_cache.set(cached);
+        Self {
+            buffer,
+            size,
+            host_cache,
+        }
     }
 
     pub fn new_uninitialized(size: usize) -> Self {
         let buffer = U32Buffer::uninitialized(size)
             .expect("Metal BaseFieldVec allocation should initialize");
-        Self { buffer, size }
+        Self {
+            buffer,
+            size,
+            host_cache: OnceLock::new(),
+        }
     }
 
     pub fn new_zeroes(size: usize) -> Self {
         let buffer =
             U32Buffer::zeroed(size).expect("Metal BaseFieldVec zero allocation should initialize");
-        Self { buffer, size }
+        Self {
+            buffer,
+            size,
+            host_cache: OnceLock::new(),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -44,35 +80,37 @@ impl BaseFieldVec {
     }
 
     pub fn get_data(&self, index: usize) -> BaseField {
+        if let Some(values) = self.host_cache.get() {
+            return values[index];
+        }
         BaseField::from_u32_unchecked(self.buffer.get(index))
     }
 
     pub fn set_data(&mut self, index: usize, value: BaseField) {
+        let _ = self.host_cache.take();
         self.buffer.set(index, value.0);
     }
 
     pub fn copy_from(&mut self, other: &Self) {
+        let _ = self.host_cache.take();
         self.buffer
             .copy_from(&other.buffer)
             .expect("Metal BaseFieldVec copy should succeed");
     }
 
     pub fn copy_from_offset(&mut self, other: &Self, offset: usize) {
+        let _ = self.host_cache.take();
         self.buffer
             .copy_from_offset(&other.buffer, offset)
             .expect("Metal BaseFieldVec offset copy should succeed");
     }
 
     pub fn to_vec(&self) -> Vec<BaseField> {
-        self.buffer
-            .to_vec()
-            .expect("Metal BaseFieldVec readback should succeed")
-            .into_iter()
-            .map(BaseField::from_u32_unchecked)
-            .collect()
+        self.host_slice().to_vec()
     }
 
     pub fn bit_reverse(&mut self) {
+        let _ = self.host_cache.take();
         self.buffer
             .bit_reverse()
             .expect("Metal BaseFieldVec bit reverse should succeed");
@@ -86,6 +124,7 @@ impl BaseFieldVec {
         Self {
             buffer,
             size: self.size,
+            host_cache: OnceLock::new(),
         }
     }
 
@@ -115,6 +154,7 @@ impl BaseFieldVec {
     }
 
     pub fn inclusive_prefix_sum_bit_rev_circle_domain(&mut self) {
+        let _ = self.host_cache.take();
         self.buffer
             .inclusive_prefix_sum_bit_rev_circle_domain_in_place()
             .expect("Metal BaseFieldVec prefix sum should succeed");
@@ -173,9 +213,14 @@ impl BaseFieldVec {
 
 impl Clone for BaseFieldVec {
     fn clone(&self) -> Self {
-        Self {
+        let cloned = Self {
             buffer: self.buffer.clone(),
             size: self.size,
+            host_cache: OnceLock::new(),
+        };
+        if let Some(values) = self.host_cache.get() {
+            let _ = cloned.host_cache.set(values.clone());
         }
+        cloned
     }
 }

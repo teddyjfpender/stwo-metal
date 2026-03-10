@@ -28,6 +28,57 @@ Superseded by:
 
 ## Entries
 
+### DEC-0060: Host-readback consolidation is now an explicit optimization rule, and the next prove-values step must be native point evaluation
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+While the lifted Blake2s commitment and parts of the prove-values path remain
+host-owned, `stwo-metal` now treats one-shot host materialization, cached
+readback views, and batched queried-value reads as the default optimization
+law for those surfaces. That law is now considered exploited enough that the
+next benchmark-facing prove-values step must be a native point-evaluation lane
+rather than more host clone cleanup.
+
+Context:
+
+The measured benchmark row fell materially after consolidating host readbacks
+across lifted Blake2s leaves, PCS quotient work, and cached base-field views.
+The follow-on borrowed host-view cleanup and batched queried-value read slice
+kept the semantics clean but only nudged the row to
+`wide_fibonacci_prove_verify_v1 = 45616.501417 ms`, with
+`prove_ms = 45611.008417`, `verify_ms = 5.492999999999999`,
+`prove_core_prove_values_ms = 21835.479`, and
+`trace_commit_merkle_ms = 9168.181416`. That is still about `32.8x` slower
+than the current SIMD `log_n_instances = 20` reference.
+
+Alternatives rejected:
+
+- keep pursuing small host clone and cache cleanups without first acknowledging
+  that the remaining prove-values cost is now mostly algorithmic
+- rewrite the benchmark contract around a new workload instead of using the
+  measured `wide_fibonacci` row as the active optimization reference
+- hide the plateau inside a benchmark note without changing the sequencing
+  expectation for T8
+
+Impact:
+
+- host-owned commitment and prove-values code now has an explicit optimization
+  rule for future maintenance and review
+- the next honest performance tranche is a native Metal point-evaluation path
+  mirroring the CUDA-side `eval_at_point` / `batch_eval_at_points` capability
+- adapter cleanup and the bounded small-domain `PolyOps` fallback stay explicit
+  debt rather than getting folded into performance claims
+
+Superseded by:
+
+- none
+
 ### DEC-0059: `AccumulationOps` and `QuotientOps` now stay on direct Metal-owned PCS storage rather than `CpuBackend`
 
 - Date: `2026-03-10`

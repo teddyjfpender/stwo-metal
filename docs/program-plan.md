@@ -257,17 +257,17 @@ The first active T8 supporting slices are:
 - the standalone `wide_fibonacci_prove` benchmark row now executes end to end
   through `MetalBackend` and verifies successfully
 - the current Apple Silicon end-to-end benchmark result is now recorded:
-  `wide_fibonacci_prove_verify_v1 = 64588.605875 ms`, with
-  `prove_ms = 64582.99775` and `verify_ms = 5.608125`
+  `wide_fibonacci_prove_verify_v1 = 45616.501417 ms`, with
+  `prove_ms = 45611.008417` and `verify_ms = 5.492999999999999`
 - the dominant prove-stage costs in that row are now measured explicitly:
-  `prove_core_prove_values_ms = 30791.174583`,
-  `trace_commit_merkle_ms = 16580.669833`,
-  `prove_core_composition_generation_ms = 6844.998791`, and
-  `prove_core_composition_commit_ms = 5421.685`
+  `prove_core_prove_values_ms = 21835.479`,
+  `trace_commit_merkle_ms = 9168.181416`,
+  `prove_core_composition_generation_ms = 5236.126292`, and
+  `prove_core_composition_commit_ms = 3701.2050419999996`
 - the standalone Metal benchmark fixture now enables the `parallel` proving
   surface, and the first measured parallel row reported `threads = 14`
 - compared with the current `log_n_instances = 20` reference rows, the
-  support-honest Metal benchmark is still about `46.5x` slower than SIMD
+  support-honest Metal benchmark is still about `32.8x` slower than SIMD
   (`1390 ms`) and far from the historical GPU row (`87 ms`)
 
 The next required T8 boundary is:
@@ -276,8 +276,8 @@ The next required T8 boundary is:
   carries benchmark-active work
 - reduce the dominant measured prove stages in the end-to-end
   `wide_fibonacci_prove_verify_v1` row
-- decide whether the next benchmark-facing structural win is the
-  prove-values layer above PCS, the host-owned commitment/hash path, or the
-  bounded small-domain `PolyOps` fallback
+- make the next benchmark-facing structural win the native point-evaluation
+  lane above PCS, because host readback consolidation has now plateaued
+  relative to the remaining prove-values cost
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

@@ -103,10 +103,11 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
                     shift
                 );
             }
-            let res: Vec<_> = query_positions
+            let read_indices = query_positions
                 .iter()
-                .map(|pos| col.at((pos >> (shift + 1) << 1) + (pos & 1)))
-                .collect();
+                .map(|pos| (pos >> (shift + 1) << 1) + (pos & 1))
+                .collect_vec();
+            let res = col.batch_at(&read_indices);
             if debug_tree_decommit {
                 eprintln!(
                     "tree_decommit_phase=queried_values_column_done:{}",

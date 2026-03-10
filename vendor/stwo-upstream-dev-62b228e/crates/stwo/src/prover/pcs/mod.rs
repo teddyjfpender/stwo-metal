@@ -1,7 +1,7 @@
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tracing::{info, span, Level};
 
 use crate::core::channel::{Channel, MerkleChannel};
@@ -140,34 +140,49 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     {
         let weights_dashmap = WeightsHashMap::<B>::new();
 
-        self.polynomials()
-            .zip_cols(sampled_points)
-            .map_cols(|(poly, points)| {
-                let compute_weights = |(log_size, point): (u32, CirclePoint<SecureField>)| {
-                    weights_dashmap.entry((log_size, point)).or_insert_with(|| {
-                        CircleEvaluation::<B, BaseField, BitReversedOrder>::barycentric_weights(
-                            CanonicCoset::new(log_size),
-                            point,
-                        )
-                    });
-                };
-
+        let mut unique_keys = HashSet::new();
+        for (tree_polys, tree_points) in self.polynomials().0.iter().zip(sampled_points.0.iter()) {
+            for (poly, points) in tree_polys.iter().zip(tree_points.iter()) {
                 let log_size = poly.evals.domain.log_size();
-                // For each sample point, compute the weights needed to evaluate the polynomial at
-                // the folded sample point.
-                // TODO(Leo): the computation `point.repeated_double(max_log_size - log_size)` is
-                // likely repeated a bunch of times in a typical flat air. Consider moving it
-                // outside the loop.
-                #[cfg(not(feature = "parallel"))]
-                points.iter().for_each(|&point| {
-                    compute_weights((log_size, point.repeated_double(max_log_size - log_size)))
-                });
+                for &point in points {
+                    unique_keys.insert((log_size, point.repeated_double(max_log_size - log_size)));
+                }
+            }
+        }
 
-                #[cfg(feature = "parallel")]
-                points.par_iter().for_each(|&point| {
-                    compute_weights((log_size, point.repeated_double(max_log_size - log_size)))
-                });
-            });
+        #[cfg(not(feature = "parallel"))]
+        let computed_weights = unique_keys
+            .into_iter()
+            .map(|(log_size, point)| {
+                (
+                    (log_size, point),
+                    CircleEvaluation::<B, BaseField, BitReversedOrder>::barycentric_weights(
+                        CanonicCoset::new(log_size),
+                        point,
+                    ),
+                )
+            })
+            .collect_vec();
+
+        #[cfg(feature = "parallel")]
+        let computed_weights = unique_keys
+            .into_iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(log_size, point)| {
+                (
+                    (log_size, point),
+                    CircleEvaluation::<B, BaseField, BitReversedOrder>::barycentric_weights(
+                        CanonicCoset::new(log_size),
+                        point,
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        for (key, weights) in computed_weights {
+            weights_dashmap.insert(key, weights);
+        }
 
         weights_dashmap
     }
