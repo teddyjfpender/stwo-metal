@@ -64,7 +64,7 @@ This benchmark target is a planning objective, not a correctness gate, not the
 architecture source of truth, and not the only support claim for `stwo-metal`.
 The row now executes end to end through `MetalBackend` on Apple Silicon, but
 its current measured result is still far from the target:
-`wide_fibonacci_prove_verify_v1 = 102272.056124 ms` at `log_n_instances = 20`,
+`wide_fibonacci_prove_verify_v1 = 64588.605875 ms` at `log_n_instances = 20`,
 `n_columns = 100`, `STWO_METAL_MODE=metal-dev`, `warmups = 0`, and
 `samples = 1`, with `threads = 14`.
 
@@ -409,8 +409,8 @@ Current completed slice:
 - the standalone `wide_fibonacci_prove` row now executes through
   `MetalBackend` end to end and verifies successfully
 - the first declared Apple Silicon measurement for that support-honest row is
-  `wide_fibonacci_prove_verify_v1 = 102272.056124 ms`, with
-  `prove_ms = 102266.681958` and `verify_ms = 5.374166`, at
+  `wide_fibonacci_prove_verify_v1 = 64588.605875 ms`, with
+  `prove_ms = 64582.99775` and `verify_ms = 5.608125`, at
   `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
   `warmups = 0`, `samples = 1`, and `threads = 14`
 - the benchmark boundary is therefore closed as a correctness and execution
@@ -465,9 +465,10 @@ Current first implementation slice:
 
 Current completion note inside T7:
 
-- the first backend-completion bridge tranche is now landed:
+- the first backend-completion bridge tranche is now landed and later narrowed:
   `MetalBackend` implements `PolyOps`, `AccumulationOps`, and `QuotientOps`
-  through explicit CPU bridges over Metal-owned columns and evaluations
+  over Metal-owned columns and evaluations, with only the bounded
+  small-domain `PolyOps` fallback still explicitly CPU-backed
 - the next backend-completion bridge tranche is now landed too:
   `MetalBackend` implements `FriOps` through an explicit CPU bridge that
   repacks Metal-owned secure columns into the bounded Metal fold kernels and
@@ -547,15 +548,16 @@ Current next slice inside T8:
   than leaving any mirrored hot-path file scaffold-only
 - treat the lifted Blake2s Merkle and proof-of-work boundaries as direct
   Metal-owned host orchestration with no `CpuBackend` dependency
-- record the first Apple Silicon end-to-end benchmark result for the declared
-  north-star row: `wide_fibonacci_prove_verify_v1 = 102272.056124 ms`, with the
-  dominant prove costs currently in `prove_core_prove_values_ms`,
-  `trace_commit_merkle_ms`, and `prove_core_composition_commit_ms`
+- record the current Apple Silicon end-to-end benchmark result for the
+  declared north-star row: `wide_fibonacci_prove_verify_v1 = 64588.605875 ms`,
+  with the dominant prove costs currently in `prove_core_prove_values_ms`,
+  `trace_commit_merkle_ms`, `prove_core_composition_generation_ms`, and
+  `prove_core_composition_commit_ms`
 - enable the `parallel` proving surface for the standalone Metal benchmark
   fixture and use the resulting measured row as the new optimization baseline
 - with the mirrored hot-path set complete and the benchmark boundary closed,
   move the next T8 decision to measured optimization of the dominant prove
-  stages and retirement of the next explicit CPU bridge
+  stages, host-owned commitment cost, and the remaining bounded CPU fallback
 
 ## Sequencing rules
 
@@ -574,6 +576,6 @@ Current next slice inside T8:
    `prove_core_prove_values_ms` path rather than from Merkle leaf hashing.
 2. Keep the completed mirrored native hot-path set parity-tested and
    support-honest while it carries benchmark-active work.
-3. Retire the next benchmark-relevant explicit CPU bridge, starting with the
-   explicit `AccumulationOps` / `QuotientOps` bridges or the next PCS
-   prove-values bottleneck above them.
+3. Retire the next benchmark-relevant structural debt, starting with the
+   prove-values layer above PCS, the host-owned commitment/hash path, or the
+   bounded small-domain `PolyOps` fallback.

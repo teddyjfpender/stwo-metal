@@ -1,16 +1,22 @@
+use ark_std::Zero;
 use itertools::Itertools;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
-use stwo::prover::backend::{Column, CpuBackend};
+use stwo::core::pcs::quotients::{
+    accumulate_row_partial_numerators, denominator_inverses, quotient_constants, ColumnSampleBatch,
+};
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::utils::bit_reverse_index;
+use stwo::prover::backend::Column;
 use stwo::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
 use stwo::prover::poly::BitReversedOrder;
-use stwo::prover::secure_column::SecureColumnByCoords;
 use stwo::prover::{AccumulatedNumerators, QuotientOps};
 use stwo_metal_sys::metal::{MetalError, U32Buffer};
 
-use super::accumulation::metal_secure_column_from_cpu;
+use super::accumulation::metal_secure_column_from_values;
 use super::MetalBackend;
-use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
 #[derive(Clone, Copy, Debug)]
@@ -222,61 +228,87 @@ pub fn accumulate_wide_fibonacci_quotients(
     })
 }
 
-fn metal_secure_evaluation_from_cpu(
-    evaluation: SecureEvaluation<CpuBackend, BitReversedOrder>,
-) -> SecureEvaluation<MetalBackend, BitReversedOrder> {
-    SecureEvaluation::new(
-        evaluation.domain,
-        SecureColumnByCoords {
-            columns: evaluation.values.columns.map(BaseFieldVec::from_vec),
-        },
-    )
-}
-
 impl QuotientOps for MetalBackend {
     fn accumulate_numerators(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
-        sample_batches: &[stwo::core::pcs::quotients::ColumnSampleBatch],
+        sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     ) {
-        let cpu_columns = columns
+        let size = columns[0].len();
+        let quotient_constants = quotient_constants(sample_batches);
+
+        for (batch, coeffs) in sample_batches
             .iter()
-            .map(|column| {
-                CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(
-                    column.domain,
-                    column.values.to_cpu(),
-                )
-            })
-            .collect_vec();
-        let cpu_column_refs = cpu_columns.iter().collect_vec();
-        let mut cpu_accumulated = Vec::new();
-        CpuBackend::accumulate_numerators(&cpu_column_refs, sample_batches, &mut cpu_accumulated);
-        accumulated_numerators_vec.extend(cpu_accumulated.into_iter().map(|accumulated| {
-            AccumulatedNumerators {
-                sample_point: accumulated.sample_point,
-                partial_numerators_acc: metal_secure_column_from_cpu(
-                    accumulated.partial_numerators_acc,
-                ),
-                first_linear_term_acc: accumulated.first_linear_term_acc,
-            }
-        }));
+            .zip(quotient_constants.line_coeffs.into_iter())
+        {
+            #[cfg(not(feature = "parallel"))]
+            let values = (0..size)
+                .map(|row| {
+                    let query_values_at_row =
+                        columns.iter().map(|col| col.values.at(row)).collect_vec();
+                    accumulate_row_partial_numerators(batch, &query_values_at_row, &coeffs)
+                })
+                .collect();
+            #[cfg(feature = "parallel")]
+            let values = (0..size)
+                .into_par_iter()
+                .map(|row| {
+                    let query_values_at_row =
+                        columns.iter().map(|col| col.values.at(row)).collect_vec();
+                    accumulate_row_partial_numerators(batch, &query_values_at_row, &coeffs)
+                })
+                .collect();
+
+            let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
+            accumulated_numerators_vec.push(AccumulatedNumerators {
+                sample_point: batch.point,
+                partial_numerators_acc: metal_secure_column_from_values(values),
+                first_linear_term_acc,
+            });
+        }
     }
 
     fn compute_quotients_and_combine(
-        accs: Vec<AccumulatedNumerators<Self>>,
+        accumulations: Vec<AccumulatedNumerators<Self>>,
         lifting_log_size: u32,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
-        let cpu_accs = accs
-            .into_iter()
-            .map(|accumulated| AccumulatedNumerators {
-                sample_point: accumulated.sample_point,
-                partial_numerators_acc: accumulated.partial_numerators_acc.to_cpu(),
-                first_linear_term_acc: accumulated.first_linear_term_acc,
+        let domain = CanonicCoset::new(lifting_log_size).circle_domain();
+        let sample_points = accumulations.iter().map(|x| x.sample_point).collect_vec();
+
+        #[cfg(not(feature = "parallel"))]
+        let quotient_values = (0..(1usize << lifting_log_size))
+            .map(|row| {
+                let domain_point = domain.at(bit_reverse_index(row, lifting_log_size));
+                let inverses = denominator_inverses(&sample_points, domain_point);
+                let mut quotient = SecureField::zero();
+                for (acc, den_inv) in accumulations.iter().zip_eq(inverses) {
+                    let log_ratio = lifting_log_size - acc.partial_numerators_acc.len().ilog2();
+                    let lifted_idx = (row >> (log_ratio + 1) << 1) + (row & 1);
+                    let full_numerator = acc.partial_numerators_acc.at(lifted_idx)
+                        - acc.first_linear_term_acc * domain_point.y;
+                    quotient += full_numerator.mul_cm31(den_inv);
+                }
+                quotient
             })
             .collect();
-        metal_secure_evaluation_from_cpu(CpuBackend::compute_quotients_and_combine(
-            cpu_accs,
-            lifting_log_size,
-        ))
+        #[cfg(feature = "parallel")]
+        let quotient_values = (0..(1usize << lifting_log_size))
+            .into_par_iter()
+            .map(|row| {
+                let domain_point = domain.at(bit_reverse_index(row, lifting_log_size));
+                let inverses = denominator_inverses(&sample_points, domain_point);
+                let mut quotient = SecureField::zero();
+                for (acc, den_inv) in accumulations.iter().zip_eq(inverses) {
+                    let log_ratio = lifting_log_size - acc.partial_numerators_acc.len().ilog2();
+                    let lifted_idx = (row >> (log_ratio + 1) << 1) + (row & 1);
+                    let full_numerator = acc.partial_numerators_acc.at(lifted_idx)
+                        - acc.first_linear_term_acc * domain_point.y;
+                    quotient += full_numerator.mul_cm31(den_inv);
+                }
+                quotient
+            })
+            .collect();
+
+        SecureEvaluation::new(domain, metal_secure_column_from_values(quotient_values))
     }
 }

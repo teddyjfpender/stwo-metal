@@ -28,6 +28,99 @@ Superseded by:
 
 ## Entries
 
+### DEC-0059: `AccumulationOps` and `QuotientOps` now stay on direct Metal-owned PCS storage rather than `CpuBackend`
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`MetalBackend` now performs `AccumulationOps` and `QuotientOps` directly over
+Metal-owned secure-column and evaluation storage. The legacy capability names
+are retained for API stability, but the `CpuBackend` dependency for these PCS
+surfaces is retired.
+
+Context:
+
+After enabling deterministic parallel proving and reducing the host-side
+Merkle path, the measured end-to-end row was dominated by PCS prove-values
+work. The explicit `AccumulationOps` and `QuotientOps` bridges were no longer
+the smallest honest boundary: both operations are deterministic host logic over
+already-materialized Metal-owned buffers, so they could be retired without
+introducing a new kernel or changing proof semantics.
+
+Alternatives rejected:
+
+- keep `AccumulationOps` and `QuotientOps` on `CpuBackend` while claiming the
+  remaining prove-values bottleneck was mostly deeper PCS work
+- widen immediately into larger commitment or transcript refactors before
+  first removing these direct host-side backend dependencies
+- hide bridge retirement inside a benchmark-only diff without updating the
+  supported backend contract
+
+Impact:
+
+- the measured end-to-end benchmark row drops again, and
+  `prove_core_prove_values_ms` becomes materially smaller than the previous
+  baseline; the current rerun is `wide_fibonacci_prove_verify_v1 =
+  64588.605875 ms`, with `prove_ms = 64582.99775`, `verify_ms = 5.608125`,
+  and `prove_core_prove_values_ms = 30791.174583`
+- the capability model now truthfully reports these surfaces as supported
+  rather than explicit CPU bridges
+- the next measured blockers are the prove-values layer above PCS,
+  host-owned commitment/hash work, and the bounded small-domain `PolyOps`
+  fallback
+
+Superseded by:
+
+- none
+
+### DEC-0058: Batch point evaluation is now a benchmark-active `PolyOps` optimization surface
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+`MetalBackend::batch_eval_at_point` now evaluates point queries directly over
+Metal-owned polynomial storage and uses deterministic parallel iteration when
+the `parallel` feature is enabled. This is now part of the benchmark-active
+`PolyOps` surface for the wide-fibonacci prove row.
+
+Context:
+
+Once the parallel Blake2s tranche landed, the measured benchmark row showed
+that `prove_core_prove_values_ms` dominated the remaining cost. The vendored
+default `batch_eval_at_point` path performed repeated single-point evaluation
+without taking advantage of available deterministic parallelism, even though
+the benchmark fixture already enabled the `parallel` feature.
+
+Alternatives rejected:
+
+- jump directly to new kernels before exploiting the obvious deterministic
+  parallel structure in the existing host-side point-evaluation law
+- treat single-point evaluation as sufficient while the benchmark row still
+  spent most of its time in prove-values work
+- optimize Merkle hashing first even though prove-values had become the larger
+  measured blocker
+
+Impact:
+
+- the benchmark-active `PolyOps` path now has a truthful batch-evaluation
+  surface instead of serial repeated single-point calls
+- the PCS prove-values baseline is materially lower, which makes the next
+  structural prove-values work easier to measure honestly
+
+Superseded by:
+
+- none
+
 ### DEC-0057: The standalone Metal benchmark fixture enables deterministic parallel proving support before deeper PCS optimization
 
 - Date: `2026-03-10`

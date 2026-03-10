@@ -109,6 +109,47 @@ fn metal_poly_ops_cpu_bridge_matches_cpu_for_barycentric_weights_and_eval() {
 
 #[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn metal_poly_ops_batch_eval_matches_cpu_and_single_eval() {
+    require_metal_runtime();
+
+    const LOG_SIZE: u32 = 7;
+    const N_POLYS: usize = 16;
+
+    let mut rng = SmallRng::seed_from_u64(19);
+    let cpu_polys = (0..N_POLYS)
+        .map(|_| {
+            CircleCoefficients::<CpuBackend>::new((0..(1 << LOG_SIZE)).map(|_| rng.gen()).collect())
+        })
+        .collect::<Vec<_>>();
+    let metal_polys = cpu_polys
+        .iter()
+        .map(|poly| {
+            CircleCoefficients::<MetalBackend>::new(MetalBaseFieldVec::from_vec(
+                poly.coeffs.clone(),
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    let point = CirclePoint::get_point(1 << 17).into_ef::<SecureField>();
+    let cpu_refs = cpu_polys.iter().collect::<Vec<_>>();
+    let metal_refs = metal_polys.iter().collect::<Vec<_>>();
+
+    let cpu_expected = cpu_refs
+        .iter()
+        .map(|poly| CpuBackend::eval_at_point(poly, point))
+        .collect::<Vec<_>>();
+    let metal_single = metal_refs
+        .iter()
+        .map(|poly| MetalBackend::eval_at_point(poly, point))
+        .collect::<Vec<_>>();
+    let metal_batch = MetalBackend::batch_eval_at_point(&metal_refs, point);
+
+    assert_eq!(metal_batch, cpu_expected);
+    assert_eq!(metal_batch, metal_single);
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn metal_poly_ops_cpu_bridge_surface_types_stay_stable() {
     require_metal_runtime();
 

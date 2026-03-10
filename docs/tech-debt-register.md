@@ -732,13 +732,14 @@ Why it exists now:
 `wide_fibonacci_prove_verify_v1` now executes end to end through
 `MetalBackend` and verifies successfully on Apple Silicon, so the old
 benchmark-boundary debt is retired. The first measured support-honest result is
-still far from the declared north star, though: `102272.056124 ms` total, with
-`prove_ms = 102266.681958` and `verify_ms = 5.374166`, at
+still far from the declared north star, though: `64588.605875 ms` total, with
+`prove_ms = 64582.99775` and `verify_ms = 5.608125`, at
 `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
 `warmups = 0`, `samples = 1`, and `threads = 14`. The dominant measured costs
-are `prove_core_prove_values_ms = 71138.82325`,
-`trace_commit_merkle_ms = 16673.889875`, and
-`prove_core_composition_commit_ms = 4998.368125`.
+are `prove_core_prove_values_ms = 30791.174583`,
+`trace_commit_merkle_ms = 16580.669833`,
+`prove_core_composition_generation_ms = 6844.998791`, and
+`prove_core_composition_commit_ms = 5421.685`.
 
 Current containment:
 
@@ -746,6 +747,7 @@ Current containment:
 - `crates/stwo-metal/src/backend/metal/blake2s.rs`
 - `crates/stwo-metal/src/backend/metal/accumulation.rs`
 - `crates/stwo-metal/src/backend/metal/quotient.rs`
+- `crates/stwo-metal/src/backend/metal/poly.rs`
 - `crates/stwo-metal/src/backend/metal/handoff.rs`
 - `docs/controller.md`
 - `docs/roadmap.md`
@@ -756,7 +758,7 @@ The project could confuse benchmark-boundary closure with performance closure,
 or it could optimize the wrong layer without using the measured phase
 breakdown. That would make the `90 ms` reference goal look arbitrary instead of
 turning it into a disciplined optimization program. The row is also still
-about `73.6x` slower than the current `log_n_instances = 20` SIMD reference
+about `46.5x` slower than the current `log_n_instances = 20` SIMD reference
 (`1390 ms`) and far from the historical GPU row (`87 ms`).
 
 Exit condition:
@@ -766,6 +768,43 @@ measurements in the declared environment and no longer spends the majority of
 its time in the currently dominant host-owned commitment and prove-value
 stages, with progress evaluated against the recorded phase breakdown rather
 than against file-presence heuristics.
+
+Target retirement point:
+
+- `T8`
+
+### TD-0022: The bounded small-domain `PolyOps` fallback is still explicitly CPU-backed
+
+- Status: `active`
+- Category: `bounded algebra fallback`
+- Introduced: `2026-03-10`
+- Owner area: `T8 benchmark optimization`
+
+Why it exists now:
+
+`PolyOps` point evaluation, barycentric helpers, zero-padding extend,
+split-at-mid, and batch point evaluation are now Metal-owned over Metal-backed
+storage, but the bounded small-domain evaluate/interpolate fallback still
+delegates to `CpuBackend`. This is the smallest safe remaining fallback in the
+trait surface after the larger prove-values PCS bridges were retired.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/poly.rs`
+- `crates/stwo-metal/src/backend/metal/capability.rs`
+
+Risk if left in place:
+
+The supported `PolyOps` story could look more complete than it really is, and
+the benchmark row could still pay avoidable small-domain fallback costs if
+future prove-values work reaches that path more often than expected.
+
+Exit condition:
+
+The bounded small-domain evaluate/interpolate fallback is either retired into
+Metal-owned storage logic or explicitly accepted as a non-benchmark-critical
+host fallback with measured evidence that it does not matter for the target
+rows.
 
 Target retirement point:
 

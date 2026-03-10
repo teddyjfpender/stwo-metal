@@ -29,7 +29,7 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T8 eleventh implementation slice: parallel Blake2s commitment support has cut the end-to-end prove row substantially, so the next work is the dominant prove-values path and the next explicit PCS bridge`
+- Active tranche: `T8 twelfth implementation slice: batch point evaluation plus native accumulation and quotient PCS paths have cut the dominant prove-values cost materially, so the next work is the remaining PCS prove-values structure, host-owned commitment cost, and bounded PolyOps fallback`
 - Objective:
   convert the now-truthful Metal benchmark row into benchmark-grade
   performance by reducing the dominant prove-stage bottlenecks without hiding
@@ -90,23 +90,24 @@ Invariants:
   for `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
   `warmups = 0`, and `samples = 1`
 - the end-to-end Apple Silicon benchmark row now also exists:
-  `wide_fibonacci_prove_verify_v1` completed in `102272.056124 ms`, with
-  `prove_ms = 102266.681958` and `verify_ms = 5.374166`, under
+  `wide_fibonacci_prove_verify_v1` completed in `64588.605875 ms`, with
+  `prove_ms = 64582.99775` and `verify_ms = 5.608125`, under
   `STWO_METAL_MODE=metal-dev`, `warmups = 0`, and `samples = 1`
 - the benchmark boundary is now support-honest, but the measured dominant
   costs are still far from the `90 ms` north star:
-  `prove_core_prove_values_ms = 71138.82325`,
-  `trace_commit_merkle_ms = 16673.889875`, and
-  `prove_core_composition_commit_ms = 4998.368125`
+  `prove_core_prove_values_ms = 30791.174583`,
+  `trace_commit_merkle_ms = 16580.669833`,
+  `prove_core_composition_generation_ms = 6844.998791`, and
+  `prove_core_composition_commit_ms = 5421.685`
 - the benchmark runner now enables the `parallel` proving surface for the
   Metal benchmark fixture, and the latest measured row used `threads = 14`
-- the end-to-end row is still approximately `73.6x` slower than the current
+- the end-to-end row is still approximately `46.5x` slower than the current
   SIMD reference at `log_n_instances = 20` (`1390 ms`) and still far from the
   historical GPU row (`87 ms`)
 - the native commitment and decommit boundary is still host-owned and
   readback-based rather than a GPU-side hash pipeline
-- `AccumulationOps` and `QuotientOps` still use explicit CPU bridges over
-  Metal-owned storage
+- `AccumulationOps` and `QuotientOps` now avoid `CpuBackend` and use direct
+  host-side logic over Metal-owned storage
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it is not the immediate next backend row
 - the only named upstream-example row still open in the current target set is
@@ -118,12 +119,11 @@ Invariants:
 
 ## Next three deliverables
 
-1. Turn the new `102272.056124 ms` benchmark row into the next optimization
-   program by attacking `prove_core_prove_values_ms` before the now-smaller
-   Merkle path.
-2. Decide whether the next benchmark-facing structural win is retirement of
-   the explicit `AccumulationOps` / `QuotientOps` CPU bridges or deeper PCS
-   prove-values work above them.
+1. Turn the new `64588.605875 ms` benchmark row into the next optimization
+   program by attacking the remaining `prove_core_prove_values_ms` structure
+   above the now-retired `AccumulationOps` / `QuotientOps` bridges.
+2. Decide whether the next benchmark-facing structural win is the
+   host-owned commitment/hash path or the next prove-values layer above PCS.
 3. Keep the acceptance-local adapter debt and the bounded small-domain
    `PolyOps` fallback explicit while T8 focuses on benchmark-grade
    performance.

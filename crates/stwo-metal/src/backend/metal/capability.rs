@@ -138,15 +138,11 @@ pub const fn metal_backend_surface_status(
         | MetalBackendSurface::WorkloadWideFibonacciWitnessCpuHandoff
         | MetalBackendSurface::WideFibonacciQuotientAccumulateNative
         | MetalBackendSurface::WorkloadFriReadyEvaluationCpuHandoff
-        | MetalBackendSurface::WorkloadQuotientEvaluationCpuHandoff => {
-            MetalBackendSurfaceStatus::Supported
-        }
+        | MetalBackendSurface::WorkloadQuotientEvaluationCpuHandoff
+        | MetalBackendSurface::AccumulationOpsCpuBridge
+        | MetalBackendSurface::QuotientOpsCpuBridge => MetalBackendSurfaceStatus::Supported,
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge
         | MetalBackendSurface::PolyOpsCpuBridge => {
-            MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
-        }
-        MetalBackendSurface::AccumulationOpsCpuBridge
-        | MetalBackendSurface::QuotientOpsCpuBridge => {
             MetalBackendSurfaceStatus::SupportedExplicitCpuBridge
         }
         MetalBackendSurface::FriOpsCpuBridge
@@ -180,10 +176,10 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
             "The `PolyOps` boundary still contains a bounded explicit CPU bridge only for the small-domain evaluate/interpolate fallback, while point evaluation, barycentric helpers, zero-padding extend, and split-at-mid are now Metal-owned operations."
         }
         MetalBackendSurface::AccumulationOpsCpuBridge => {
-            "The `AccumulationOps` boundary is supported through an explicit CPU bridge over Metal-owned secure-column storage."
+            "Legacy capability name retained for API stability: `AccumulationOps` now uses direct host-side accumulation and secure-power generation over Metal-owned secure-column storage, with no `CpuBackend` dependency."
         }
         MetalBackendSurface::QuotientOpsCpuBridge => {
-            "The `QuotientOps` boundary is supported through an explicit CPU bridge over Metal-owned evaluation and accumulation storage."
+            "Legacy capability name retained for API stability: `QuotientOps` now uses direct host-side numerator accumulation and quotient combination over Metal-owned evaluations and secure-column storage, with no `CpuBackend` dependency."
         }
         MetalBackendSurface::FriOpsCpuBridge => {
             "Legacy capability name retained for API stability: `FriOps` now uses Metal-owned secure-column repacking, host-side fold accumulation over Metal-owned columns, bounded fold kernels, and native `decompose`, so the old explicit CPU bridge is retired."

@@ -1,5 +1,7 @@
 use ark_std::Zero;
 use itertools::Itertools;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use stwo::core::circle::{CirclePoint, CirclePointIndex, Coset};
 use stwo::core::constraints::{coset_vanishing, coset_vanishing_derivative, point_vanishing};
 use stwo::core::fields::m31::BaseField;
@@ -229,6 +231,18 @@ impl PolyOps for MetalBackend {
         mappings.reverse();
 
         fold(&poly.coeffs.to_vec(), &mappings)
+    }
+
+    fn batch_eval_at_point(
+        polys: &[&CircleCoefficients<Self>],
+        point: CirclePoint<SecureField>,
+    ) -> Vec<SecureField> {
+        #[cfg(not(feature = "parallel"))]
+        let iter = polys.iter();
+        #[cfg(feature = "parallel")]
+        let iter = polys.par_iter();
+
+        iter.map(|poly| Self::eval_at_point(poly, point)).collect()
     }
 
     fn barycentric_weights(

@@ -65,9 +65,11 @@ than the architectural source of truth.
 
 ## Current focus
 
-The active tranche is `T8 eleventh implementation slice: parallel Blake2s
-commitment support has materially reduced the end-to-end prove row, so the
-next work is the dominant prove-values path and the next explicit PCS bridge`,
+The active tranche is `T8 twelfth implementation slice: batch point
+evaluation plus native accumulation and quotient PCS paths have materially
+reduced the end-to-end prove row, so the next work is the remaining
+prove-values structure, host-owned commitment cost, and bounded PolyOps
+fallback`,
 as tracked in
 [`controller.md`](./controller.md) and sequenced by
 [`roadmap.md`](./roadmap.md).
@@ -146,10 +148,12 @@ The first completed T7 supporting slices are:
   bridge
 - reusable single-trace Blake2s acceptance helper extracted so future example
   rows do not need bespoke test-local CPU-bridge proving code
-- first direct backend-completion bridge tranche landed:
+- first direct backend-completion bridge tranche landed and has since been
+  narrowed:
   `MetalBackend` now implements `PolyOps`, `AccumulationOps`, and
-  `QuotientOps` through explicit CPU bridges over Metal-owned columns,
-  evaluations, and secure-column storage
+  `QuotientOps` over Metal-owned columns, evaluations, and secure-column
+  storage, with only the bounded small-domain `PolyOps` fallback still
+  explicitly CPU-backed
 - deterministic parity tests now lock those `PolyOps` and PCS bridge surfaces
   against the vendored CPU backend
 - second direct backend-completion bridge tranche landed:
@@ -252,17 +256,18 @@ The first active T8 supporting slices are:
   Metal-owned proving surfaces
 - the standalone `wide_fibonacci_prove` benchmark row now executes end to end
   through `MetalBackend` and verifies successfully
-- the first Apple Silicon end-to-end benchmark result is now recorded:
-  `wide_fibonacci_prove_verify_v1 = 102272.056124 ms`, with
-  `prove_ms = 102266.681958` and `verify_ms = 5.374166`
+- the current Apple Silicon end-to-end benchmark result is now recorded:
+  `wide_fibonacci_prove_verify_v1 = 64588.605875 ms`, with
+  `prove_ms = 64582.99775` and `verify_ms = 5.608125`
 - the dominant prove-stage costs in that row are now measured explicitly:
-  `prove_core_prove_values_ms = 71138.82325`,
-  `trace_commit_merkle_ms = 16673.889875`, and
-  `prove_core_composition_commit_ms = 4998.368125`
+  `prove_core_prove_values_ms = 30791.174583`,
+  `trace_commit_merkle_ms = 16580.669833`,
+  `prove_core_composition_generation_ms = 6844.998791`, and
+  `prove_core_composition_commit_ms = 5421.685`
 - the standalone Metal benchmark fixture now enables the `parallel` proving
   surface, and the first measured parallel row reported `threads = 14`
 - compared with the current `log_n_instances = 20` reference rows, the
-  support-honest Metal benchmark is still about `73.6x` slower than SIMD
+  support-honest Metal benchmark is still about `46.5x` slower than SIMD
   (`1390 ms`) and far from the historical GPU row (`87 ms`)
 
 The next required T8 boundary is:
@@ -271,8 +276,8 @@ The next required T8 boundary is:
   carries benchmark-active work
 - reduce the dominant measured prove stages in the end-to-end
   `wide_fibonacci_prove_verify_v1` row
-- decide whether the next benchmark-facing structural win is retirement of the
-  explicit `AccumulationOps` / `QuotientOps` CPU bridges or deeper PCS
-  prove-values work above them
+- decide whether the next benchmark-facing structural win is the
+  prove-values layer above PCS, the host-owned commitment/hash path, or the
+  bounded small-domain `PolyOps` fallback
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work
