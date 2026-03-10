@@ -13,7 +13,8 @@ use super::planner::{MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError
 use super::subpath::MetalFriBlake2sSubpath;
 use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload_contract::{
-    MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
+    MetalExecutionAuthority, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalWorkloadStageAssignment,
 };
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
@@ -60,19 +61,26 @@ impl MetalWorkloadBoundary {
     }
 
     pub fn plan(&self) -> MetalExecutionPlan {
-        self.execution_seed.plan
+        self.execution_authority().plan()
     }
 
     pub fn stage_assignments(&self) -> &'static [MetalWorkloadStageAssignment] {
-        self.execution_seed.stage_assignments
+        self.execution_authority().stage_assignments()
     }
 
     pub fn generated_inventory(&self) -> MetalGeneratedInventory {
         self.generated_inventory
     }
 
+    pub fn execution_authority(&self) -> MetalExecutionAuthority {
+        MetalExecutionAuthority::new(
+            self.execution_seed.plan,
+            self.execution_seed.stage_assignments,
+        )
+    }
+
     pub fn stage_ownership(&self, stage: MetalWorkloadStage) -> Option<MetalWorkloadOwnership> {
-        self.execution_seed.stage_ownership(stage)
+        self.execution_authority().stage_ownership(stage)
     }
 
     pub fn ingest_cpu_fri_ready_evaluation(

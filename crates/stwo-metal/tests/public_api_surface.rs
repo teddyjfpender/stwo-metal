@@ -9,14 +9,15 @@ use stwo_metal::{
     plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend, CudaBackendSurface,
     CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan, MetalBackend,
     MetalBaseFieldVec, MetalBenchmarkInputError, MetalBenchmarkTarget,
-    MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput, MetalExecutionIntent,
-    MetalExecutionPlan, MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow,
-    MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver,
-    MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation,
-    MetalSecureFieldVec, MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientError,
-    MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients, MetalWideFibonacciTrace,
-    MetalWideFibonacciTraceError, MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs,
-    MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput, MetalExecutionAuthority,
+    MetalExecutionIntent, MetalExecutionPlan, MetalFriBlake2sSubpath, MetalFriFirstLayer,
+    MetalFriInnerLayerRow, MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice,
+    MetalFriProver, MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment,
+    MetalLineEvaluation, MetalSecureFieldVec, MetalWideFibonacciBenchmarkBoundary,
+    MetalWideFibonacciQuotientError, MetalWideFibonacciQuotientRequest,
+    MetalWideFibonacciQuotients, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
+    MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs, MetalWorkloadBoundary,
+    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
     STWO_CUDA_BACKEND_SURFACES_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
 };
@@ -58,6 +59,7 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<MetalCpuQuotientEvaluationInput>();
     let _ = std::mem::size_of::<MetalCpuWideFibonacciWitnessInput>();
     let _ = std::mem::size_of::<MetalFriReadyEvaluationInput>();
+    let _ = std::mem::size_of::<MetalExecutionAuthority>();
     let _ = std::mem::size_of::<MetalWorkloadBoundary>();
     let _ = std::mem::size_of::<MetalWorkloadHandoffError<'static>>();
     let _ = std::mem::size_of::<MetalHybridFriWorkload>();
@@ -105,14 +107,23 @@ fn companion_surface_exports_workload_boundary_api() {
         stwo::core::fri::FriConfig::new(3, 2, 3, 2),
     )
     .unwrap();
+    let execution_authority = boundary.execution_authority();
 
     assert_eq!(boundary.plan(), MetalExecutionPlan::MetalFriHybrid);
+    assert_eq!(
+        execution_authority.plan(),
+        MetalExecutionPlan::MetalFriHybrid
+    );
     assert_eq!(
         workload.boundary().plan(),
         MetalExecutionPlan::MetalFriHybrid
     );
     assert_eq!(
         boundary.stage_ownership(MetalWorkloadStage::FriBlake2s),
+        Some(MetalWorkloadOwnership::MetalNative)
+    );
+    assert_eq!(
+        execution_authority.stage_ownership(MetalWorkloadStage::FriBlake2s),
         Some(MetalWorkloadOwnership::MetalNative)
     );
 

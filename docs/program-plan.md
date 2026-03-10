@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 twelfth slice: re-anchor the shared prove-values staging bridge below the
-public workload surface onto the canonical generated execution contract`
+`G5 thirteenth slice: re-anchor the shared prove-values staging bridge on a
+minimal execution-authority contract below the public workload boundary`
 
 The active formal basis is:
 
@@ -215,6 +215,16 @@ The eleventh G5 slice is now landed:
   for the prove-values staging contract
 - the next honest G5 work is moving that bridge below the public workload
   surface and onto the lower generated execution contract itself
+
+The twelfth G5 slice is now landed:
+
+- `stwo-metal` now exposes a minimal `MetalExecutionAuthority` that carries
+  only plan and stage-law truth for runtime staging
+- the shared prove-values staging bridge now consumes that lower execution-law
+  surface instead of depending on `MetalWorkloadBoundary`
+- the next honest G5 work is consuming that same reduced execution-law surface
+  in another live staging helper so G5 keeps moving downward without widening
+  benchmark or workload contracts again
 
 ## G2 progress snapshot
 

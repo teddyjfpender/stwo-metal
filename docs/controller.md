@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 twelfth slice: re-anchor the shared prove-values staging bridge below the
-  public workload surface onto the canonical generated execution contract`
+  `G5 thirteenth slice: re-anchor the shared prove-values staging bridge on a
+  minimal execution-authority contract below the public workload boundary`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -61,8 +61,9 @@ Invariants:
   consumed by workload and benchmark declarations, and now feeds a reusable
   execution-binding helper plus one scheduling seed and shared witness,
   evaluation, quotient, and prove-values staging helpers, but the shared
-  prove-values bridge still anchors itself on the public workload boundary
-  instead of directly on the lower generated execution contract
+  prove-values bridge still anchors itself on a transitional public
+  `MetalExecutionAuthority` surface instead of directly on a lower private
+  generated execution contract
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -83,12 +84,13 @@ Invariants:
 
 ## Next three deliverables
 
-1. Re-anchor the shared prove-values staging bridge on the canonical
-   execution seed or binding beneath the public workload boundary.
+1. Consume `MetalExecutionAuthority` in the next live staging helper so the
+   reduced execution-law surface is shared beyond prove-values.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate
-   ownership while the generated lane grows above it.
+   ownership while deciding how far the transitional public execution-law
+   surface should survive beyond G5.
 
 ## Explicitly not doing now
 

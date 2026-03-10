@@ -156,6 +156,10 @@ The next active work is:
   execution contract instead of the benchmark boundary
 - move that shared prove-values staging bridge below the public workload
   surface so generated runtime authority remains private and linear
+- replace public workload-boundary dependence with a minimal execution-law
+  surface that carries only plan and stage ownership for live staging helpers
+- consume that reduced execution-law surface in more than one live staging
+  helper before deciding whether it remains public beyond G5
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

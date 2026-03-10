@@ -28,6 +28,46 @@ Superseded by:
 
 ## Entries
 
+### DEC-0096: Live staging bridges may depend on a minimal execution-law surface before the lower private contract exists
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+When a live staging bridge still needs runtime plan and stage-law truth but
+must stop depending on `MetalWorkloadBoundary`, it may temporarily consume a
+minimal `MetalExecutionAuthority` surface that exposes only execution plan and
+stage ownership.
+
+Context:
+
+The eleventh G5 slice removed benchmark-boundary ownership from the shared
+prove-values staging bridge, but the bridge still depended on the broader
+public workload boundary. The next semantics-preserving step is to cut that
+dependency down to the smallest stable law the bridge actually needs while the
+lower private generated execution contract is still being assembled.
+
+Alternatives rejected:
+
+- keep the bridge anchored on `MetalWorkloadBoundary`
+- expose the full internal execution seed directly
+- delay lowering until the full private execution contract already exists
+
+Impact:
+
+- live prove-values staging now depends only on plan and stage-law truth
+- the next honest G5 slice is reusing that reduced execution-law surface in
+  another live staging helper or lowering it further once the private contract
+  is ready
+
+Superseded by:
+
+- none
+
 ### DEC-0095: The shared prove-values bridge must stop at workload boundary only temporarily
 
 - Date: `2026-03-10`

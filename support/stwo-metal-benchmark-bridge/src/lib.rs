@@ -5,7 +5,7 @@ use stwo::core::pcs::TreeVec;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::{CommitmentSchemeProver, ComponentProver, ComponentProvers};
 use stwo_metal::{
-    MetalBackend, MetalExecutionPlan, MetalWorkloadBoundary, MetalWorkloadOwnership,
+    MetalBackend, MetalExecutionAuthority, MetalExecutionPlan, MetalWorkloadOwnership,
     MetalWorkloadStage,
 };
 
@@ -15,33 +15,33 @@ pub struct WideFibonacciProveValuesStaging {
     pub sample_points: TreeVec<Vec<Vec<stwo::core::circle::CirclePoint<SecureField>>>>,
 }
 
-fn assert_wide_fibonacci_prove_values_boundary(workload_boundary: &MetalWorkloadBoundary) {
+fn assert_wide_fibonacci_prove_values_boundary(execution_authority: &MetalExecutionAuthority) {
     assert!(
         matches!(
-            workload_boundary.plan(),
+            execution_authority.plan(),
             MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull
         ),
         "wide-fibonacci prove-values staging requires a Metal-capable plan"
     );
     assert_eq!(
-        workload_boundary.stage_ownership(MetalWorkloadStage::WitnessMain),
+        execution_authority.stage_ownership(MetalWorkloadStage::WitnessMain),
         Some(MetalWorkloadOwnership::CpuOwned),
         "wide-fibonacci benchmark witness staging must remain explicitly CPU-owned"
     );
     assert_eq!(
-        workload_boundary.stage_ownership(MetalWorkloadStage::FriBlake2s),
+        execution_authority.stage_ownership(MetalWorkloadStage::FriBlake2s),
         Some(MetalWorkloadOwnership::MetalNative),
         "wide-fibonacci prove-values staging requires the FRI/Blake2s stage on the Metal lane"
     );
 }
 
 pub fn stage_wide_fibonacci_prove_values(
-    workload_boundary: &MetalWorkloadBoundary,
+    execution_authority: &MetalExecutionAuthority,
     components: &[&dyn ComponentProver<MetalBackend>],
     channel: &mut Blake2sChannel,
     commitment_scheme: &CommitmentSchemeProver<'_, MetalBackend, Blake2sMerkleChannel>,
 ) -> WideFibonacciProveValuesStaging {
-    assert_wide_fibonacci_prove_values_boundary(workload_boundary);
+    assert_wide_fibonacci_prove_values_boundary(execution_authority);
 
     let component_provers = ComponentProvers {
         components: components.to_vec(),
@@ -90,7 +90,8 @@ mod tests {
             "fibonacci_example",
         )
         .unwrap();
+        let execution_authority = boundary.execution_authority();
 
-        assert_wide_fibonacci_prove_values_boundary(&boundary);
+        assert_wide_fibonacci_prove_values_boundary(&execution_authority);
     }
 }

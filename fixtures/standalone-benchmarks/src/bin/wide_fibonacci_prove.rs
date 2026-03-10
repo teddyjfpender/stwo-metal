@@ -786,8 +786,9 @@ fn prove_with_breakdown(
     tree_builder.commit(channel);
     let composition_commit_ms = composition_commit_start.elapsed().as_secs_f64() * 1000.0;
 
+    let execution_authority = benchmark_boundary.workload_boundary().execution_authority();
     let prove_values_stage = stage_wide_fibonacci_prove_values(
-        benchmark_boundary.workload_boundary(),
+        &execution_authority,
         components,
         channel,
         &commitment_scheme,

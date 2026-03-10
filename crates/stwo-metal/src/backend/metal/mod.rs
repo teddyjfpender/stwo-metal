@@ -78,7 +78,8 @@ pub use workload::{
     MetalWorkloadHandoffError,
 };
 pub use workload_contract::{
-    MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
+    MetalExecutionAuthority, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalWorkloadStageAssignment,
 };
 
 pub use crate::stwo_metal::{
