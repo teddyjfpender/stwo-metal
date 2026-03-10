@@ -1,12 +1,11 @@
 use stwo::core::fields::m31::BaseField;
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
-use super::execution_plan::{registered_execution_binding, registered_execution_seed};
-use super::planner::{MetalExecutionIntent, MetalPlannerError};
-use super::witness::{
-    generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
-    MetalWideFibonacciTraceRequest,
+use super::execution_plan::{
+    registered_execution_binding, registered_execution_seed, RegisteredMetalExecutionSeed,
 };
+use super::planner::{MetalExecutionIntent, MetalPlannerError};
+use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload::{declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary};
 use super::workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
 
@@ -39,6 +38,7 @@ pub struct MetalWideFibonacciWitnessInputs {
     n_columns: u32,
     input_a: Vec<BaseField>,
     input_b: Vec<BaseField>,
+    execution_seed: RegisteredMetalExecutionSeed,
 }
 
 impl MetalWideFibonacciWitnessInputs {
@@ -59,11 +59,11 @@ impl MetalWideFibonacciWitnessInputs {
     }
 
     pub fn generate_trace(&self) -> Result<MetalWideFibonacciTrace, MetalWideFibonacciTraceError> {
-        generate_metal_wide_fibonacci_trace(MetalWideFibonacciTraceRequest {
-            input_a: &self.input_a,
-            input_b: &self.input_b,
-            n_columns: self.n_columns,
-        })
+        self.execution_seed.generate_wide_fibonacci_trace(
+            &self.input_a,
+            &self.input_b,
+            self.n_columns,
+        )
     }
 }
 
@@ -71,6 +71,7 @@ impl MetalWideFibonacciWitnessInputs {
 pub struct MetalWideFibonacciBenchmarkBoundary {
     workload_boundary: MetalWorkloadBoundary,
     target: MetalBenchmarkTarget,
+    execution_seed: RegisteredMetalExecutionSeed,
 }
 
 impl MetalWideFibonacciBenchmarkBoundary {
@@ -114,6 +115,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
             n_columns: self.target.n_columns,
             input_a: input_a.to_vec(),
             input_b: input_b.to_vec(),
+            execution_seed: self.execution_seed,
         })
     }
 }
@@ -211,6 +213,7 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
     Ok(MetalWideFibonacciBenchmarkBoundary {
         workload_boundary,
         target,
+        execution_seed,
     })
 }
 
@@ -303,6 +306,35 @@ mod tests {
                 actual_b: ok_len - 1,
             }
         );
+    }
+
+    #[test]
+    fn benchmark_witness_inputs_carry_registered_execution_seed() {
+        let target = super::MetalBenchmarkTarget {
+            log_n_instances: 3,
+            n_columns: 8,
+            ..WIDE_FIBONACCI_TRACE_LOG20_TARGET
+        };
+        let boundary =
+            declare_wide_fibonacci_benchmark_boundary(MetalExecutionIntent::PreferMetal, target)
+                .unwrap();
+        let input_a = vec![BaseField::from_u32_unchecked(1); 1 << target.log_n_instances];
+        let input_b = vec![BaseField::from_u32_unchecked(2); 1 << target.log_n_instances];
+
+        let inputs = boundary
+            .ingest_cpu_witness_inputs(&input_a, &input_b)
+            .unwrap();
+        let request = inputs
+            .execution_seed
+            .wide_fibonacci_trace_request(inputs.input_a(), inputs.input_b(), inputs.n_columns())
+            .unwrap();
+
+        assert_eq!(inputs.execution_seed.component_name, "fibonacci_example");
+        assert_eq!(
+            inputs.execution_seed.plan,
+            boundary.workload_boundary().plan()
+        );
+        assert_eq!(request.n_columns, target.n_columns);
     }
 
     #[test]

@@ -28,6 +28,47 @@ Superseded by:
 
 ## Entries
 
+### DEC-0091: The first live execution-seed helper must be shared before G5 widens into later staging
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Once the scheduling-oriented execution seed reaches one live non-declarative
+helper, that helper must be shared across equivalent runtime paths before G5
+widening continues into quotient or evaluation staging.
+
+Context:
+
+The sixth G5 slice produced one canonical execution seed and the next slice
+consumed it in live witness generation. Without one shared seed-owned runtime
+helper, workload and benchmark code would immediately drift back into
+duplicated request construction. Normalizing that helper first keeps the next
+staging work linear.
+
+Alternatives rejected:
+
+- let workload and benchmark witness generation keep separate seed-consuming
+  request builders
+- skip directly to quotient or evaluation staging while the first runtime
+  helper remains duplicated
+- widen runtime scheduling by adding another metadata wrapper beside the seed
+
+Impact:
+
+- workload and benchmark witness generation now share one checked seed-owned
+  trace helper
+- the next honest G5 slice is widening the same seed into quotient or
+  evaluation staging
+
+Superseded by:
+
+- none
+
 ### DEC-0090: The first scheduling-oriented execution seed must be consumed before deeper runtime scheduling widens
 
 - Date: `2026-03-10`

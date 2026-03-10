@@ -146,6 +146,8 @@ The next active work is:
   binding helper without widening runtime policy prematurely
 - consume that scheduling seed in the first non-declarative execution helper
   so runtime scheduling starts from one canonical seed
+- widen that same execution seed into the next quotient or evaluation staging
+  helper instead of letting later runtime helpers rebuild route metadata
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

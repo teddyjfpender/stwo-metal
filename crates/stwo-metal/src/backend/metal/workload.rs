@@ -8,13 +8,10 @@ use stwo::prover::poly::circle::SecureEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 
 use super::artifact::{MetalGeneratedInventory, MetalGeneratedRouteKind};
-use super::execution_plan::registered_execution_binding;
+use super::execution_plan::{registered_execution_binding, RegisteredMetalExecutionSeed};
 use super::planner::{MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError};
 use super::subpath::MetalFriBlake2sSubpath;
-use super::witness::{
-    generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
-    MetalWideFibonacciTraceRequest,
-};
+use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload_contract::{
     MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
 };
@@ -26,6 +23,7 @@ pub struct MetalWorkloadBoundary {
     plan: MetalExecutionPlan,
     stage_assignments: &'static [MetalWorkloadStageAssignment],
     generated_inventory: MetalGeneratedInventory,
+    execution_seed: RegisteredMetalExecutionSeed,
 }
 
 impl MetalWorkloadBoundary {
@@ -144,6 +142,7 @@ impl MetalWorkloadBoundary {
             n_columns,
             input_a: input_a.to_vec(),
             input_b: input_b.to_vec(),
+            execution_seed: self.execution_seed,
         })
     }
 }
@@ -231,6 +230,7 @@ pub struct MetalCpuWideFibonacciWitnessInput {
     n_columns: u32,
     input_a: Vec<BaseField>,
     input_b: Vec<BaseField>,
+    execution_seed: RegisteredMetalExecutionSeed,
 }
 
 impl MetalCpuWideFibonacciWitnessInput {
@@ -255,11 +255,11 @@ impl MetalCpuWideFibonacciWitnessInput {
     }
 
     pub fn generate_trace(&self) -> Result<MetalWideFibonacciTrace, MetalWideFibonacciTraceError> {
-        generate_metal_wide_fibonacci_trace(MetalWideFibonacciTraceRequest {
-            input_a: &self.input_a,
-            input_b: &self.input_b,
-            n_columns: self.n_columns,
-        })
+        self.execution_seed.generate_wide_fibonacci_trace(
+            &self.input_a,
+            &self.input_b,
+            self.n_columns,
+        )
     }
 }
 
@@ -335,6 +335,7 @@ pub fn declare_exemplar_metal_workload_boundary(
         plan: boundary_input.plan,
         stage_assignments: boundary_input.stage_assignments,
         generated_inventory: boundary_input.generated_inventory,
+        execution_seed: binding.execution_seed(),
     })
 }
 

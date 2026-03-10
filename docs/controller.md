@@ -30,8 +30,9 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 seventh slice: consume the scheduling seed in the first non-declarative
-  execution helper so runtime scheduling starts from one canonical seed`
+  `G5 eighth slice: widen the shared execution seed from trace generation into
+  the next staging helpers so quotient and evaluation lowering stop rebuilding
+  route metadata piecemeal`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -59,8 +60,9 @@ Invariants:
   and hand-tunable within this repository
 - generated inventory now names ABI symbols and specialization keys, is
   consumed by workload and benchmark declarations, and now feeds a reusable
-  execution-binding helper plus one scheduling seed, but no non-declarative
-  execution helper consumes that seed yet
+  execution-binding helper plus one scheduling seed and one shared witness
+  execution helper, but quotient and evaluation staging still rebuild runtime
+  intent locally
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -81,10 +83,11 @@ Invariants:
 
 ## Next three deliverables
 
-1. Consume the scheduling seed in the first non-declarative execution helper
-   so runtime scheduling starts from one canonical seed.
+1. Widen execution-seed consumption from trace generation into quotient or
+   evaluation staging so another runtime helper stops rebuilding route
+   metadata locally.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
-   G5 starts lowering generated registrations.
+   G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate
    ownership while the generated lane grows above it.
 

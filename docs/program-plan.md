@@ -66,8 +66,9 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 seventh slice: consume the scheduling seed in the first non-declarative
-execution helper so runtime scheduling starts from one canonical seed`
+`G5 eighth slice: widen the shared execution seed from trace generation into
+the next staging helpers so quotient and evaluation lowering stop rebuilding
+route metadata piecemeal`
 
 The active formal basis is:
 
@@ -166,6 +167,15 @@ The sixth G5 slice is now landed:
 - the benchmark declaration path consumes that seed, so the next honest G5
   work is a non-declarative execution helper rather than more declaration
   normalization
+
+The seventh G5 slice is now landed:
+
+- both workload and benchmark witness generation now consume the same checked
+  execution seed in live non-declarative code
+- the first runtime trace helper now lives behind that seed instead of letting
+  workload and benchmark paths construct raw witness requests independently
+- the next honest G5 work is to widen that same seed into quotient and
+  evaluation staging rather than reintroducing a second runtime metadata seam
 
 ## G2 progress snapshot
 

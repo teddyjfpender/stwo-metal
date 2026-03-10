@@ -1,3 +1,5 @@
+use stwo::core::fields::m31::BaseField;
+
 use super::artifact::{
     MetalArtifactRegistry, MetalComponentArtifact, MetalGeneratedInventory,
     MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation, STWO_METAL_ARTIFACT_REGISTRY_V1,
@@ -9,6 +11,10 @@ use super::generated_policy::{
 use super::planner::{
     plan_metal_operation, MetalComponentPlanInput, MetalExecutionIntent, MetalExecutionPlan,
     MetalOperationKind, MetalPlannerError, UnknownMetalComponent, UnsupportedGeneratedMetalRoute,
+};
+use super::witness::{
+    generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
+    MetalWideFibonacciTraceRequest,
 };
 use super::workload_contract::MetalWorkloadStageAssignment;
 
@@ -90,6 +96,18 @@ pub(crate) struct RegisteredMetalExecutionSeed {
     pub specialization_keys: &'static [&'static str],
     pub stage_assignments: &'static [MetalWorkloadStageAssignment],
     pub witness_hook: Option<&'static str>,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) enum RegisteredMetalExecutionSeedError {
+    UnsupportedWitnessHook {
+        component_name: &'static str,
+        witness_hook: Option<&'static str>,
+    },
+    MissingSpecializationKey {
+        component_name: &'static str,
+        missing_key: &'static str,
+    },
 }
 
 impl RegisteredMetalComponent {
@@ -236,6 +254,56 @@ impl RegisteredMetalExecutionBinding {
     }
 }
 
+impl RegisteredMetalExecutionSeed {
+    pub fn wide_fibonacci_trace_request<'a>(
+        self,
+        input_a: &'a [BaseField],
+        input_b: &'a [BaseField],
+        n_columns: u32,
+    ) -> Result<MetalWideFibonacciTraceRequest<'a>, RegisteredMetalExecutionSeedError> {
+        if self.component_name != "fibonacci_example"
+            || self.witness_hook != Some("ingest_cpu_wide_fibonacci_witness")
+        {
+            return Err(RegisteredMetalExecutionSeedError::UnsupportedWitnessHook {
+                component_name: self.component_name,
+                witness_hook: self.witness_hook,
+            });
+        }
+        for missing_key in ["log_n_instances", "n_columns"] {
+            if !self.specialization_keys.contains(&missing_key) {
+                return Err(
+                    RegisteredMetalExecutionSeedError::MissingSpecializationKey {
+                        component_name: self.component_name,
+                        missing_key,
+                    },
+                );
+            }
+        }
+
+        Ok(MetalWideFibonacciTraceRequest {
+            input_a,
+            input_b,
+            n_columns,
+        })
+    }
+
+    pub fn generate_wide_fibonacci_trace(
+        self,
+        input_a: &[BaseField],
+        input_b: &[BaseField],
+        n_columns: u32,
+    ) -> Result<MetalWideFibonacciTrace, MetalWideFibonacciTraceError> {
+        let request = self
+            .wide_fibonacci_trace_request(input_a, input_b, n_columns)
+            .map_err(|error| MetalWideFibonacciTraceError::Runtime {
+                message: format!(
+                    "wide-fibonacci execution seed rejected trace generation: {error:?}"
+                ),
+            })?;
+        generate_metal_wide_fibonacci_trace(request)
+    }
+}
+
 pub(crate) fn registered_execution_seed(
     intent: MetalExecutionIntent,
     component_name: &'static str,
@@ -341,11 +409,14 @@ pub(crate) fn plan_registered_metal_operation<'a>(
 
 #[cfg(test)]
 mod tests {
+    use stwo::core::fields::m31::BaseField;
+
     use super::{
         plan_registered_metal_component_prove, plan_registered_metal_prove,
         registered_benchmark_declaration_input, registered_execution_binding,
         registered_execution_seed, registered_generated_artifact, registered_generated_component,
         registered_runtime_plan_input, registered_workload_boundary_input,
+        RegisteredMetalExecutionSeedError,
     };
     use crate::backend::metal::artifact::{
         MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation,
@@ -582,5 +653,55 @@ mod tests {
         assert!(seed.build_modules.contains(&"benchmark"));
         assert_eq!(seed.specialization_keys, &["log_n_instances", "n_columns"]);
         assert_eq!(seed.witness_hook, Some("ingest_cpu_wide_fibonacci_witness"));
+    }
+
+    #[test]
+    fn registered_execution_seed_builds_wide_fibonacci_trace_request() {
+        let seed = registered_execution_seed(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+            MetalGeneratedRouteKind::BenchmarkTraceGeneration,
+        )
+        .unwrap();
+        let input_a = [
+            BaseField::from_u32_unchecked(1),
+            BaseField::from_u32_unchecked(2),
+        ];
+        let input_b = [
+            BaseField::from_u32_unchecked(3),
+            BaseField::from_u32_unchecked(4),
+        ];
+
+        let request = seed
+            .wide_fibonacci_trace_request(&input_a, &input_b, 8)
+            .unwrap();
+
+        assert_eq!(request.input_a, &input_a);
+        assert_eq!(request.input_b, &input_b);
+        assert_eq!(request.n_columns, 8);
+    }
+
+    #[test]
+    fn registered_execution_seed_rejects_wrong_witness_hook() {
+        let seed = registered_execution_seed(
+            MetalExecutionIntent::PreferMetal,
+            "blake_example",
+            MetalGeneratedRouteKind::WorkloadBoundary,
+        )
+        .unwrap();
+        let input_a = [BaseField::from_u32_unchecked(1)];
+        let input_b = [BaseField::from_u32_unchecked(2)];
+
+        let error = seed
+            .wide_fibonacci_trace_request(&input_a, &input_b, 8)
+            .unwrap_err();
+
+        assert_eq!(
+            error,
+            RegisteredMetalExecutionSeedError::UnsupportedWitnessHook {
+                component_name: "blake_example",
+                witness_hook: None,
+            }
+        );
     }
 }
