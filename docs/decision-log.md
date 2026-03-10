@@ -28,6 +28,46 @@ Superseded by:
 
 ## Entries
 
+### DEC-0074: Benchmark and workload declarations must consume generated-route support through the execution-plan seam
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Benchmark and workload declarations must no longer reach directly into the
+artifact registry for generated-route checks. They now consume the same shared
+execution-plan helper layer that planner routing uses.
+
+Context:
+
+Earlier G2 slices had already created a private registry and lowering seam,
+then added per-component generated inventory and fail-closed route support. The
+remaining inconsistency was that benchmark and workload declarations still
+looked directly at the registry. That left the contract truthful but only
+partially adopted. Moving those declaration paths onto execution-plan helpers
+narrows that gap without widening the public API.
+
+Alternatives rejected:
+
+- leave benchmark and workload modules with direct registry reach-through
+- add a second declaration-local helper layer beside execution planning
+- defer this adoption step until after generated fast-path lowering
+
+Impact:
+
+- planner, workload, and benchmark declarations now share the same route-check
+  and error-mapping seam
+- the next honest G2 gap is broader backend adoption and one explicit
+  unsupported-generated-component policy path, not declaration-layer drift
+
+Superseded by:
+
+- none
+
 ### DEC-0073: Generated-route compatibility must be explicit and fail closed through the shared registry seam
 
 - Date: `2026-03-10`

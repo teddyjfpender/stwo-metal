@@ -105,6 +105,9 @@ The first G2 slice is now landed:
   build inventory, and witness hooks through the same registry seam
 - generated-route compatibility is now explicit and fail-closed for registered
   prove, workload-boundary, and declared benchmark routes
+- workload and benchmark declarations now consume generated-route compatibility
+  through the shared execution-plan seam rather than reaching into the registry
+  directly
 
 ## Foundation already available
 

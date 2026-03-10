@@ -61,8 +61,9 @@ Current containment:
 Risk if left in place:
 
 The project could now overstate the progress of the contract implementation:
-the seam exists and carries richer metadata plus fail-closed generated-route
-behavior, but if broader backend routing does not move onto that same
+the seam exists, carries richer metadata, and is now consumed by planner,
+workload, and benchmark declarations, but if broader backend routing and one
+explicit unsupported-generated-component policy path do not move onto that same
 boundary, the implementation could still drift back into mixed planning paths.
 
 Exit condition:

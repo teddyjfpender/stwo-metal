@@ -1,13 +1,8 @@
 use stwo::core::fields::m31::BaseField;
 
-use super::artifact::{
-    MetalArtifactSupportError, MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation,
-    STWO_METAL_ARTIFACT_REGISTRY_V1,
-    STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
-};
-use super::planner::{
-    MetalExecutionIntent, MetalPlannerError, UnsupportedGeneratedMetalRoute,
-};
+use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
+use super::planner::{MetalExecutionIntent, MetalPlannerError};
+use super::execution_plan::registered_generated_artifact;
 use super::witness::{
     generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
     MetalWideFibonacciTraceRequest,
@@ -164,33 +159,17 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
     intent: MetalExecutionIntent,
     target: MetalBenchmarkTarget,
 ) -> Result<MetalWideFibonacciBenchmarkBoundary, MetalPlannerError<'static>> {
-    let artifact = STWO_METAL_ARTIFACT_REGISTRY_V1
-        .artifact_supporting_generated_route(
-            target.workload_name,
-            STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
-            match target.operation {
-                MetalBenchmarkOperation::TraceGeneration => {
-                    MetalGeneratedRouteKind::BenchmarkTraceGeneration
-                }
-                MetalBenchmarkOperation::ProveVerify => {
-                    MetalGeneratedRouteKind::BenchmarkProveVerify
-                }
-            },
-        )
-        .map_err(|error| match error {
-            MetalArtifactSupportError::Lookup(_) => {
-                MetalPlannerError::UnknownComponent(super::planner::UnknownMetalComponent {
-                    component_name: target.workload_name,
-                    operation: super::planner::MetalOperationKind::Prove,
-                })
+    let artifact = registered_generated_artifact(
+        target.workload_name,
+        match target.operation {
+            MetalBenchmarkOperation::TraceGeneration => {
+                MetalGeneratedRouteKind::BenchmarkTraceGeneration
             }
-            MetalArtifactSupportError::UnsupportedGeneratedRoute { component_name, route } => {
-                MetalPlannerError::UnsupportedGeneratedRoute(UnsupportedGeneratedMetalRoute {
-                    component_name,
-                    route,
-                })
+            MetalBenchmarkOperation::ProveVerify => {
+                MetalGeneratedRouteKind::BenchmarkProveVerify
             }
-        })?;
+        },
+    )?;
     let benchmark_operation = match target.operation {
         MetalBenchmarkOperation::TraceGeneration => MetalRegisteredBenchmarkOperation::TraceGeneration,
         MetalBenchmarkOperation::ProveVerify => MetalRegisteredBenchmarkOperation::ProveVerify,

@@ -69,15 +69,15 @@ Invariants:
 - superseded milestone history has to stay out of the active control surface so
   the new sequence remains legible
 - per-component generated inventory and generated-route compatibility now exist,
-  but the shared seam is still not adopted broadly enough across backend
-  routing to count as a finished G2 surface
+  and benchmark/workload declarations consume that seam, but the broader
+  backend still has not fully adopted it
 
 ## Next three deliverables
 
-1. Push more declaration and routing surfaces through the shared execution-plan
-   seam so generated-route support is consumed consistently across the backend.
-2. Push more existing declaration surfaces through the execution-plan boundary
-   so planner, workload, and benchmark routing share the same fail-closed seam.
+1. Widen the shared execution-plan seam beyond planner, workload, and benchmark
+   declarations so more backend routing consumes the same fail-closed contract.
+2. Freeze one explicit unsupported-generated-component policy path in code,
+   rather than only in the design note and debt register.
 3. Keep acceptance-local adapters, bounded CPU fallbacks, and unsupported
    generated-component behavior explicit until the new shared boundaries fully
    replace the old ad hoc paths.

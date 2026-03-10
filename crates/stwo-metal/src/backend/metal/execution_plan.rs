@@ -1,6 +1,6 @@
 use super::artifact::{
     MetalArtifactLookupError, MetalArtifactRegistry, MetalArtifactSupportError,
-    MetalGeneratedRouteKind, STWO_METAL_ARTIFACT_REGISTRY_V1,
+    MetalComponentArtifact, MetalGeneratedRouteKind, STWO_METAL_ARTIFACT_REGISTRY_V1,
     STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
 };
 use super::planner::{
@@ -13,6 +13,18 @@ pub(crate) struct RegisteredMetalExecutionPlan {
     pub schema_version: u16,
     pub operation: MetalOperationKind,
     pub plan: MetalExecutionPlan,
+}
+
+pub(crate) fn registered_generated_artifact<'a>(
+    component_name: &'a str,
+    route: MetalGeneratedRouteKind,
+) -> Result<MetalComponentArtifact, MetalPlannerError<'a>> {
+    registered_generated_artifact_in_registry(
+        &STWO_METAL_ARTIFACT_REGISTRY_V1,
+        STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
+        component_name,
+        route,
+    )
 }
 
 pub(crate) fn plan_registered_metal_prove<'a>(
@@ -32,37 +44,10 @@ pub(crate) fn plan_registered_metal_component_prove(
     intent: MetalExecutionIntent,
     component_name: &'static str,
 ) -> Result<RegisteredMetalExecutionPlan, MetalPlannerError<'static>> {
-    let artifact = STWO_METAL_ARTIFACT_REGISTRY_V1
-        .artifact_supporting_generated_route(
-            component_name,
-            STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
-            MetalGeneratedRouteKind::RegisteredProve,
-        )
-        .map_err(|error| match error {
-            MetalArtifactSupportError::Lookup(MetalArtifactLookupError::SchemaMismatch {
-                expected: _,
-                found: _,
-            }) => {
-                MetalPlannerError::UnknownComponent(UnknownMetalComponent {
-                    component_name,
-                    operation: MetalOperationKind::Prove,
-                })
-            }
-            MetalArtifactSupportError::Lookup(MetalArtifactLookupError::UnknownComponent {
-                component_name,
-            }) => {
-                MetalPlannerError::UnknownComponent(UnknownMetalComponent {
-                    component_name,
-                    operation: MetalOperationKind::Prove,
-                })
-            }
-            MetalArtifactSupportError::UnsupportedGeneratedRoute { component_name, route } => {
-                MetalPlannerError::UnsupportedGeneratedRoute(UnsupportedGeneratedMetalRoute {
-                    component_name,
-                    route,
-                })
-            }
-        })?;
+    let artifact = registered_generated_artifact(
+        component_name,
+        MetalGeneratedRouteKind::RegisteredProve,
+    )?;
     let input = artifact.as_plan_input(MetalOperationKind::Prove);
     let plan = plan_metal_operation(intent, MetalOperationKind::Prove, &[input])
         .map_err(MetalPlannerError::Unsupported)?;
@@ -72,6 +57,37 @@ pub(crate) fn plan_registered_metal_component_prove(
         operation: MetalOperationKind::Prove,
         plan,
     })
+}
+
+pub(crate) fn registered_generated_artifact_in_registry<'a>(
+    registry: &MetalArtifactRegistry,
+    expected_schema_version: u16,
+    component_name: &'a str,
+    route: MetalGeneratedRouteKind,
+) -> Result<MetalComponentArtifact, MetalPlannerError<'a>> {
+    registry
+        .artifact_supporting_generated_route(component_name, expected_schema_version, route)
+        .map_err(|error| match error {
+            MetalArtifactSupportError::Lookup(MetalArtifactLookupError::SchemaMismatch {
+                expected: _,
+                found: _,
+            }) => MetalPlannerError::UnknownComponent(UnknownMetalComponent {
+                component_name,
+                operation: MetalOperationKind::Prove,
+            }),
+            MetalArtifactSupportError::Lookup(MetalArtifactLookupError::UnknownComponent {
+                component_name,
+            }) => MetalPlannerError::UnknownComponent(UnknownMetalComponent {
+                component_name,
+                operation: MetalOperationKind::Prove,
+            }),
+            MetalArtifactSupportError::UnsupportedGeneratedRoute { component_name, route } => {
+                MetalPlannerError::UnsupportedGeneratedRoute(UnsupportedGeneratedMetalRoute {
+                    component_name,
+                    route,
+                })
+            }
+        })
 }
 
 pub(crate) fn plan_registered_metal_operation<'a>(
@@ -115,10 +131,15 @@ pub(crate) fn plan_registered_metal_operation<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{plan_registered_metal_component_prove, plan_registered_metal_prove};
+    use super::{
+        plan_registered_metal_component_prove, plan_registered_metal_prove,
+        registered_generated_artifact,
+    };
     use crate::backend::metal::planner::{
         MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError, UnknownMetalComponent,
+        UnsupportedGeneratedMetalRoute,
     };
+    use crate::backend::metal::artifact::MetalGeneratedRouteKind;
 
     #[test]
     fn registered_planner_chooses_hybrid_for_known_fibonacci_component() {
@@ -153,5 +174,22 @@ mod tests {
         .unwrap();
 
         assert_eq!(plan.plan, MetalExecutionPlan::MetalFriHybrid);
+    }
+
+    #[test]
+    fn registered_generated_artifact_fails_closed_for_unsupported_route() {
+        let error = registered_generated_artifact(
+            "poseidon_example",
+            MetalGeneratedRouteKind::BenchmarkProveVerify,
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            MetalPlannerError::UnsupportedGeneratedRoute(UnsupportedGeneratedMetalRoute {
+                component_name: "poseidon_example",
+                route: MetalGeneratedRouteKind::BenchmarkProveVerify,
+            })
+        );
     }
 }
