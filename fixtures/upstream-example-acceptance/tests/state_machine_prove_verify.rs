@@ -12,9 +12,13 @@ use stwo_examples::state_machine::components::{
 };
 use stwo_examples::state_machine::gen::{gen_interaction_trace, gen_trace};
 use stwo_examples::state_machine::{prove_state_machine, verify_state_machine};
-use stwo_metal::{metal_runtime_support, MetalBackend, MetalRuntimeSupport};
+use stwo_metal::{
+    declare_exemplar_metal_workload_boundary, metal_runtime_support, MetalBackend,
+    MetalExecutionIntent, MetalRuntimeSupport,
+};
 use stwo_metal_upstream_example_acceptance::{
-    bridge_framework_component_to_metal, simd_tree_to_metal,
+    acceptance_registered_metal_lane, bridge_registered_framework_component_to_metal,
+    simd_tree_to_metal,
 };
 
 #[test]
@@ -28,6 +32,13 @@ fn vendored_upstream_state_machine_proves_and_verifies_via_metal_backend() {
 
     let log_n_rows = 8u32;
     let config = PcsConfig::default();
+    let boundary = declare_exemplar_metal_workload_boundary(
+        MetalExecutionIntent::PreferMetal,
+        "state_machine_example",
+    )
+    .expect("state machine workload boundary should be declared");
+    let lane = acceptance_registered_metal_lane(&boundary)
+        .expect("state machine acceptance lane should stay Metal-capable");
     let initial_state: State = [M31::from_u32_unchecked(0), M31::from_u32_unchecked(0)];
     let mut intermediate_state = initial_state;
     intermediate_state[0] += M31::from_u32_unchecked(1 << log_n_rows);
@@ -112,8 +123,8 @@ fn vendored_upstream_state_machine_proves_and_verifies_via_metal_backend() {
         claimed_sum_op1,
     );
 
-    let proving_component0 = bridge_framework_component_to_metal(&component0);
-    let proving_component1 = bridge_framework_component_to_metal(&component1);
+    let proving_component0 = bridge_registered_framework_component_to_metal(&component0, lane);
+    let proving_component1 = bridge_registered_framework_component_to_metal(&component1, lane);
     let metal_proof = prove::<MetalBackend, Blake2sMerkleChannel>(
         &[&proving_component0, &proving_component1],
         prover_channel,

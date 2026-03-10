@@ -197,6 +197,14 @@ pub fn bridge_simd_component_to_metal(
     AcceptanceMetalSimdComponent { inner: component }
 }
 
+pub fn bridge_registered_simd_component_to_metal<'a>(
+    component: &'a dyn ComponentProver<SimdBackend>,
+    lane: AcceptanceMetalLane<'a>,
+) -> AcceptanceMetalSimdComponent<'a> {
+    let _ = lane.workload_name();
+    AcceptanceMetalSimdComponent { inner: component }
+}
+
 /// Proves and verifies one single-trace upstream component through the stock
 /// Blake2s CPU path.
 ///

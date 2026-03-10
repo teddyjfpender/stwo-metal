@@ -50,12 +50,43 @@ const POSEIDON_EXAMPLE_REQUIRED_PROVE_CAPABILITIES: &[MetalComponentCapability] 
     MetalComponentCapability::PcsCommitment,
 ];
 
+const FRAMEWORK_ACCEPTANCE_DECLARED_CAPABILITIES: &[MetalComponentCapability] = &[
+    MetalComponentCapability::FriBlake2sSubpath,
+    MetalComponentCapability::WitnessMain,
+    MetalComponentCapability::WitnessInteraction,
+    MetalComponentCapability::QuotientEval,
+    MetalComponentCapability::PcsCommitment,
+];
+
+const FRAMEWORK_ACCEPTANCE_REQUIRED_PROVE_CAPABILITIES: &[MetalComponentCapability] = &[
+    MetalComponentCapability::FriBlake2sSubpath,
+    MetalComponentCapability::WitnessMain,
+    MetalComponentCapability::WitnessInteraction,
+    MetalComponentCapability::QuotientEval,
+    MetalComponentCapability::PcsCommitment,
+];
+
+const NO_INTERACTION_ACCEPTANCE_DECLARED_CAPABILITIES: &[MetalComponentCapability] = &[
+    MetalComponentCapability::FriBlake2sSubpath,
+    MetalComponentCapability::WitnessMain,
+    MetalComponentCapability::QuotientEval,
+    MetalComponentCapability::PcsCommitment,
+];
+
+const NO_INTERACTION_ACCEPTANCE_REQUIRED_PROVE_CAPABILITIES: &[MetalComponentCapability] = &[
+    MetalComponentCapability::FriBlake2sSubpath,
+    MetalComponentCapability::WitnessMain,
+    MetalComponentCapability::QuotientEval,
+    MetalComponentCapability::PcsCommitment,
+];
+
 const FIBONACCI_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS: &[MetalRegisteredBenchmarkOperation] = &[
     MetalRegisteredBenchmarkOperation::TraceGeneration,
     MetalRegisteredBenchmarkOperation::ProveVerify,
 ];
 
 const POSEIDON_EXAMPLE_SUPPORTED_BENCHMARK_OPERATIONS: &[MetalRegisteredBenchmarkOperation] = &[];
+const NO_BENCHMARK_OPERATIONS: &[MetalRegisteredBenchmarkOperation] = &[];
 
 const FIBONACCI_EXAMPLE_SUPPORTED_GENERATED_ROUTES: &[MetalGeneratedRouteKind] = &[
     MetalGeneratedRouteKind::RegisteredProve,
@@ -65,6 +96,11 @@ const FIBONACCI_EXAMPLE_SUPPORTED_GENERATED_ROUTES: &[MetalGeneratedRouteKind] =
 ];
 
 const POSEIDON_EXAMPLE_SUPPORTED_GENERATED_ROUTES: &[MetalGeneratedRouteKind] = &[
+    MetalGeneratedRouteKind::RegisteredProve,
+    MetalGeneratedRouteKind::WorkloadBoundary,
+];
+
+const ACCEPTANCE_ONLY_SUPPORTED_GENERATED_ROUTES: &[MetalGeneratedRouteKind] = &[
     MetalGeneratedRouteKind::RegisteredProve,
     MetalGeneratedRouteKind::WorkloadBoundary,
 ];
@@ -81,6 +117,11 @@ const POSEIDON_EXAMPLE_BUILD_MODULES: &[&str] = &[
     "planner_manifest_v1_generated",
     "fri",
     "workload",
+];
+
+const ACCEPTANCE_BRIDGE_BUILD_MODULES: &[&str] = &[
+    "planner_manifest_v1_generated",
+    "acceptance_bridge",
 ];
 
 const FIBONACCI_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
@@ -139,6 +180,65 @@ const POSEIDON_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
     },
 ];
 
+const STATE_MACHINE_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::WitnessMain,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "The main state-machine trace remains upstream-owned and CPU-prepared in the acceptance lane.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::WitnessInteraction,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "The interaction trace remains upstream-owned and CPU-prepared in the acceptance lane.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::QuotientEval,
+        ownership: MetalWorkloadOwnership::MetalNative,
+        detail: "Constraint quotient evaluation runs through MetalBackend in the acceptance lane.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::PcsCommitment,
+        ownership: MetalWorkloadOwnership::MetalNative,
+        detail: "PCS commitment runs through MetalBackend in the acceptance lane.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::FriBlake2s,
+        ownership: MetalWorkloadOwnership::MetalNative,
+        detail: "FRI and Blake2s commitment stay on the Metal lane in the acceptance path.",
+    },
+];
+
+const BLAKE_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] =
+    STATE_MACHINE_EXAMPLE_STAGE_ASSIGNMENTS;
+
+const XOR_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::WitnessMain,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "The XOR MLE traces remain upstream-owned and CPU/SIMD-prepared in the acceptance lane.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::WitnessInteraction,
+        ownership: MetalWorkloadOwnership::NotApplicable,
+        detail: "The declared XOR MLE workload boundary has no separate interaction witness stage.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::QuotientEval,
+        ownership: MetalWorkloadOwnership::MetalNative,
+        detail: "Constraint quotient evaluation runs through MetalBackend in the acceptance lane.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::PcsCommitment,
+        ownership: MetalWorkloadOwnership::MetalNative,
+        detail: "PCS commitment runs through MetalBackend in the acceptance lane.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::FriBlake2s,
+        ownership: MetalWorkloadOwnership::MetalNative,
+        detail: "FRI and Blake2s commitment stay on the Metal lane in the acceptance path.",
+    },
+];
+
 pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = &[
     GeneratedMetalPlannerComponent {
         component_name: "fibonacci_example",
@@ -169,6 +269,54 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
             registration_key: "poseidon_example",
             abi_family: "poseidon",
             build_modules: POSEIDON_EXAMPLE_BUILD_MODULES,
+            witness_hook: None,
+        },
+    },
+    GeneratedMetalPlannerComponent {
+        component_name: "state_machine_example",
+        workload_family: "state_machine",
+        support_tier: MetalSupportTier::FullWorkload,
+        declared_capabilities: FRAMEWORK_ACCEPTANCE_DECLARED_CAPABILITIES,
+        required_prove_capabilities: FRAMEWORK_ACCEPTANCE_REQUIRED_PROVE_CAPABILITIES,
+        supported_benchmark_operations: NO_BENCHMARK_OPERATIONS,
+        supported_generated_routes: ACCEPTANCE_ONLY_SUPPORTED_GENERATED_ROUTES,
+        stage_assignments: STATE_MACHINE_EXAMPLE_STAGE_ASSIGNMENTS,
+        generated_inventory: GeneratedMetalInventoryEntry {
+            registration_key: "state_machine_example",
+            abi_family: "state_machine",
+            build_modules: ACCEPTANCE_BRIDGE_BUILD_MODULES,
+            witness_hook: None,
+        },
+    },
+    GeneratedMetalPlannerComponent {
+        component_name: "blake_example",
+        workload_family: "blake",
+        support_tier: MetalSupportTier::FullWorkload,
+        declared_capabilities: FRAMEWORK_ACCEPTANCE_DECLARED_CAPABILITIES,
+        required_prove_capabilities: FRAMEWORK_ACCEPTANCE_REQUIRED_PROVE_CAPABILITIES,
+        supported_benchmark_operations: NO_BENCHMARK_OPERATIONS,
+        supported_generated_routes: ACCEPTANCE_ONLY_SUPPORTED_GENERATED_ROUTES,
+        stage_assignments: BLAKE_EXAMPLE_STAGE_ASSIGNMENTS,
+        generated_inventory: GeneratedMetalInventoryEntry {
+            registration_key: "blake_example",
+            abi_family: "blake",
+            build_modules: ACCEPTANCE_BRIDGE_BUILD_MODULES,
+            witness_hook: None,
+        },
+    },
+    GeneratedMetalPlannerComponent {
+        component_name: "xor_example",
+        workload_family: "xor",
+        support_tier: MetalSupportTier::FullWorkload,
+        declared_capabilities: NO_INTERACTION_ACCEPTANCE_DECLARED_CAPABILITIES,
+        required_prove_capabilities: NO_INTERACTION_ACCEPTANCE_REQUIRED_PROVE_CAPABILITIES,
+        supported_benchmark_operations: NO_BENCHMARK_OPERATIONS,
+        supported_generated_routes: ACCEPTANCE_ONLY_SUPPORTED_GENERATED_ROUTES,
+        stage_assignments: XOR_EXAMPLE_STAGE_ASSIGNMENTS,
+        generated_inventory: GeneratedMetalInventoryEntry {
+            registration_key: "xor_example",
+            abi_family: "xor",
+            build_modules: ACCEPTANCE_BRIDGE_BUILD_MODULES,
             witness_hook: None,
         },
     },

@@ -30,9 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G3 first slice: move the first acceptance workload onto the stable generic
-  lane contract by requiring a registered Metal workload boundary for the
-  acceptance bridge`
+  `G3 second slice: widen registered Metal workload lanes across the current
+  acceptance matrix while keeping the remaining local adapters explicit`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -63,16 +62,16 @@ Invariants:
   the new sequence remains legible
 - the first acceptance row now consumes the shared workload-boundary seam, but
   the remaining framework and SIMD acceptance bridges still live only in the
-  acceptance harness
+  acceptance harness even though they now require registered workload lanes
 - the shared planning seam is now stable enough for G3 work, but it is not yet
   the default path for every acceptance adapter
 
 ## Next three deliverables
 
-1. Move the next acceptance-local framework-backed example rows onto the shared
-   workload-boundary lane instead of constructing fully local bridges.
-2. Decide which remaining acceptance bridge becomes the first shared
+1. Decide which remaining acceptance bridge becomes the first shared
    backend-owned replacement boundary rather than another harness-local shim.
+2. Keep moving any new acceptance integration through registered workload lanes
+   instead of adding fresh local bridge contracts.
 3. Keep bounded CPU fallbacks and unsupported
    generated-component behavior explicit until the new shared boundaries fully
    replace the old ad hoc paths.

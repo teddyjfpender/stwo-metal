@@ -657,8 +657,9 @@ adapter around vendored `FrameworkComponent`. That remains the smallest safe
 step because it avoids a nested-workspace dependency conflict in the main
 `stwo-metal` crate and keeps the remaining CPU-domain quotient path explicit.
 The `wide_fibonacci` row now requires one registered Metal workload lane before
-constructing its local bridge, but the remaining framework-backed example rows
-still rely on purely acceptance-local adapters.
+constructing its local bridge, and `state_machine` plus `blake` now do the
+same. The adapter itself is still acceptance-local, but it is no longer fully
+unmoored from the shared backend contract.
 
 Current containment:
 
@@ -695,7 +696,9 @@ through `MetalBackend` with an acceptance-local adapter around vendored
 `ComponentProver<SimdBackend>`. That keeps workload logic unchanged and opens
 the first mixed-component upstream row, but it still lives only in the
 acceptance harness and currently depends on retained polynomial coefficients
-when converting Metal-owned traces into the bridged proving view.
+when converting Metal-owned traces into the bridged proving view. The row now
+also requires one registered Metal workload lane before constructing its local
+bridges.
 
 Current containment:
 

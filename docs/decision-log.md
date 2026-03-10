@@ -28,6 +28,47 @@ Superseded by:
 
 ## Entries
 
+### DEC-0077: Acceptance workloads already in the matrix must register shared Metal lanes before building local bridges
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The current acceptance workloads that already prove through `MetalBackend`
+must no longer construct bridges from entirely local context. `wide_fibonacci`,
+`state_machine`, `blake`, and `xor` now declare registered Metal workload
+lanes first and only then build their remaining local adapters.
+
+Context:
+
+The first G3 slice proved the shape with `wide_fibonacci`: acceptance bridges
+should consume the stable planning seam instead of floating outside it. The
+next honest step was to widen that rule across the existing acceptance matrix
+without claiming the local bridges were fully retired. Registering those lanes
+keeps the architecture honest while leaving the still-local adapters explicit
+in debt tracking.
+
+Alternatives rejected:
+
+- keep the other acceptance rows entirely local until one big adapter-rewrite
+- add more unregistered acceptance bridges and defer lane registration
+- claim the shared seam is the default acceptance path without widening it
+
+Impact:
+
+- multiple acceptance rows now consume the shared lane contract before local
+  bridge construction
+- the next honest G3 gap is retiring or generalizing the remaining local
+  adapters themselves, not lane registration
+
+Superseded by:
+
+- none
+
 ### DEC-0076: The first G3 acceptance bridge must require a registered Metal workload lane
 
 - Date: `2026-03-10`

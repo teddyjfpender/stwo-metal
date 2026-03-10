@@ -20,9 +20,13 @@ use stwo_examples::xor::gkr_lookups::mle_eval::mle_coeff_column::{
 use stwo_examples::xor::gkr_lookups::mle_eval::{
     build_trace as build_mle_eval_trace, MleEvalProverComponent, MleEvalVerifierComponent,
 };
-use stwo_metal::{metal_runtime_support, MetalBackend, MetalRuntimeSupport};
+use stwo_metal::{
+    declare_exemplar_metal_workload_boundary, metal_runtime_support, MetalBackend,
+    MetalExecutionIntent, MetalRuntimeSupport,
+};
 use stwo_metal_upstream_example_acceptance::{
-    bridge_framework_component_to_metal, bridge_simd_component_to_metal, simd_tree_to_metal,
+    acceptance_registered_metal_lane, bridge_registered_framework_component_to_metal,
+    bridge_registered_simd_component_to_metal, simd_tree_to_metal,
 };
 
 #[test]
@@ -38,6 +42,13 @@ fn vendored_upstream_xor_mle_eval_example_proves_and_verifies_via_metal_backend(
     const COEFFS_COL_TRACE: usize = 1;
     const MLE_EVAL_TRACE: usize = 2;
     const LOG_EXPAND: u32 = 1;
+    let boundary = declare_exemplar_metal_workload_boundary(
+        MetalExecutionIntent::PreferMetal,
+        "xor_example",
+    )
+    .expect("xor workload boundary should be declared");
+    let lane = acceptance_registered_metal_lane(&boundary)
+        .expect("xor acceptance lane should stay Metal-capable");
 
     let log_size = N_VARIABLES as u32;
     let size = 1 << log_size;
@@ -128,8 +139,9 @@ fn vendored_upstream_xor_mle_eval_example_proves_and_verifies_via_metal_backend(
         MLE_EVAL_TRACE,
     );
 
-    let metal_coeffs_component = bridge_framework_component_to_metal(&mle_coeffs_col_component);
-    let metal_eval_component = bridge_simd_component_to_metal(&mle_eval_component);
+    let metal_coeffs_component =
+        bridge_registered_framework_component_to_metal(&mle_coeffs_col_component, lane);
+    let metal_eval_component = bridge_registered_simd_component_to_metal(&mle_eval_component, lane);
     let proving_components: [&dyn ComponentProver<MetalBackend>; 2] =
         [&metal_coeffs_component, &metal_eval_component];
 

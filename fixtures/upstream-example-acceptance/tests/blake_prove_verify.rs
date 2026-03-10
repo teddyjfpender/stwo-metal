@@ -5,9 +5,13 @@ use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::poly::circle::PolyOps;
 use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver};
 use stwo_examples::blake::air::{build_blake_proving_setup, prove_blake, verify_blake};
-use stwo_metal::{metal_runtime_support, MetalBackend, MetalRuntimeSupport};
+use stwo_metal::{
+    declare_exemplar_metal_workload_boundary, metal_runtime_support, MetalBackend,
+    MetalExecutionIntent, MetalRuntimeSupport,
+};
 use stwo_metal_upstream_example_acceptance::{
-    bridge_framework_component_to_metal, simd_tree_to_metal,
+    acceptance_registered_metal_lane, bridge_registered_framework_component_to_metal,
+    simd_tree_to_metal,
 };
 
 #[test]
@@ -21,6 +25,13 @@ fn vendored_upstream_blake_example_proves_and_verifies_via_metal_backend() {
 
     let log_size = 6u32;
     let config = PcsConfig::default();
+    let boundary = declare_exemplar_metal_workload_boundary(
+        MetalExecutionIntent::PreferMetal,
+        "blake_example",
+    )
+    .expect("blake workload boundary should be declared");
+    let lane = acceptance_registered_metal_lane(&boundary)
+        .expect("blake acceptance lane should stay Metal-capable");
     let setup = build_blake_proving_setup::<Blake2sMerkleChannel>(log_size, config);
 
     let twiddles = MetalBackend::precompute_twiddles(
@@ -48,17 +59,23 @@ fn vendored_upstream_blake_example_proves_and_verifies_via_metal_backend() {
     tree_builder.extend_evals(simd_tree_to_metal(setup.interaction_trace().to_vec()));
     tree_builder.commit(prover_channel);
 
-    let scheduler_component = bridge_framework_component_to_metal(setup.scheduler_component());
+    let scheduler_component =
+        bridge_registered_framework_component_to_metal(setup.scheduler_component(), lane);
     let round_components = setup
         .round_components()
         .iter()
-        .map(bridge_framework_component_to_metal)
+        .map(|component| bridge_registered_framework_component_to_metal(component, lane))
         .collect::<Vec<_>>();
-    let xor12_component = bridge_framework_component_to_metal(setup.xor12_component());
-    let xor9_component = bridge_framework_component_to_metal(setup.xor9_component());
-    let xor8_component = bridge_framework_component_to_metal(setup.xor8_component());
-    let xor7_component = bridge_framework_component_to_metal(setup.xor7_component());
-    let xor4_component = bridge_framework_component_to_metal(setup.xor4_component());
+    let xor12_component =
+        bridge_registered_framework_component_to_metal(setup.xor12_component(), lane);
+    let xor9_component =
+        bridge_registered_framework_component_to_metal(setup.xor9_component(), lane);
+    let xor8_component =
+        bridge_registered_framework_component_to_metal(setup.xor8_component(), lane);
+    let xor7_component =
+        bridge_registered_framework_component_to_metal(setup.xor7_component(), lane);
+    let xor4_component =
+        bridge_registered_framework_component_to_metal(setup.xor4_component(), lane);
 
     let mut proving_component_refs = vec![&scheduler_component as &dyn ComponentProver<MetalBackend>];
     proving_component_refs.extend(

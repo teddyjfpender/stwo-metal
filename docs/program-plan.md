@@ -66,9 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G3 first slice: move the first acceptance workload onto the stable generic
-lane contract by requiring a registered Metal workload boundary for the
-acceptance bridge`
+`G3 second slice: widen registered Metal workload lanes across the current
+acceptance matrix while keeping the remaining local adapters explicit`
 
 The active formal basis is:
 
@@ -116,6 +115,14 @@ The first G3 slice is now landed:
 - the acceptance harness has one explicit `AcceptanceMetalLane` abstraction
   instead of allowing the first registered workload bridge to float entirely
   outside the shared backend contract
+
+The second G3 slice is now landed:
+
+- `wide_fibonacci`, `state_machine`, `blake`, and `xor` now all declare
+  registered Metal workload lanes before constructing their local acceptance
+  bridges
+- the shared planner manifest now names those acceptance workloads explicitly
+  enough to keep lane construction off ad hoc local constants
 
 ## Foundation already available
 
