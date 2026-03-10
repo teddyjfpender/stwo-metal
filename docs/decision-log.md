@@ -28,6 +28,45 @@ Superseded by:
 
 ## Entries
 
+### DEC-0083: Workload and benchmark declarations must consume generated ABI and specialization inventory through the shared registry seam
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Once generated registration records ABI symbols and specialization keys, the
+declaration layer must consume that richer inventory through the shared
+artifact-registry seam. Workload and benchmark declarations may not drop back
+to route-only reasoning or introduce a second metadata lookup surface.
+
+Context:
+
+The first G4 slice made the internal registry richer, but the contract would
+still have been fragile if declarations continued to look only at route
+eligibility and workload family. The next semantics-preserving step is to keep
+declarations attached to the richer inventory so later lowering slices inherit
+one active contract instead of passive manifest fields.
+
+Alternatives rejected:
+
+- leave the richer inventory unused until later lowering work
+- let workload and benchmark declarations read raw manifest details directly
+- create a second generated metadata table just for declarations
+
+Impact:
+
+- declaration code now exercises the richer generated registration contract
+- the next honest G4 work moves toward lowering-facing registration objects
+  instead of more declaration-side metadata drift
+
+Superseded by:
+
+- none
+
 ### DEC-0082: Generated registration must carry explicit ABI symbols and specialization keys, not just route eligibility
 
 - Date: `2026-03-10`

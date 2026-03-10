@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G4 second slice: make the richer generated inventory consumable by workload
-  and benchmark declarations without bypassing the shared planning seam`
+  `G4 third slice: derive one lowering-facing generated registration object
+  from the shared registry without inventing side metadata surfaces`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -57,9 +57,9 @@ Invariants:
   private shared support boundary
 - there is not yet a declared policy for how generated output becomes durable
   and hand-tunable within this repository
-- generated inventory now names ABI symbols and specialization keys, but that
-  richer inventory is not yet consumed broadly enough by workload and benchmark
-  declarations
+- generated inventory now names ABI symbols and specialization keys and is
+  consumed by workload and benchmark declarations, but lowering does not yet
+  consume one shared generated-registration object derived from that same seam
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -80,8 +80,8 @@ Invariants:
 
 ## Next three deliverables
 
-1. Route workload and benchmark declarations through the richer generated
-   inventory without creating a second metadata lookup surface.
+1. Derive one lowering-facing generated registration object from the shared
+   registry so later lowering slices do not reach back into raw manifest data.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    generated registration surfaces widen.
 3. Preserve the non-public bridge-law boundary and private support-crate

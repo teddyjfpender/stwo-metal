@@ -38,27 +38,32 @@ Target retirement point:
 Why it exists now:
 
 The internal generated-artifact registry now records explicit ABI symbols and
-specialization keys, but workload declarations, benchmark declarations, and
-later lowering layers do not yet all consume that richer inventory through the
-shared planning seam.
+specialization keys. Workload and benchmark declarations now consume that
+richer inventory through the shared planning seam, but later lowering layers do
+not yet consume one shared generated-registration object derived from the same
+boundary.
 
 Current containment:
 
 - `crates/stwo-metal/src/backend/metal/artifact.rs`
 - `crates/stwo-metal/src/backend/metal/planner_manifest_v1_generated.rs`
+- `crates/stwo-metal/src/backend/metal/workload.rs`
+- `crates/stwo-metal/src/backend/metal/benchmark.rs`
 - `docs/controller.md`
 - `docs/program-plan.md`
 
 Risk if left in place:
 
 The repository could claim a richer generated contract in the registry while
-still letting surrounding code reason only about route eligibility, which would
-split the contract across multiple implicit layers again.
+still let later lowering code reach around that contract or invent its own
+metadata shape, which would split the generated lane across multiple implicit
+layers again.
 
 Exit condition:
 
-Workload declarations, benchmark declarations, and the first lowering slices
-consume ABI and specialization inventory through the same stable planning seam.
+The first lowering-facing registration object exists and later lowering slices
+consume ABI and specialization inventory through that same stable planning
+seam.
 
 Target retirement point:
 

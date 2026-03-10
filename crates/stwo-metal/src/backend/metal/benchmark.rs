@@ -1,15 +1,13 @@
 use stwo::core::fields::m31::BaseField;
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
-use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::execution_plan::registered_generated_artifact;
+use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::witness::{
     generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
     MetalWideFibonacciTraceRequest,
 };
-use super::workload::{
-    declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary,
-};
+use super::workload::{declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary};
 use super::workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -165,20 +163,28 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
             MetalBenchmarkOperation::TraceGeneration => {
                 MetalGeneratedRouteKind::BenchmarkTraceGeneration
             }
-            MetalBenchmarkOperation::ProveVerify => {
-                MetalGeneratedRouteKind::BenchmarkProveVerify
-            }
+            MetalBenchmarkOperation::ProveVerify => MetalGeneratedRouteKind::BenchmarkProveVerify,
         },
     )?;
     let benchmark_operation = match target.operation {
-        MetalBenchmarkOperation::TraceGeneration => MetalRegisteredBenchmarkOperation::TraceGeneration,
+        MetalBenchmarkOperation::TraceGeneration => {
+            MetalRegisteredBenchmarkOperation::TraceGeneration
+        }
         MetalBenchmarkOperation::ProveVerify => MetalRegisteredBenchmarkOperation::ProveVerify,
     };
 
     assert_eq!(artifact.workload_family, target.family);
-    assert!(artifact.supported_benchmark_operations.contains(&benchmark_operation));
+    assert!(artifact
+        .supported_benchmark_operations
+        .contains(&benchmark_operation));
 
     let workload_boundary = declare_exemplar_metal_workload_boundary(intent, target.workload_name)?;
+    let inventory = workload_boundary.generated_inventory();
+
+    assert_eq!(inventory.registration_key, target.workload_name);
+    assert_eq!(inventory.abi_family, target.family);
+    assert!(inventory.specialization_keys.contains(&"log_n_instances"));
+    assert!(inventory.specialization_keys.contains(&"n_columns"));
 
     Ok(MetalWideFibonacciBenchmarkBoundary {
         workload_boundary,
@@ -195,11 +201,11 @@ mod tests {
         MetalBenchmarkOperation, MetalBenchmarkReferencePlatform, MetalExecutionIntent,
         WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
     };
+    use crate::backend::metal::artifact::MetalGeneratedRouteKind;
     use crate::backend::metal::{
         MetalExecutionPlan, MetalPlannerError, MetalWorkloadOwnership, MetalWorkloadStage,
         UnsupportedGeneratedMetalRoute,
     };
-    use crate::backend::metal::artifact::MetalGeneratedRouteKind;
 
     #[test]
     fn wide_fibonacci_targets_are_fixed_to_log20_and_rtx4090_reference() {
@@ -235,6 +241,20 @@ mod tests {
                 .workload_boundary()
                 .stage_ownership(MetalWorkloadStage::WitnessMain),
             Some(MetalWorkloadOwnership::CpuOwned)
+        );
+        assert_eq!(
+            boundary
+                .workload_boundary()
+                .generated_inventory()
+                .registration_key,
+            "fibonacci_example"
+        );
+        assert_eq!(
+            boundary
+                .workload_boundary()
+                .generated_inventory()
+                .specialization_keys,
+            &["log_n_instances", "n_columns"]
         );
     }
 

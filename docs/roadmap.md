@@ -136,6 +136,8 @@ The next active work is:
   stable ABI and specialization inventory
 - make workload and benchmark declarations consume that richer inventory
   through the shared planning seam rather than side lookups
+- derive one lowering-facing generated registration object from that same seam
+  before execution-plan lowering widens further
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

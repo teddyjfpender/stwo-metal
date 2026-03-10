@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G4 second slice: make the richer generated inventory consumable by workload
-and benchmark declarations without bypassing the shared planning seam`
+`G4 third slice: derive one lowering-facing generated registration object from
+the shared registry without inventing side metadata surfaces`
 
 The active formal basis is:
 
@@ -102,6 +102,15 @@ The first G4 slice is now landed:
   registered components
 - that richer inventory is queryable through the same stable internal
   registry boundary instead of requiring route lookup first
+
+The second G4 slice is now landed:
+
+- workload boundaries now retain the generated inventory they were declared
+  from instead of dropping back to route-only metadata
+- the wide-fibonacci benchmark boundary now validates itself against generated
+  specialization inventory rather than treating route support as sufficient
+- the richer generated inventory is now active declaration input, not passive
+  manifest data
 
 ## G2 progress snapshot
 

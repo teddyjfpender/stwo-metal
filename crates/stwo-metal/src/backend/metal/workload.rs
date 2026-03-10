@@ -7,17 +7,16 @@ use stwo::prover::fri::FriDecommitResult;
 use stwo::prover::poly::circle::SecureEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 
+use super::artifact::{MetalGeneratedInventory, MetalGeneratedRouteKind};
+use super::execution_plan::{plan_registered_metal_component_prove, registered_generated_artifact};
 use super::planner::{MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError};
-use super::execution_plan::{
-    plan_registered_metal_component_prove, registered_generated_artifact,
-};
 use super::subpath::MetalFriBlake2sSubpath;
-use super::workload_contract::{
-    MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
-};
 use super::witness::{
     generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
     MetalWideFibonacciTraceRequest,
+};
+use super::workload_contract::{
+    MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
 };
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
@@ -26,6 +25,7 @@ pub struct MetalWorkloadBoundary {
     workload_name: &'static str,
     plan: MetalExecutionPlan,
     stage_assignments: &'static [MetalWorkloadStageAssignment],
+    generated_inventory: MetalGeneratedInventory,
 }
 
 impl MetalWorkloadBoundary {
@@ -39,6 +39,10 @@ impl MetalWorkloadBoundary {
 
     pub fn stage_assignments(&self) -> &'static [MetalWorkloadStageAssignment] {
         self.stage_assignments
+    }
+
+    pub fn generated_inventory(&self) -> MetalGeneratedInventory {
+        self.generated_inventory
     }
 
     pub fn stage_ownership(&self, stage: MetalWorkloadStage) -> Option<MetalWorkloadOwnership> {
@@ -315,27 +319,19 @@ impl MetalHybridFriWorkload {
     }
 }
 
-fn stage_assignments_for_workload(
-    workload_name: &'static str,
-) -> Result<&'static [MetalWorkloadStageAssignment], MetalPlannerError<'static>> {
-    Ok(registered_generated_artifact(
-        workload_name,
-        super::artifact::MetalGeneratedRouteKind::WorkloadBoundary,
-    )?
-    .stage_assignments)
-}
-
 pub fn declare_exemplar_metal_workload_boundary(
     intent: MetalExecutionIntent,
     workload_name: &'static str,
 ) -> Result<MetalWorkloadBoundary, MetalPlannerError<'static>> {
+    let artifact =
+        registered_generated_artifact(workload_name, MetalGeneratedRouteKind::WorkloadBoundary)?;
     let plan = plan_registered_metal_component_prove(intent, workload_name)?.plan;
-    let stage_assignments = stage_assignments_for_workload(workload_name)?;
 
     Ok(MetalWorkloadBoundary {
         workload_name,
         plan,
-        stage_assignments,
+        stage_assignments: artifact.stage_assignments,
+        generated_inventory: artifact.generated_inventory,
     })
 }
 
@@ -396,6 +392,15 @@ mod tests {
         assert_eq!(
             boundary.stage_ownership(MetalWorkloadStage::FriBlake2s),
             Some(MetalWorkloadOwnership::MetalNative)
+        );
+        assert_eq!(
+            boundary.generated_inventory().registration_key,
+            "fibonacci_example"
+        );
+        assert_eq!(boundary.generated_inventory().abi_family, "wide_fibonacci");
+        assert_eq!(
+            boundary.generated_inventory().specialization_keys,
+            &["log_n_instances", "n_columns"]
         );
     }
 
