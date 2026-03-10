@@ -133,8 +133,8 @@ not “more benchmark-local seams.”
 The next active work is:
 
 - move acceptance rows onto the stable workload-boundary and planning seam
-- retire the first acceptance-local bridges by replacing them with shared
-  backend-owned boundaries where possible
+- collapse acceptance-local bridge construction behind one checked non-public
+  contract before deciding where the durable shared ownership should live
 - keep examples only as validation and benchmark inputs
 
 ## Native runtime direction

@@ -10,8 +10,7 @@ use stwo_metal::{
     MetalExecutionIntent, MetalRuntimeSupport,
 };
 use stwo_metal_upstream_example_acceptance::{
-    acceptance_registered_metal_lane, bridge_registered_framework_component_to_metal,
-    simd_tree_to_metal,
+    acceptance_bridge_catalog, simd_tree_to_metal,
 };
 
 #[test]
@@ -30,7 +29,7 @@ fn vendored_upstream_blake_example_proves_and_verifies_via_metal_backend() {
         "blake_example",
     )
     .expect("blake workload boundary should be declared");
-    let lane = acceptance_registered_metal_lane(&boundary)
+    let catalog = acceptance_bridge_catalog(&boundary)
         .expect("blake acceptance lane should stay Metal-capable");
     let setup = build_blake_proving_setup::<Blake2sMerkleChannel>(log_size, config);
 
@@ -59,23 +58,17 @@ fn vendored_upstream_blake_example_proves_and_verifies_via_metal_backend() {
     tree_builder.extend_evals(simd_tree_to_metal(setup.interaction_trace().to_vec()));
     tree_builder.commit(prover_channel);
 
-    let scheduler_component =
-        bridge_registered_framework_component_to_metal(setup.scheduler_component(), lane);
+    let scheduler_component = catalog.framework(setup.scheduler_component());
     let round_components = setup
         .round_components()
         .iter()
-        .map(|component| bridge_registered_framework_component_to_metal(component, lane))
+        .map(|component| catalog.framework(component))
         .collect::<Vec<_>>();
-    let xor12_component =
-        bridge_registered_framework_component_to_metal(setup.xor12_component(), lane);
-    let xor9_component =
-        bridge_registered_framework_component_to_metal(setup.xor9_component(), lane);
-    let xor8_component =
-        bridge_registered_framework_component_to_metal(setup.xor8_component(), lane);
-    let xor7_component =
-        bridge_registered_framework_component_to_metal(setup.xor7_component(), lane);
-    let xor4_component =
-        bridge_registered_framework_component_to_metal(setup.xor4_component(), lane);
+    let xor12_component = catalog.framework(setup.xor12_component());
+    let xor9_component = catalog.framework(setup.xor9_component());
+    let xor8_component = catalog.framework(setup.xor8_component());
+    let xor7_component = catalog.framework(setup.xor7_component());
+    let xor4_component = catalog.framework(setup.xor4_component());
 
     let mut proving_component_refs = vec![&scheduler_component as &dyn ComponentProver<MetalBackend>];
     proving_component_refs.extend(

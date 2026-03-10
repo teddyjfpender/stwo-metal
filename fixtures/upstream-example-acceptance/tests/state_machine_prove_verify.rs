@@ -17,8 +17,7 @@ use stwo_metal::{
     MetalExecutionIntent, MetalRuntimeSupport,
 };
 use stwo_metal_upstream_example_acceptance::{
-    acceptance_registered_metal_lane, bridge_registered_framework_component_to_metal,
-    simd_tree_to_metal,
+    acceptance_bridge_catalog, simd_tree_to_metal,
 };
 
 #[test]
@@ -37,7 +36,7 @@ fn vendored_upstream_state_machine_proves_and_verifies_via_metal_backend() {
         "state_machine_example",
     )
     .expect("state machine workload boundary should be declared");
-    let lane = acceptance_registered_metal_lane(&boundary)
+    let catalog = acceptance_bridge_catalog(&boundary)
         .expect("state machine acceptance lane should stay Metal-capable");
     let initial_state: State = [M31::from_u32_unchecked(0), M31::from_u32_unchecked(0)];
     let mut intermediate_state = initial_state;
@@ -123,8 +122,8 @@ fn vendored_upstream_state_machine_proves_and_verifies_via_metal_backend() {
         claimed_sum_op1,
     );
 
-    let proving_component0 = bridge_registered_framework_component_to_metal(&component0, lane);
-    let proving_component1 = bridge_registered_framework_component_to_metal(&component1, lane);
+    let proving_component0 = catalog.framework(&component0);
+    let proving_component1 = catalog.framework(&component1);
     let metal_proof = prove::<MetalBackend, Blake2sMerkleChannel>(
         &[&proving_component0, &proving_component1],
         prover_channel,

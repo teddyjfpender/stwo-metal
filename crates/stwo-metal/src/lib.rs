@@ -53,8 +53,8 @@ pub mod planner {
     pub use crate::backend::metal::{
         plan_exemplar_metal_prove_by_name, plan_metal_operation, MetalComponentCapability,
         MetalComponentPlanInput, MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind,
-        MetalPlannerError, MetalSupportTier, UnknownMetalComponent,
-        UnsupportedGeneratedMetalRoute, UnsupportedMetalPlan, STWO_METAL_PLANNER_COMPONENTS_V1,
+        MetalPlannerError, MetalSupportTier, UnknownMetalComponent, UnsupportedGeneratedMetalRoute,
+        UnsupportedMetalPlan, STWO_METAL_PLANNER_COMPONENTS_V1,
     };
 }
 
@@ -94,6 +94,21 @@ pub mod witness {
 }
 
 #[cfg(feature = "prover")]
+pub use crate::backend::cuda::{BaseFieldVec, CudaBackend, SecureFieldVec};
+#[cfg(feature = "prover")]
+pub use crate::backend::metal::{
+    commit_line_evaluation_via_cpu_bridge, fold_circle_into_line_first_layer, fold_line,
+    materialize_line_evaluation_via_cpu_bridge, metal_backend_surface_detail,
+    metal_backend_surface_status, metal_runtime_error, metal_runtime_support,
+    permute_coset_to_circle_domain_bit_reversed, CpuLineCommitmentBridge, MetalBackend,
+    MetalBackendSurface, MetalBackendSurfaceStatus, MetalBaseFieldVec, MetalExtendedInnerFriProof,
+    MetalFriBlake2sSubpath, MetalFriCommitmentSlice, MetalFriFirstLayer, MetalFriInnerLayerRow,
+    MetalFriInnerLayerSequence, MetalFriInnerProofSlice, MetalFriLayerDecommitment,
+    MetalFriProofSlice, MetalFriProver, MetalInnerFriProof, MetalInnerFriProofAux,
+    MetalLineCommitment, MetalLineEvaluation, MetalRuntimeSupport, MetalSecureFieldVec,
+    STWO_METAL_BACKEND_SURFACES_V1,
+};
+#[cfg(feature = "prover")]
 pub use abi::{
     CudaPoseidonLookupElementsAbiV1, OwnedConstraintEvalAbiV1, StwoCudaLookupElements16AbiV1,
     StwoCudaPoseidonEvalAbiV1, StwoCudaWideFibonacciEvalAbiV1,
@@ -116,9 +131,8 @@ pub use planner::{
     CudaComponentCapability, CudaExecutionIntent, CudaExecutionPlan, CudaOperationKind,
     CudaPlannerError, CudaSupportTier, MetalComponentCapability, MetalComponentPlanInput,
     MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind, MetalPlannerError,
-    MetalSupportTier, UnknownCudaComponent, UnknownMetalComponent,
-    UnsupportedCudaPlan, UnsupportedGeneratedMetalRoute, UnsupportedMetalPlan,
-    STWO_METAL_PLANNER_COMPONENTS_V1,
+    MetalSupportTier, UnknownCudaComponent, UnknownMetalComponent, UnsupportedCudaPlan,
+    UnsupportedGeneratedMetalRoute, UnsupportedMetalPlan, STWO_METAL_PLANNER_COMPONENTS_V1,
 };
 #[cfg(feature = "prover")]
 pub use quotient::{
@@ -140,20 +154,4 @@ pub use workload::{
     MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalWorkloadBoundary,
     MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     MetalWorkloadStageAssignment,
-};
-
-#[cfg(feature = "prover")]
-pub use crate::backend::cuda::{BaseFieldVec, CudaBackend, SecureFieldVec};
-#[cfg(feature = "prover")]
-pub use crate::backend::metal::{
-    commit_line_evaluation_via_cpu_bridge, fold_circle_into_line_first_layer, fold_line,
-    materialize_line_evaluation_via_cpu_bridge, metal_backend_surface_detail,
-    metal_backend_surface_status, metal_runtime_error, metal_runtime_support,
-    permute_coset_to_circle_domain_bit_reversed, CpuLineCommitmentBridge, MetalBackend,
-    MetalBackendSurface, MetalBackendSurfaceStatus, MetalBaseFieldVec, MetalExtendedInnerFriProof,
-    MetalFriBlake2sSubpath, MetalFriCommitmentSlice, MetalFriFirstLayer, MetalFriInnerLayerRow,
-    MetalFriInnerLayerSequence, MetalFriInnerProofSlice, MetalFriLayerDecommitment,
-    MetalFriProofSlice, MetalFriProver, MetalInnerFriProof, MetalInnerFriProofAux,
-    MetalLineCommitment, MetalLineEvaluation, MetalRuntimeSupport, MetalSecureFieldVec,
-    STWO_METAL_BACKEND_SURFACES_V1,
 };

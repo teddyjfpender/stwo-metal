@@ -30,8 +30,9 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G3 second slice: widen registered Metal workload lanes across the current
-  acceptance matrix while keeping the remaining local adapters explicit`
+  `G3 third slice: consolidate the remaining acceptance-local bridges behind
+  one registered bridge catalog while keeping the framework CPU-domain bridge
+  explicit`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -51,6 +52,12 @@ Invariants:
   harness, but those paths still rely on acceptance-local adapters
 - the remaining framework-component bridge is still CPU-domain based and still
   lives only in the acceptance harness rather than a stable shared boundary
+- the acceptance harness now has one checked bridge-catalog surface, but the
+  durable home for that bridge law is still unresolved between a non-public
+  shared boundary and an upstream-facing path
+- full acceptance-matrix verification is currently blocked by the vendored
+  Stwo snapshot requiring an older nightly feature surface than the installed
+  local toolchains provide
 - there is not yet a declared policy for how generated output becomes durable
   and hand-tunable within this repository
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
@@ -60,21 +67,22 @@ Invariants:
   generated contract instead of driving it
 - superseded milestone history has to stay out of the active control surface so
   the new sequence remains legible
-- the first acceptance row now consumes the shared workload-boundary seam, but
-  the remaining framework and SIMD acceptance bridges still live only in the
-  acceptance harness even though they now require registered workload lanes
-- the shared planning seam is now stable enough for G3 work, but it is not yet
-  the default path for every acceptance adapter
+- the current acceptance rows now all consume registered workload lanes and one
+  checked bridge catalog, but the adapters themselves still live only in the
+  acceptance harness
+- the shared planning seam is now stable enough for G3 work, but the next
+  decision is about bridge ownership and laws rather than more lane
+  registration
 
 ## Next three deliverables
 
-1. Decide which remaining acceptance bridge becomes the first shared
-   backend-owned replacement boundary rather than another harness-local shim.
-2. Keep moving any new acceptance integration through registered workload lanes
-   instead of adding fresh local bridge contracts.
-3. Keep bounded CPU fallbacks and unsupported
-   generated-component behavior explicit until the new shared boundaries fully
-   replace the old ad hoc paths.
+1. Define the minimal non-public laws for a reusable acceptance bridge surface
+   so the current catalog does not drift into ad hoc test glue again.
+2. Decide whether the framework-backed bridge should move into an upstream-
+   facing boundary or a non-public shared internal boundary once the vendored
+   workspace conflict is resolved.
+3. Pin or refresh the vendored Stwo toolchain contract so acceptance-matrix
+   verification becomes deterministic again.
 
 ## Explicitly not doing now
 

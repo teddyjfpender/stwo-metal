@@ -66,8 +66,9 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G3 second slice: widen registered Metal workload lanes across the current
-acceptance matrix while keeping the remaining local adapters explicit`
+`G3 third slice: consolidate the remaining acceptance-local bridges behind one
+registered bridge catalog while keeping the framework CPU-domain bridge
+explicit`
 
 The active formal basis is:
 
@@ -123,6 +124,18 @@ The second G3 slice is now landed:
   bridges
 - the shared planner manifest now names those acceptance workloads explicitly
   enough to keep lane construction off ad hoc local constants
+
+The third G3 slice is now landed:
+
+- the acceptance harness now exposes one checked `AcceptanceMetalBridgeCatalog`
+  instead of a growing set of free bridge constructors
+- framework-backed and SIMD-backed acceptance rows now consume that same
+  registered bridge catalog
+- the attempted crate-owned `stwo-metal` bridge path was rejected as unsafe for
+  now because the vendored `constraint-framework` dependency introduces a
+  nested-workspace conflict in the current repository layout
+- the remaining honest gap is bridge ownership and law definition, not more
+  acceptance-lane registration
 
 ## Foundation already available
 

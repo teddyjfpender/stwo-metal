@@ -656,10 +656,9 @@ The first direct `MetalBackend` upstream-example proof uses an acceptance-local
 adapter around vendored `FrameworkComponent`. That remains the smallest safe
 step because it avoids a nested-workspace dependency conflict in the main
 `stwo-metal` crate and keeps the remaining CPU-domain quotient path explicit.
-The `wide_fibonacci` row now requires one registered Metal workload lane before
-constructing its local bridge, and `state_machine` plus `blake` now do the
-same. The adapter itself is still acceptance-local, but it is no longer fully
-unmoored from the shared backend contract.
+The framework-backed rows now consume one registered acceptance bridge catalog
+instead of ad hoc constructors, so the adapter surface is tighter than before,
+but the adapter itself is still acceptance-local and still CPU-domain backed.
 
 Current containment:
 
@@ -697,8 +696,8 @@ through `MetalBackend` with an acceptance-local adapter around vendored
 the first mixed-component upstream row, but it still lives only in the
 acceptance harness and currently depends on retained polynomial coefficients
 when converting Metal-owned traces into the bridged proving view. The row now
-also requires one registered Metal workload lane before constructing its local
-bridges.
+constructs that adapter only through the shared registered acceptance bridge
+catalog rather than a standalone helper, but the adapter still remains local.
 
 Current containment:
 
@@ -736,6 +735,8 @@ The acceptance harness now has two local proving adapters: one for vendored
 rows. Those adapters were the smallest correctness-preserving way to prove the
 named non-blocked upstream examples through `MetalBackend`, but they are still
 test-local boundaries rather than a cleaner shared internal proving surface.
+The harness now constrains them behind one checked registered bridge catalog,
+which improves the local contract but does not retire the ownership debt.
 
 Current containment:
 
@@ -762,6 +763,42 @@ surfaces that no longer require them.
 Target retirement point:
 
 - `T8`
+
+### TD-0025: The vendored Stwo snapshot currently requires an older nightly feature surface than the installed local toolchains provide
+
+- Status: `active`
+- Category: `verification environment`
+- Introduced: `2026-03-10`
+- Owner area: `acceptance verification`
+
+Why it exists now:
+
+The current vendored Stwo snapshot still relies on nightly feature usage around
+`array_chunks` and related APIs that no longer match the installed stable or
+nightly toolchains in this repository environment. That means full
+acceptance-matrix cargo verification can fail before any local acceptance-bridge
+changes are exercised.
+
+Current containment:
+
+- `vendor/stwo-upstream-dev-62b228e/crates/stwo`
+- local cargo test commands against `fixtures/upstream-example-acceptance`
+
+Risk if left in place:
+
+Roadmap execution can continue in code and docs, but deterministic verification
+of G3 acceptance changes remains partially blocked by toolchain drift rather
+than by backend semantics.
+
+Exit condition:
+
+The repository pins a compatible nightly toolchain, refreshes the vendored Stwo
+snapshot, or patches the vendored code to compile against the supported local
+toolchain contract.
+
+Target retirement point:
+
+- `G3`
 
 ### TD-0021: The end-to-end wide-fibonacci benchmark row is support-honest but still far from the declared `90 ms` target
 

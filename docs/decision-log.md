@@ -28,6 +28,52 @@ Superseded by:
 
 ## Entries
 
+### DEC-0078: Acceptance-local bridge construction must collapse behind one checked catalog before any shared-boundary move
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Before trying again to move acceptance bridges into `stwo-metal` or another
+shared home, the acceptance harness must first collapse them behind one checked
+registered-lane catalog. Framework-backed and SIMD-backed rows now construct
+their local adapters only through that catalog.
+
+Context:
+
+After the second G3 slice, every active acceptance row already required a
+registered Metal workload lane, but the bridge surface was still a set of free
+constructors. An attempted crate-owned move into `stwo-metal` hit a real
+nested-workspace conflict when adding vendored `stwo-constraint-framework` to
+the main crate. The smallest semantics-preserving step is therefore to tighten
+the acceptance-local surface first, keep the CPU-domain framework bridge
+explicit, and postpone the durable ownership move until that repository-shape
+constraint is addressed cleanly.
+
+Alternatives rejected:
+
+- keep widening a free-function acceptance bridge surface even after registered
+  lanes exist
+- claim that the current repository can safely host a shared framework bridge
+  despite the nested-workspace conflict
+- block all G3 progress until the durable shared bridge home is solved
+
+Impact:
+
+- acceptance rows now share one checked bridge-catalog contract
+- the next honest G3 work is bridge law/ownership definition, not more lane
+  registration
+- the vendored workspace conflict remains explicit debt rather than hidden
+  coupling
+
+Superseded by:
+
+- none
+
 ### DEC-0077: Acceptance workloads already in the matrix must register shared Metal lanes before building local bridges
 
 - Date: `2026-03-10`

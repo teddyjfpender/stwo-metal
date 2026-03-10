@@ -28,7 +28,9 @@ use stwo::prover::{
 use stwo_constraint_framework::{
     CpuDomainEvaluator, FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX,
 };
-use stwo_metal::{MetalBackend, MetalBaseFieldVec, MetalExecutionPlan, MetalWorkloadBoundary};
+use stwo_metal::{
+    MetalBackend, MetalBaseFieldVec, MetalExecutionPlan, MetalWorkloadBoundary,
+};
 
 #[derive(Debug)]
 pub enum SingleTraceCpuBridgeError {
@@ -134,6 +136,58 @@ pub fn acceptance_registered_metal_lane(
     }
 }
 
+/// Registered acceptance-bridge catalog.
+///
+/// Inputs:
+/// - one `AcceptanceMetalLane` obtained from a registered workload boundary
+///
+/// Outputs:
+/// - framework and SIMD bridge constructors bound to that checked lane
+///
+/// Invariants:
+/// - acceptance adapters are only created from registered Metal-capable lanes
+/// - workload routing stays explicit; no ad hoc bridge construction exists outside this catalog
+///
+/// Failure modes:
+/// - construction fails through `acceptance_registered_metal_lane` when the workload declaration
+///   is not Metal-capable
+#[derive(Clone, Copy, Debug)]
+pub struct AcceptanceMetalBridgeCatalog<'a> {
+    lane: AcceptanceMetalLane<'a>,
+}
+
+impl<'a> AcceptanceMetalBridgeCatalog<'a> {
+    pub fn new(lane: AcceptanceMetalLane<'a>) -> Self {
+        Self { lane }
+    }
+
+    pub fn workload_name(&self) -> &'static str {
+        self.lane.workload_name()
+    }
+
+    pub fn framework<E: FrameworkEval>(
+        self,
+        component: &'a FrameworkComponent<E>,
+    ) -> AcceptanceMetalFrameworkComponent<'a, E> {
+        let _ = self.workload_name();
+        AcceptanceMetalFrameworkComponent { inner: component }
+    }
+
+    pub fn simd(
+        self,
+        component: &'a dyn ComponentProver<SimdBackend>,
+    ) -> AcceptanceMetalSimdComponent<'a> {
+        let _ = self.workload_name();
+        AcceptanceMetalSimdComponent { inner: component }
+    }
+}
+
+pub fn acceptance_bridge_catalog(
+    boundary: &MetalWorkloadBoundary,
+) -> Result<AcceptanceMetalBridgeCatalog<'_>, AcceptanceMetalLaneError> {
+    acceptance_registered_metal_lane(boundary).map(AcceptanceMetalBridgeCatalog::new)
+}
+
 /// Local acceptance-only adapter for vendored upstream framework components.
 ///
 /// Inputs:
@@ -175,34 +229,6 @@ pub struct AcceptanceMetalFrameworkComponent<'a, E: FrameworkEval> {
 #[derive(Clone, Copy)]
 pub struct AcceptanceMetalSimdComponent<'a> {
     inner: &'a dyn ComponentProver<SimdBackend>,
-}
-
-pub fn bridge_framework_component_to_metal<E: FrameworkEval>(
-    component: &FrameworkComponent<E>,
-) -> AcceptanceMetalFrameworkComponent<'_, E> {
-    AcceptanceMetalFrameworkComponent { inner: component }
-}
-
-pub fn bridge_registered_framework_component_to_metal<'a, E: FrameworkEval>(
-    component: &'a FrameworkComponent<E>,
-    lane: AcceptanceMetalLane<'a>,
-) -> AcceptanceMetalFrameworkComponent<'a, E> {
-    let _ = lane.workload_name();
-    AcceptanceMetalFrameworkComponent { inner: component }
-}
-
-pub fn bridge_simd_component_to_metal(
-    component: &dyn ComponentProver<SimdBackend>,
-) -> AcceptanceMetalSimdComponent<'_> {
-    AcceptanceMetalSimdComponent { inner: component }
-}
-
-pub fn bridge_registered_simd_component_to_metal<'a>(
-    component: &'a dyn ComponentProver<SimdBackend>,
-    lane: AcceptanceMetalLane<'a>,
-) -> AcceptanceMetalSimdComponent<'a> {
-    let _ = lane.workload_name();
-    AcceptanceMetalSimdComponent { inner: component }
 }
 
 /// Proves and verifies one single-trace upstream component through the stock
@@ -704,7 +730,9 @@ fn accumulate_pointwise_cpu<E: FrameworkEval>(
 #[cfg(test)]
 mod tests {
     use super::{acceptance_registered_metal_lane, AcceptanceMetalLaneError};
-    use stwo_metal::{declare_exemplar_metal_workload_boundary, MetalExecutionIntent, MetalExecutionPlan};
+    use stwo_metal::{
+        declare_exemplar_metal_workload_boundary, MetalExecutionIntent, MetalExecutionPlan,
+    };
 
     #[test]
     fn registered_lane_accepts_metal_capable_boundary() {

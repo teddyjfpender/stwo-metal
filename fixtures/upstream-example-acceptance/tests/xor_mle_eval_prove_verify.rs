@@ -25,8 +25,7 @@ use stwo_metal::{
     MetalExecutionIntent, MetalRuntimeSupport,
 };
 use stwo_metal_upstream_example_acceptance::{
-    acceptance_registered_metal_lane, bridge_registered_framework_component_to_metal,
-    bridge_registered_simd_component_to_metal, simd_tree_to_metal,
+    acceptance_bridge_catalog, simd_tree_to_metal,
 };
 
 #[test]
@@ -47,7 +46,7 @@ fn vendored_upstream_xor_mle_eval_example_proves_and_verifies_via_metal_backend(
         "xor_example",
     )
     .expect("xor workload boundary should be declared");
-    let lane = acceptance_registered_metal_lane(&boundary)
+    let catalog = acceptance_bridge_catalog(&boundary)
         .expect("xor acceptance lane should stay Metal-capable");
 
     let log_size = N_VARIABLES as u32;
@@ -139,9 +138,8 @@ fn vendored_upstream_xor_mle_eval_example_proves_and_verifies_via_metal_backend(
         MLE_EVAL_TRACE,
     );
 
-    let metal_coeffs_component =
-        bridge_registered_framework_component_to_metal(&mle_coeffs_col_component, lane);
-    let metal_eval_component = bridge_registered_simd_component_to_metal(&mle_eval_component, lane);
+    let metal_coeffs_component = catalog.framework(&mle_coeffs_col_component);
+    let metal_eval_component = catalog.simd(&mle_eval_component);
     let proving_components: [&dyn ComponentProver<MetalBackend>; 2] =
         [&metal_coeffs_component, &metal_eval_component];
 
