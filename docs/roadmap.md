@@ -8,574 +8,165 @@ Inputs:
 
 - the current `stwo-metal` repository state
 - the local vendored Stwo snapshot under `vendor/`
-- the working assumption that the target is a Rust frontend plus a Metal
-  backend capable of proving Stwo traces quickly and correctly on Apple Silicon
-- the upstream Stwo skill registry and relevant skills under
-  `starkware-libs/stwo/.claude/skills`
+- the accepted architecture contract in
+  [`dn-0002-generic-backend-and-codegen-contract.md`](./dn-0002-generic-backend-and-codegen-contract.md)
+- the engineering requirement that examples act as acceptance workloads rather
+  than the implementation strategy
 
 Outputs:
 
-- the architecture direction we are planning toward
-- the milestones we will use to get there
-- the rules for what we will and will not optimize early
+- the architecture direction for the backend
+- the milestone sequence for generic and generated support
+- the rules separating correctness, production, and benchmark work
 
-## Design intent
+## Product definition
 
-The target shape is:
+`stwo-metal` is the Apple Silicon and Metal implementation of a generic Stwo
+GPU backend architecture.
 
-- Rust host orchestration
-- native Metal runtime ownership on the host
-- `.metal` compute kernels for the hot path
-- correctness first, then speed
-- unchanged Stwo workload logic except for backend wiring at the proving seam
+The product goal is:
 
-The repository should become a real Metal backend, not a renamed CUDA fork and
-not an unbounded GPU-experiment sandbox.
+- Stwo or a Stwo-owned framework/codegen layer produces a proving workload
+- `stwo-metal` proves that workload on GPU through a generic or generated lane
+- the stock verifier verifies the proof unchanged
 
-The primary product definition is:
+This repository remains Metal-specific in implementation, but the contract is
+intentionally backend-family generic so the same producer/consumer model can
+inform sibling backends such as `stwo-cuda`.
 
-- take a Stwo trace or example workload produced the normal Stwo way
-- prove it with `MetalBackend`
-- verify the proof with the standard verifier
+## Architecture direction
 
-The architecture driver is backend completeness, not custom benchmark rows.
+The accepted architecture has three layers:
 
-The current native-port driver after example-backed acceptance is:
+1. `Generic backend substitution`
+   - correctness lane
+   - thin backend wiring through public Stwo proving surfaces
+2. `Generated fast path`
+   - production lane
+   - Stwo/framework/codegen emits a machine-readable proving artifact consumed
+     by the backend
+3. `Example-specific wrappers`
+   - temporary compatibility shims only
+   - tracked as debt and never treated as the architecture
 
-- mirror the relevant `stwo-metal-sys/cuda` structure into
-  `stwo-metal-sys/metal`
-- port hot-path native files in a documented sequence
-- keep Metal file names and logical boundaries aligned with the CUDA source so
-  parity, benchmarking, and review stay legible
-- mark each mirrored Metal file as `scaffolded`, `parity-tested`, or
-  `benchmark-active` rather than implying support just by file presence
+The architectural source of truth is the proving-component contract, not any
+single example or benchmark harness.
 
-## Benchmark north star
+## Planning rules
 
-The first explicit benchmark objective is:
+- Examples are the test matrix, not the implementation strategy.
+- Benchmarks measure the generic lane and generated lane separately.
+- Generated support must fail closed when the artifact is absent or
+  incompatible.
+- Generated outputs must remain durable and hand-tunable.
+- The vendored Stwo snapshot remains the semantic authority.
+- Deterministic CPU-oracle validation remains the default correctness gate for
+  bounded Metal work.
+
+## Acceptance matrix
+
+The examples remain valuable, but only as acceptance workloads.
+
+| Workload | Role | Current state | Long-term role |
+| --- | --- | --- | --- |
+| `blake` | acceptance | `complete` | validates lookup-heavy generic/backend support |
+| `poseidon` | acceptance | `blocked_upstream_protocol` | validates lifted-protocol compatibility once upstream permits it |
+| `state_machine` | acceptance | `complete` | validates multi-tree and multi-component support |
+| `wide_fibonacci` | acceptance and perf reference | `complete` | validates generic path and supports benchmark tracking |
+| `xor` | acceptance | `complete` | validates mixed-component and MLE/GKR support |
+| `stark-v` | future hardening workload | `planned` | validates the stable contract against a real downstream consumer |
+
+## Benchmark lane
+
+The benchmark north star remains:
 
 - `wide_fibonacci_prove_verify_v1`
 - `log_n_instances = 20`
 - `n_columns = 100`
-- project-supplied reference goal: approach `90 ms`
-- reference row source for that goal: RTX 4090 CUDA benchmark history
+- reference goal: approach the project-supplied `90 ms` RTX 4090 row
 
-This benchmark target is a planning objective, not a correctness gate, not the
-architecture source of truth, and not the only support claim for `stwo-metal`.
-The row now executes end to end through `MetalBackend` on Apple Silicon, but
-its current best measured result is still far from the target:
-`wide_fibonacci_prove_verify_v1 = 1456.654041 ms` at `log_n_instances = 20`,
-`n_columns = 100`, `cargo_profile = release`, `STWO_METAL_MODE=metal-prod`,
-`warmups = 0`, and `samples = 1`, with `threads = 14`.
+Benchmark rules:
 
-## Example-backed acceptance focus
+- benchmark the generic passing subset separately from the generated fast path
+- do not use benchmark-only wrappers to define the backend contract
+- treat performance work as subordinate to the frozen contract
 
-The primary acceptance direction is to prove upstream Stwo examples with
-`MetalBackend` unchanged except for backend wiring.
+## Producer/consumer contract
 
-Target acceptance set:
+The backend target is no longer “arbitrary Rust workload inference.”
 
-- `blake`
-- `poseidon`
-- `state_machine`
-- `wide_fibonacci`
-- `xor`
+The target contract is:
 
-Current local input:
+- generic over Stwo-defined and codegen-defined proving components
+- driven by a machine-readable producer artifact
+- consumed through a backend registration and execution-plan boundary
 
-- the upstream `crates/examples` tree is now pinned locally under the vendored
-  snapshot, so the acceptance matrix is executable against an auditable input
+The required fields and laws live in:
 
-Acceptance matrix:
+- [`dn-0002-generic-backend-and-codegen-contract.md`](./dn-0002-generic-backend-and-codegen-contract.md)
 
-| Example | Role | Current state | Exit signal |
+## Milestone map
+
+This roadmap supersedes the earlier benchmark-led sequence as the active
+planning source. Earlier milestones remain useful historical work, but the
+current program now sequences around the generic/generated contract.
+
+| Order | Milestone | Status | Exit condition |
 | --- | --- | --- | --- |
-| `blake` | acceptance workload | `complete` | proves and verifies through `MetalBackend` with unchanged workload logic |
-| `poseidon` | acceptance workload | `blocked_upstream_protocol` | proves and verifies through `MetalBackend` with unchanged workload logic once the vendored lifted protocol supports the example’s AIR degree shape |
-| `state_machine` | acceptance workload | `complete` | proves and verifies through `MetalBackend` with unchanged workload logic |
-| `wide_fibonacci` | acceptance workload and perf reference | `complete` | proves and verifies through `MetalBackend`; benchmark remains secondary evidence |
-| `xor` | acceptance workload | `complete` | proves and verifies through `MetalBackend` with unchanged workload logic |
+| G0 | Freeze the generic backend contract | `completed` | the architecture distinguishes generic substitution, generated fast path, and temporary wrappers |
+| G1 | Freeze the codegen input schema and fail-closed contract | `completed` | the required producer artifact, consumer subset, and unsupported-component behavior are specified |
+| G2 | Build the backend planning and registration surface | `in_progress` | `stwo-metal` owns a stable internal artifact-registry and execution-plan boundary with explicit schema compatibility checks |
+| G3 | Move acceptance coverage onto the stable generic path | `planned` | example-backed support no longer depends on architecture-local example shims where shared backend boundaries should exist |
+| G4 | Land the generated fast-path registration and ABI inventory | `planned` | generated artifacts can register component identity, ABI, build inventory, and specialization keys through a stable surface |
+| G5 | Lower generated artifacts into Metal runtime execution plans | `planned` | generated proving components drive Metal trace, evaluation, lookup, quotient, FRI, and commitment scheduling through the stable planning boundary |
+| G6 | Separate benchmark lanes and optimize against the right target | `planned` | generic and generated benchmark rows are measured separately and optimization work no longer conflates them |
+| G7 | Retire temporary compatibility shims | `planned` | acceptance-local adapters and example-specific wrappers are removed or reduced to non-architectural fixtures |
+| G8 | Harden the contract against `stark-v` workloads | `planned` | a real downstream Stwo consumer uses the same generic/generated contract successfully |
 
-## Planning assumptions
+## Active work definition
 
-These are planning assumptions, not yet final implementation commitments:
+The next active implementation work is not “more example multiplication” and
+not “more benchmark-local seams.”
 
-1. The primary architecture hypothesis is Rust host orchestration plus native
-   Metal and `.metal` kernels.
-2. The host binding layer should stay close to native Metal semantics rather
-   than hide them behind a large cross-platform runtime too early.
-3. The local vendored Stwo snapshot is the semantic source of truth for proof
-   behavior while the backend changes.
-4. Deterministic unit tests against the local vendored Stwo CPU execution are
-   the default correctness oracle for bounded Metal work.
-5. Upstream examples are acceptance workloads, not workload-specific rewrite
-   targets.
+The next active work is:
 
-## Lessons applied from `stwo-cuda`
+- define the stable internal artifact-registry surface
+- define the stable execution-plan surface
+- bind current Metal runtime/kernel ownership to those surfaces
+- keep examples only as validation and benchmark inputs
 
-- Keep one active tranche at a time.
-- Do not use benchmark runners as the primary diagnosis surface.
-- Freeze interfaces before broad implementation.
-- Keep native ownership, ABI, and memory rules explicit.
-- Treat temporary bridges as debt with retirement points.
-- Prefer the smallest correctness-preserving cut over wide speculative rewrites.
+## Native runtime direction
+
+The current mirrored Metal runtime port remains useful and stays in scope, but
+it now serves the generated and generic backend contract rather than defining
+it.
+
+Native implementation rules remain:
+
+- use `.metal` for hot kernels
+- keep native ownership and ABI explicit
+- keep mirrored CUDA/Metal structure legible where it helps review and parity
+- prefer reusable proving-operation kernels over workload-specific kernels
 
 ## Upstream skill alignment
 
 `stwo-metal` adopts the upstream Stwo skill registry as a process input for
-domain vocabulary, review discipline, and testing focus.
+domain vocabulary, testing strategy, and soundness review.
 
 Minimum required alignment:
 
 - use the upstream skill registry as the entry point for theory and review
   loading
-- use the Rust codebase conventions skill when shaping Rust-side backend code
-- use the testing strategy skill when defining test placement and coverage
-- use the soundness review checklist for any soundness-critical change
-- use the most specific Tier 1 mathematical skill before modifying
-  theory-grounded components
-
-For T2 and T3 specifically:
-
-- host and runtime design should follow upstream Stwo terminology where it
-  applies cleanly
-- unit-test planning should stay aligned with the upstream testing strategy
-- any future soundness-critical proving-path change must be reviewed against the
-  upstream soundness checklist before approval
+- use the testing strategy and soundness guidance for any contract or
+  soundness-sensitive backend change
+- keep design-note vocabulary aligned with Stwo’s proving terminology
 
 ## Program invariants
 
-- The public crate surface remains minimal and stable.
+- Public backend interfaces remain minimal and stable.
 - Proof semantics do not change unless an approved design note says they do.
-- Host-safe development must work without pretending the Metal backend already
-  exists.
-- We do not create a second semantic authority beside the local vendored Stwo
-  snapshot.
-- New Metal work must validate against the vendored Stwo CPU path before any
-  performance claim matters.
-- Performance work must follow a working correctness path.
-
-## Architecture direction
-
-### Primary path
-
-Plan around:
-
-- Rust frontend and orchestration
-- native Metal device, queue, buffer, and pipeline management
-- `.metal` kernels for hot proving operations
-
-Why this is the default:
-
-- it gives the clearest control over Apple GPU execution
-- it keeps the runtime contract close to the actual platform
-- it lets us write the real hot path directly instead of forcing a Rust-only
-  GPU authoring model where that model is not buying us correctness or speed
-
-Practical rule:
-
-- if a hot path needs a Metal kernel, writing it in `.metal` is the default
-  acceptable choice
-- if a bounded Metal cut lacks a deterministic unit test against the vendored
-  CPU path, it is not ready
-
-## Native port roadmap
-
-The native runtime work now returns to the copied CUDA subsystem directly.
-
-Primary mirroring rule:
-
-- for the active performance tranche, create and maintain matching Metal file
-  names beside the CUDA source wherever a native Metal replacement is intended
-- preserve conceptual module boundaries and naming even if the Metal
-  implementation differs internally
-- do not mark a mirrored file as complete until it has deterministic parity
-  evidence against the vendored CPU path and, where relevant, benchmark
-  evidence against the current CUDA-backed historical reference
-
-Active mirrored hot-path set:
-
-- `fields`
-- `twiddles`
-- `rfft`
-- `ifft`
-- `poly_utils`
-- `quotients`
-- `fold_circle_into_line`
-- `fold_line`
-- `prefix_sum`
-- `mle`
-- `gkr`
-
-Port order for the next native tranche:
-
-1. `fields`
-2. `twiddles`
-3. `rfft`
-4. `ifft`
-5. `poly_utils`
-6. `quotients`
-7. `fold_circle_into_line`
-8. `fold_line`
-9. `mle`
-10. `gkr`
-11. `prefix_sum`
-
-Why this order:
-
-- it follows the benchmark-critical proving path from field storage and domain
-  material through FFT/poly machinery into quotient and fold operations, then
-  into lookup-heavy proving support
-- it keeps the earliest performance work tied to the widest reusable native
-  surfaces rather than to workload-specific kernels
-- it mirrors the CUDA subsystem in the same order a reviewer will use to check
-  semantic equivalence
-
-## Milestone map
-
-| Order | Milestone | Status | Exit condition |
-| --- | --- | --- | --- |
-| T0 | Reset repository identity and process docs | `completed` | `stwo-metal` is isolated and the docs set is clean |
-| T1 | Freeze the backend-neutral Rust boundary and architecture direction | `completed` | roadmap is approved, default stack is explicit, and the public boundary to preserve is named |
-| T2 | Define the Apple Silicon host contract | `completed` | supported host modes, toolchain assumptions, and fail-safe behavior are approved |
-| T3 | Design the native `stwo-metal-sys` Metal runtime | `completed` | device, queue, memory, ABI, and build ownership are approved in a design note |
-| T4 | Land the first bounded Metal primitive path | `completed` | one reusable GPU-backed primitive exists with deterministic CPU-oracle validation |
-| T5 | Prove one bounded Stwo trace path through Metal | `completed` | one declared trace or proving sub-path runs correctly on the Metal backend |
-| T5a | Rebaseline around generic backend completion and unchanged upstream examples | `completed` | roadmap, controller, plan, and done criteria treat upstream example proving as the primary deliverable |
-| T6 | Restore one truthful end-to-end supported workload | `completed` | one declared workload proves end to end on Metal with matching semantics and declared measurement |
-| T7 | Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring | `completed` | the accepted upstream example set proves and verifies through `MetalBackend` without workload-specific rewrites |
-| T8 | Mirror and port the native CUDA hot path into Metal for benchmark-grade performance work | `in_progress` | the selected native `cuda/` hot-path files exist under `metal/` with tracked status, deterministic parity retirement criteria, and implementation work advancing in the declared order |
-
-## Milestone detail
-
-### T1: Freeze the boundary and architecture direction
-
-Required outputs:
-
-- approved roadmap
-- decision on the default Metal stack direction
-- named public API and boundary that should survive backend replacement
-- initial debt register for copied CUDA residue
-- validation rule that new Metal work must compare against the vendored CPU
-  reference
-
-Explicitly not part of T1:
-
-- kernel translation
-- benchmark chasing
-- dependency scouting for alternative GPU stacks
-
-### T2: Define the Apple Silicon host contract
-
-Required outputs:
-
-- supported host modes for development, compile-only, and Metal-enabled runs
-- truthful behavior on machines with no Metal-capable execution path
-- toolchain assumptions and environment variables
-- first-success definition for the Metal lane
-- test-oracle rules for comparing Metal results with vendored CPU execution
-
-### T3: Design the native Metal runtime
-
-Required outputs:
-
-- host binding choice
-- runtime ownership model for devices, queues, buffers, and pipeline state
-- ABI surface between Rust and kernels
-- memory-layout and synchronization rules
-- failure behavior and validation plan
-
-### T4: Land the first bounded Metal primitive path
-
-Selection rule:
-
-- choose the narrowest primitive that is reusable and has a clear CPU oracle
-- prefer a primitive that exercises the real Metal runtime boundary without
-  forcing the whole proving path to exist first
-
-Candidate classes:
-
-- buffer and column transfer primitives
-- simple field-vector operations
-- one small polynomial or trace-support primitive
-
-Current completion evidence:
-
-- native Metal build and runtime scaffolding exists in `stwo-metal-sys`
-- `.metal` compilation and embedded `.metallib` loading are live on Apple
-  Silicon
-- `BaseField` bit reversal is implemented through a native Metal kernel
-- deterministic parity tests compare the Metal result against the vendored CPU
-  oracle
-
-### T5: Prove one bounded Stwo trace path through Metal
-
-Required outputs:
-
-- one declared trace or proving sub-path uses the Metal backend
-- deterministic parity checks against the local vendored CPU reference
-- explicit unsupported behavior outside the bounded path
-
-Current next slices inside T5:
-
-- `SecureField` column operations now exist beside the `BaseField` Metal lane
-- one bounded poly support primitive now exists:
-  coset-order to circle-domain bit-reversed `BaseField` permutation
-- the first declared T5 proving sub-path candidate is:
-  FRI first-layer fold from a bit-reversed secure circle evaluation into the
-  first line layer
-- the bounded `fold_circle_into_line` first-layer primitive now exists with
-  deterministic vendored CPU parity
-- the bounded `fold_line` primitive now exists with deterministic vendored CPU
-  parity for repeated host-orchestrated folds
-- the first inner FRI-layer native line-evaluation and Merkle commitment
-  boundary now exists with deterministic vendored CPU parity
-- the first inner FRI-layer native query and decommit boundary now exists with
-  deterministic vendored CPU parity
-- the first inner FRI layer is now packaged as a bounded native proof-facing
-  row with stable root and decommit semantics
-- a bounded native inner-layer FRI sequence now exists with deterministic
-  vendored CPU parity
-- a bounded FRI commitment slice now exists with deterministic vendored CPU
-  parity for the last-layer polynomial under the configured degree bound
-- a bounded proof-facing inner FRI proof slice now exists on top of the
-  commitment slice without implying first-layer support
-- a bounded first-layer circle commitment and decommit boundary now exists with
-  deterministic vendored CPU parity
-- a bounded full FRI proof candidate now exists by composing the native
-  first-layer proof boundary with the inner proof slice
-- a bounded transcript-owned Metal FRI prover now exists with vendored channel
-  ordering and deterministic CPU parity
-- one declared bounded Blake2s FRI proving sub-path now exists on top of that
-  transcript-owned prover
-- a manifest-driven workload planner now classifies exemplar Stwo workloads as
-  `CpuOnly`, `MetalFriHybrid`, or `MetalFull`
-- one declared hybrid workload boundary now exists for the exemplar workload
-  set, with explicit ownership for witness, quotient, PCS, and Metal FRI
-  stages
-- one executable handoff now exists from a CPU-owned FRI-ready evaluation into
-  the declared hybrid workload boundary, with deterministic CPU-oracle parity
-- one executable handoff now exists from a CPU-owned quotient evaluation into
-  the declared hybrid workload boundary, with deterministic CPU-oracle parity
-- the `wide_fibonacci` benchmark target is now declared formally at
-  `log_n_instances = 20` and `n_columns = 100`, with a project-supplied
-  `90 ms` RTX 4090 reference goal
-- a bounded native `.metal` wide-fibonacci trace-generation path now exists
-  with deterministic CPU-recurrence parity
-- the standalone `wide_fibonacci_trace` benchmark fixture now enters through
-  the native Metal trace path rather than the inherited CUDA witness path
-- the `wide_fibonacci_prove` benchmark now uses that native Metal trace path
-  for its trace-generation phase before an explicit bridge back into the
-  inherited CUDA proving lane
-- one explicit CPU-owned wide-fibonacci witness handoff now exists for
-  `fibonacci_example`, feeding the native Metal trace boundary before quotient
-  accumulation
-- one bounded native `.metal` wide-fibonacci quotient-accumulation primitive
-  now exists with deterministic CPU-oracle parity
-- the `wide_fibonacci_prove` benchmark now uses that native Metal quotient
-  path before an explicit bridge back into the inherited CUDA proving lane
-- the explicit CPU bridge remains available only as a bounded validation and
-  comparison surface
-
-T5 is now treated as completed bounded proving-surface groundwork. The next
-work is no longer to keep extending benchmark-specific rows by default; it is
-to re-anchor the program around generic backend completion and unchanged
-upstream example proving.
-
-### T5a: Rebaseline around generic backend completion and unchanged upstream examples
-
-Required outputs:
-
-- controller, roadmap, program plan, and done criteria all name generic Stwo
-  proving with `MetalBackend` as the primary deliverable
-- benchmark rows are explicitly demoted to supporting validation and
-  performance surfaces
-- one formal milestone exists for proving upstream Stwo examples unchanged
-  except for backend wiring
-- an explicit acceptance matrix exists for the target upstream example set
-- further bespoke benchmark-path expansion is frozen until this correction is
-  written down
-
-### T6: Restore one truthful end-to-end supported workload
-
-Required outputs:
-
-- one named workload is support-honest
-- correctness is demonstrated before throughput claims
-- performance reporting uses a declared workload and environment
-
-Current completed slice:
-
-- the standalone `wide_fibonacci_prove` row now executes through
-  `MetalBackend` end to end and verifies successfully
-- the first declared Apple Silicon measurement for that support-honest row is
-  `wide_fibonacci_prove_verify_v1 = 45616.501417 ms`, with
-  `prove_ms = 45611.008417` and `verify_ms = 5.492999999999999`, at
-  `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
-  `warmups = 0`, `samples = 1`, and `threads = 14`
-- the benchmark boundary is therefore closed as a correctness and execution
-  claim, while the performance gap remains explicit debt rather than implied
-  completion
-
-### T7: Prove upstream Stwo examples with `MetalBackend` unchanged except for backend wiring
-
-Required outputs:
-
-- the accepted upstream example set is available in the repo or otherwise
-  pinned as an auditable input
-- each example can be proved with `MetalBackend` and verified with the stock
-  verifier
-- workload logic remains upstream-owned; backend wiring is the only intended
-  delta
-- failures are tracked per example as backend-completion gaps rather than
-  patched through workload-specific rewrites
-
-Current first implementation slice:
-
-- the upstream `stwo-examples` source is now pinned locally under the vendored
-  snapshot with recorded source provenance
-- one isolated acceptance fixture now consumes the vendored upstream
-  `wide_fibonacci` example unchanged except for backend wiring
-- that first acceptance fixture proves the example can feed the current native
-  Metal trace boundary without passing through a bespoke benchmark harness
-- a second acceptance fixture now proves and verifies the unchanged vendored
-  `wide_fibonacci` component by bridging the native Metal trace into the stock
-  CPU prover and verifier
-  this is explicit bridge-backed execution, not yet direct `MetalBackend`
-  substitution
-- the single-trace Blake2s acceptance harness is now factored so future
-  example-backed CPU-bridge prove/verify rows do not require bespoke test-local
-  proving code
-- a follow-on acceptance slice now proves and verifies the unchanged vendored
-  `wide_fibonacci` component through direct `MetalBackend` substitution with
-  the stock prover and verifier
-- the remaining framework-component bridge is localized to an acceptance-only
-  adapter rather than the earlier outer CPU prove helper
-- a further acceptance slice now proves and verifies the unchanged vendored
-  `state_machine` example through direct `MetalBackend` substitution, covering
-  a multi-tree and multi-component proving row
-- a further acceptance slice now proves and verifies the unchanged vendored
-  `blake` example through direct `MetalBackend` substitution, covering a
-  lookup-heavy row with vendored setup replay for statement mixing and
-  interaction-element transcript flow
-- a further acceptance slice now proves and verifies the unchanged vendored
-  `xor` MLE-eval row through direct `MetalBackend` substitution, covering a
-  mixed-component path with one framework-backed component and one
-  non-framework prover component
-
-Current completion note inside T7:
-
-- the first backend-completion bridge tranche is now landed and later narrowed:
-  `MetalBackend` implements `PolyOps`, `AccumulationOps`, and `QuotientOps`
-  over Metal-owned columns and evaluations, with only the bounded
-  small-domain `PolyOps` fallback still explicitly CPU-backed
-- the next backend-completion bridge tranche is now landed too:
-  `MetalBackend` implements `FriOps` through an explicit CPU bridge that
-  repacks Metal-owned secure columns into the bounded Metal fold kernels and
-  keeps `decompose` on the vendored CPU backend
-- the lookup bridge tranche is now landed:
-  `MetalBackend` implements `MleOps` natively and `GkrOps` through native
-  multilinear and bounded lookup-oracle kernels, with only bounded host-side
-  polynomial reconstruction left after the native oracle sums
-- the Blake2s channel bridge tranche is now landed:
-  `MetalBackend` implements the Blake2s `BackendForChannel` surface through
-  direct host-side Blake2s hashing over Metal-owned proving surfaces, with no
-  `CpuBackend` dependency
-- those slices are accepted because they shrink the generic backend gap
-  without pretending the remaining prover traits are native Metal yet
-- `MetalBackend` now satisfies the generic Stwo `Backend` trait and the
-  Blake2s `BackendForChannel` surface
-- the next honest blocker is no longer adding another named example row; it is
-  deciding what to do with the acceptance-local framework and SIMD-component
-  adapters now that all named non-blocked rows are covered
-- `poseidon` is not the immediate next row because the vendored upstream
-  snapshot already marks its lifted proving path unsupported for the current
-  AIR degree shape
-- the remaining acceptance-local adapter cleanup now lives as explicit debt and
-  does not block T7 completion for the current non-blocked example set
-- T7 is now complete for the current vendored target set because the
-  non-blocked rows `wide_fibonacci`, `state_machine`, `blake`, and `xor`
-  prove and verify through `MetalBackend`, while `poseidon` remains explicitly
-  blocked by the vendored lifted-protocol AIR-degree limit rather than by a
-  known Metal-backend gap
-
-### T8: Mirror and port the native CUDA hot path into Metal for benchmark-grade performance work
-
-Required outputs:
-
-- the active CUDA hot-path files have matching names under
-  `crates/stwo-metal-sys/metal`
-- each mirrored Metal file has an explicit implementation status
-- the port order is declared and tracked rather than inferred from whichever
-  file was touched most recently
-- parity and benchmark retirement criteria are explicit before each native file
-  graduates from scaffold to support claim
-
-Current first implementation slice:
-
-- add the structural mirror for the first hot-path set under
-  `crates/stwo-metal-sys/metal`
-- keep the current compile-active Metal set explicit
-- begin file-by-file implementation in the declared order starting at
-  `fields`, then `twiddles`, then FFT/poly support
-
-Current next slice inside T8:
-
-- keep the mirrored native subsystem in place and explicit
-- treat `fields.metal` and `twiddles.metal` as compile-active,
-  parity-tested replacements
-- treat `poly_utils.metal`, `rfft.metal`, and `ifft.metal` as the next
-  compile-active, parity-tested FFT/poly tranche on top of the native twiddle
-  boundary
-- treat mirrored `quotients.metal`, `fold_circle_into_line.metal`, and
-  `fold_line.metal` as the active native proving lane after the FFT core
-- treat `mle.metal` as compile-active and parity-tested, with the previous
-  `MleOps` CPU bridge retired
-- treat `gkr.metal` as compile-active and parity-tested for eq-eval generation,
-  next-layer construction, and bounded oracle-sum evaluation
-- treat `PolyOps::extend` and `split_at_mid` as native Metal-owned operations,
-  and treat point evaluation and barycentric helpers as native Metal-owned too,
-  leaving only the bounded small-domain evaluate/interpolate fallback as the
-  remaining explicit `PolyOps` CPU path
-- record the first Apple Silicon native trace baseline for the benchmark north
-  star: `wide_fibonacci_trace_generation_v1 = 66.61 ms` at
-  `log_n_instances = 20`, `n_columns = 100`, `STWO_METAL_MODE=metal-dev`,
-  `warmups = 0`, `samples = 1`
-- treat the wider `FriOps` secure-column repacking and host-side fold
-  accumulation path as Metal-owned, so the legacy explicit `FriOps` CPU bridge
-  is retired
-- treat `prefix_sum.metal` as compile-active and parity-tested support rather
-  than leaving any mirrored hot-path file scaffold-only
-- treat the lifted Blake2s Merkle and proof-of-work boundaries as direct
-  Metal-owned host orchestration with no `CpuBackend` dependency
-- record the current Apple Silicon end-to-end benchmark result for the
-  declared north-star row: `wide_fibonacci_prove_verify_v1 = 1456.654041 ms`,
-  with the dominant prove costs currently in `prove_core_prove_values_ms`,
-  `trace_commit_ms`, `prove_core_composition_generation_ms`, and
-  `trace_commit_merkle_ms`
-- enable the `parallel` proving surface for the standalone Metal benchmark
-  fixture and use the resulting measured row as the new optimization baseline
-- with the mirrored hot-path set complete and the benchmark boundary closed,
-  move the next T8 decision to measured optimization of the dominant prove
-  stages, host-owned commitment cost, and the remaining bounded CPU fallback
-
-## Sequencing rules
-
-- Do not widen the public API before T1 is settled.
-- Do not implement the native runtime before T2 and T3 are approved.
-- Do not optimize for speed before T5 correctness exists.
-- Do not let benchmark harnesses become the primary debugging surface.
-- Do not accept hidden CPU fallbacks in the supported Metal path.
-- Do not land new Metal execution paths without deterministic unit-test parity
-  against the vendored CPU reference.
-
-## Current next three planning deliverables
-
-1. Reduce the dominant prove-stage costs in the end-to-end
-   `wide_fibonacci_prove_verify_v1` row, starting from the now-dominant
-   `prove_core_prove_values_ms` path above the native point-evaluation lane.
-2. Keep the completed mirrored native hot-path set parity-tested and
-   support-honest while it carries benchmark-active work.
-3. Retire the next benchmark-relevant structural debt, starting with the
-   remaining prove-values grouping/scattering work, the upper
-   commitment/hash path, or the bounded small-domain `PolyOps` fallback.
+- Examples validate the backend; they do not define it.
+- Generated paths are optional accelerators layered on a truthful generic lane.
+- Unsupported generated components fail closed.
+- Performance work must follow a working correctness path and must identify
+  whether it measures the generic lane or generated lane.

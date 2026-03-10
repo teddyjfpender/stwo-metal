@@ -34,6 +34,8 @@ is planned, controlled, reviewed, and changed.
 
 - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md):
   formal basis for T2 and T3
+- [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md):
+  formal basis for the generic backend, generated fast path, and acceptance-fixture split
 
 ## Rules
 

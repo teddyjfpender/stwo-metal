@@ -28,6 +28,44 @@ Target retirement point:
 
 ## Active debt
 
+### TD-0024: The frozen generated-artifact contract is not yet implemented as a stable backend registry and execution-plan boundary
+
+- Status: `active`
+- Category: `architecture implementation gap`
+- Introduced: `2026-03-10`
+- Owner area: `generic/generated backend planning`
+
+Why it exists now:
+
+The project has now frozen the generic backend and codegen contract, including
+the required proving artifact fields, fail-closed behavior, and separation
+between generic, generated, and temporary acceptance-only paths. That contract
+still exists only in process docs and design notes; it has not yet been
+implemented as stable shared backend code.
+
+Current containment:
+
+- `docs/dn-0002-generic-backend-and-codegen-contract.md`
+- `docs/roadmap.md`
+- `docs/program-plan.md`
+- `docs/controller.md`
+
+Risk if left in place:
+
+The project could continue to accumulate useful performance or acceptance work
+without actually converging on the producer/consumer boundary it now claims to
+target.
+
+Exit condition:
+
+`stwo-metal` owns a stable internal artifact-registry boundary and a stable
+execution-plan boundary with explicit schema/version checks and documented
+unsupported-component behavior.
+
+Target retirement point:
+
+- `G2`
+
 ### TD-0001: Internal backend vocabulary is still CUDA-first
 
 - Status: `active`

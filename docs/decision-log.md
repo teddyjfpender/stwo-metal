@@ -28,6 +28,62 @@ Superseded by:
 
 ## Entries
 
+### DEC-0067: Examples are the acceptance matrix, while the architecture is generic backend substitution plus generated proving artifacts
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The active architecture is now explicitly split into three layers:
+
+- generic backend substitution for correctness and coverage
+- generated fast-path support driven by Stwo/framework/codegen proving
+  artifacts
+- temporary example-specific wrappers only as compatibility shims
+
+Examples remain useful, but only as the acceptance matrix. They are not the
+long-term integration surface and must not define the backend API.
+
+Context:
+
+The Metal bring-up proved that upstream examples are valuable for acceptance,
+but it also showed the cost of letting benchmark rows and example-local seams
+drive the implementation strategy. The engineering review converged on a more
+durable distinction:
+
+- the backend should be generic over Stwo-defined and codegen-defined proving
+  components
+- the scalable performance story requires a machine-readable producer artifact
+  plus generated registration, ABI, and build inventory
+- example-specific wrappers should stay temporary and explicit
+
+That contract is now frozen in
+[`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md).
+
+Alternatives rejected:
+
+- continue using acceptance examples as the de facto architecture
+- keep widening benchmark-local or example-local seams instead of freezing the
+  producer/consumer contract
+- promise one magical backend that efficiently proves arbitrary Rust workloads
+  without Stwo-owned metadata
+
+Impact:
+
+- the roadmap is now sequenced around generic substitution, generated fast
+  path, and eventual `stark-v` hardening
+- benchmark work is no longer the active architecture driver
+- unsupported generated components must fail closed instead of quietly falling
+  back inside claimed GPU rows
+
+Superseded by:
+
+- none
+
 ### DEC-0066: Standard Blake2s lifted trace leaves must hash directly from Metal column buffers in 16-column blocks
 
 - Date: `2026-03-10`
