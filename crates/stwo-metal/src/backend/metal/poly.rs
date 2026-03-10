@@ -194,23 +194,8 @@ fn evaluate_into_native(
     let extended = MetalBackend::extend(poly, domain_log_size);
     buffer.copy_from(&extended.coeffs);
 
-    let mut values = U32Buffer::from_slice(
-        &buffer
-            .to_vec()
-            .into_iter()
-            .map(|value| value.0)
-            .collect::<Vec<_>>(),
-    )?;
-    let twiddle_tail = tail_twiddle_buffer(values.len(), &twiddles.twiddles)?;
-    values.rfft_evaluate_in_place(&twiddle_tail)?;
-    let native_values = BaseFieldVec::from_vec(
-        values
-            .to_vec()?
-            .into_iter()
-            .map(BaseField::from_u32_unchecked)
-            .collect(),
-    );
-    buffer.copy_from(&native_values);
+    let twiddle_tail = tail_twiddle_buffer(buffer.len(), &twiddles.twiddles)?;
+    buffer.buffer.rfft_evaluate_in_place(&twiddle_tail)?;
     Ok(CircleEvaluation::new(domain, buffer))
 }
 
@@ -229,14 +214,7 @@ fn interpolate_native(
         )));
     }
 
-    let mut values = U32Buffer::from_slice(
-        &eval
-            .values
-            .to_vec()
-            .into_iter()
-            .map(|value| value.0)
-            .collect::<Vec<_>>(),
-    )?;
+    let mut values = eval.values.buffer.clone();
     let inverse_twiddle_tail = tail_twiddle_buffer(values.len(), &twiddles.itwiddles)?;
     let scale_factor = BaseField::from_u32_unchecked(
         values
@@ -247,13 +225,7 @@ fn interpolate_native(
     .inverse()
     .0;
     values.ifft_interpolate_in_place(&inverse_twiddle_tail, scale_factor)?;
-    Ok(CircleCoefficients::new(BaseFieldVec::from_vec(
-        values
-            .to_vec()?
-            .into_iter()
-            .map(BaseField::from_u32_unchecked)
-            .collect(),
-    )))
+    Ok(CircleCoefficients::new(BaseFieldVec::from_buffer(values)))
 }
 
 impl PolyOps for MetalBackend {

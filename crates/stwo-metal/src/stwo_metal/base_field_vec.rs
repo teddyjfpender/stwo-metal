@@ -109,6 +109,29 @@ impl BaseFieldVec {
         self.host_slice().to_vec()
     }
 
+    pub fn batch_get(&self, indices: &[usize]) -> Vec<BaseField> {
+        if let Some(values) = self.host_cache.get() {
+            return indices.iter().map(|&index| values[index]).collect();
+        }
+
+        if indices.is_empty() {
+            return Vec::new();
+        }
+
+        if indices.len().saturating_mul(8) <= self.size {
+            return self
+                .buffer
+                .read_indices(indices)
+                .expect("Metal BaseFieldVec indexed readback should succeed")
+                .into_iter()
+                .map(BaseField::from_u32_unchecked)
+                .collect();
+        }
+
+        let host_values = self.host_slice();
+        indices.iter().map(|&index| host_values[index]).collect()
+    }
+
     pub fn bit_reverse(&mut self) {
         let _ = self.host_cache.take();
         self.buffer

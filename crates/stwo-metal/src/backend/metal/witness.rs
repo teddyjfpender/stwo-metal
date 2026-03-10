@@ -146,9 +146,14 @@ impl MetalWideFibonacciTrace {
 
         (0..self.n_columns as usize)
             .map(|column_index| {
+                let start = column_index * self.input_len;
+                let column_values = self
+                    .values
+                    .clone_range(start, self.input_len)
+                    .expect("Metal wide-fibonacci trace column slicing should succeed");
                 CircleEvaluation::<MetalBackend, BaseField, BitReversedOrder>::new(
                     domain,
-                    BaseFieldVec::from_vec(self.column_values(column_index)),
+                    BaseFieldVec::from_buffer(column_values),
                 )
             })
             .collect()

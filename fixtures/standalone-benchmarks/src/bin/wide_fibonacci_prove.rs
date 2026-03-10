@@ -906,15 +906,7 @@ fn generate_wide_fibonacci_trace_evaluations(
         .expect("wide-fibonacci prove benchmark should generate the trace through Metal");
     let sentinel = sentinel_from_metal_trace(&trace, input_len, n_columns);
 
-    let domain = CanonicCoset::new(log_n_instances).circle_domain();
-    let trace = (0..n_columns)
-        .map(|column_index| {
-            CircleEvaluation::new(
-                domain,
-                MetalBaseFieldVec::from_vec(trace.column_values(column_index)),
-            )
-        })
-        .collect();
+    let trace = trace.to_metal_evaluations();
 
     (trace, sentinel)
 }

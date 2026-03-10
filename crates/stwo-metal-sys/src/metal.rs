@@ -154,6 +154,45 @@ impl U32Buffer {
         }
     }
 
+    pub fn copy_range_from(
+        &mut self,
+        other: &Self,
+        src_offset: usize,
+        len: usize,
+        dst_offset: usize,
+    ) -> Result<(), MetalError> {
+        assert!(
+            src_offset + len <= other.len,
+            "source buffer len {} cannot provide range {}..{}",
+            other.len,
+            src_offset,
+            src_offset + len
+        );
+        assert!(
+            dst_offset + len <= self.len,
+            "destination buffer len {} cannot fit range len {} at offset {}",
+            self.len,
+            len,
+            dst_offset
+        );
+        unsafe {
+            ffi::buffer_copy_range(
+                other.raw.as_ptr(),
+                self.raw.as_ptr(),
+                src_offset,
+                len,
+                dst_offset,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
+    pub fn clone_range(&self, start: usize, len: usize) -> Result<Self, MetalError> {
+        let mut cloned = Self::uninitialized(len)?;
+        cloned.copy_range_from(self, start, len, 0)?;
+        Ok(cloned)
+    }
+
     pub fn to_vec(&self) -> Result<Vec<u32>, MetalError> {
         let runtime = shared_runtime()?;
         let mut values = vec![0u32; self.len];
@@ -163,6 +202,37 @@ impl U32Buffer {
                 self.raw.as_ptr(),
                 values.as_mut_ptr(),
                 self.len,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(values)
+    }
+
+    pub fn read_indices(&self, indices: &[usize]) -> Result<Vec<u32>, MetalError> {
+        let runtime = shared_runtime()?;
+        assert!(
+            self.len <= u32::MAX as usize,
+            "indexed Metal buffer reads require len to fit in u32"
+        );
+        let index_values = indices
+            .iter()
+            .map(|&index| {
+                assert!(
+                    index < self.len,
+                    "buffer index {index} out of bounds for len {}",
+                    self.len
+                );
+                index as u32
+            })
+            .collect::<Vec<_>>();
+        let mut values = vec![0u32; indices.len()];
+        unsafe {
+            ffi::buffer_read_indices(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                index_values.as_ptr(),
+                index_values.len(),
+                values.as_mut_ptr(),
                 error_buffer_mut_ptr,
             )?;
         }
@@ -1002,6 +1072,15 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_u32_buffer_copy_range(
+            src: *mut c_void,
+            dst: *mut c_void,
+            src_offset: usize,
+            len: usize,
+            dst_offset: usize,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_bit_reverse_u32(
             runtime: *mut c_void,
             buffer: *mut c_void,
@@ -1238,6 +1317,15 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_u32_buffer_read_indices(
+            runtime: *mut c_void,
+            buffer: *mut c_void,
+            indices: *const u32,
+            indices_len: usize,
+            host_ptr: *mut u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
     }
 
     pub unsafe fn runtime_create(
@@ -1347,6 +1435,30 @@ mod ffi {
         if stwo_metal_u32_buffer_copy(
             src,
             dst,
+            len,
+            dst_offset,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn buffer_copy_range(
+        src: *mut c_void,
+        dst: *mut c_void,
+        src_offset: usize,
+        len: usize,
+        dst_offset: usize,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_u32_buffer_copy_range(
+            src,
+            dst,
+            src_offset,
             len,
             dst_offset,
             error_ptr(&mut error),
@@ -1975,6 +2087,30 @@ mod ffi {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
     }
+
+    pub unsafe fn buffer_read_indices(
+        runtime: *mut c_void,
+        buffer: *mut c_void,
+        indices: *const u32,
+        indices_len: usize,
+        host_ptr: *mut u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_u32_buffer_read_indices(
+            runtime,
+            buffer,
+            indices,
+            indices_len,
+            host_ptr,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
 }
 
 #[cfg(not(stwo_metal_link))]
@@ -2049,6 +2185,19 @@ mod ffi {
     pub unsafe fn buffer_copy(
         _src: *mut c_void,
         _dst: *mut c_void,
+        _len: usize,
+        _dst_offset: usize,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn buffer_copy_range(
+        _src: *mut c_void,
+        _dst: *mut c_void,
+        _src_offset: usize,
         _len: usize,
         _dst_offset: usize,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
@@ -2377,6 +2526,19 @@ mod ffi {
         _domain_log_size: u32,
         _eval_domain_log_size: u32,
         _n_constraints: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn buffer_read_indices(
+        _runtime: *mut c_void,
+        _buffer: *mut c_void,
+        _indices: *const u32,
+        _indices_len: usize,
+        _host_ptr: *mut u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

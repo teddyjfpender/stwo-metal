@@ -260,18 +260,20 @@ The first active T8 supporting slices are:
   use `cargo_profile = release` and `STWO_METAL_MODE=metal-prod` unless an
   override is set for diagnostics
 - the current production-grade Apple Silicon end-to-end benchmark result is
-  now recorded: `wide_fibonacci_prove_verify_v1 = 10900.002875 ms`, with
-  `prove_ms = 10899.813583000001` and `verify_ms = 0.18929200000000002`
+  now recorded: `wide_fibonacci_prove_verify_v1 = 2823.8264590000003 ms`, with
+  `prove_ms = 2823.629792` and `verify_ms = 0.196667`
 - the dominant prove-stage costs in that row are now measured explicitly:
-  `prove_core_prove_values_ms = 4686.306874999999`,
-  `prove_core_composition_generation_ms = 3729.947666`,
-  `trace_generation_ms = 1691.5720410000001`, and
-  `trace_commit_merkle_ms = 214.14654099999998`
+  `prove_core_prove_values_ms = 1832.9360829999998`,
+  `trace_commit_ms = 409.924625`,
+  `prove_core_composition_generation_ms = 379.02112500000004`, and
+  `trace_commit_merkle_ms = 237.249916`
 - the standalone Metal benchmark fixture now enables the `parallel` proving
   surface, and the first measured parallel row reported `threads = 14`
 - compared with the current `log_n_instances = 20` reference rows, the
-  support-honest Metal benchmark is still about `7.8x` slower than SIMD
+  support-honest Metal benchmark is still about `2.03x` slower than SIMD
   (`1390 ms`) and far from the historical GPU row (`87 ms`)
+- the direct Metal trace boundary is now benchmark-faithful inside the same
+  row: `trace_generation_ms = 65.444416`
 
 The next required T8 boundary is:
 
@@ -280,7 +282,7 @@ The next required T8 boundary is:
 - reduce the dominant measured prove stages in the end-to-end
   `wide_fibonacci_prove_verify_v1` row
 - make the next benchmark-facing structural win the PCS prove-values path
-  above the now-native point-evaluation lane, while keeping the host-owned
-  commitment/hash path explicit and measured
+  above the now-native point-evaluation lane, with trace commitment now the
+  next measured cost behind it
 - keep the adapter-retirement debt explicit while the project focuses on
   native performance work

@@ -58,6 +58,11 @@ fn native_wide_fibonacci_trace_matches_cpu_recurrence() {
     for (column_index, expected_column) in cpu_trace.iter().enumerate() {
         assert_eq!(trace.column_values(column_index), *expected_column);
     }
+
+    let metal_evaluations = trace.to_metal_evaluations();
+    for (evaluation, expected_column) in metal_evaluations.iter().zip(cpu_trace.iter()) {
+        assert_eq!(evaluation.values.to_vec(), *expected_column);
+    }
 }
 
 #[test]

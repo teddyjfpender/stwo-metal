@@ -28,6 +28,119 @@ Superseded by:
 
 ## Entries
 
+### DEC-0064: Native FFT/IFFT commitment work must stay on Metal buffers end-to-end
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The benchmark-active FFT/poly commitment lane now treats buffer ownership as a
+hard constraint:
+
+- once a trace or evaluation column is already Metal-backed, native `rfft` and
+  `ifft` work must operate on cloned Metal buffers directly
+- no intermediate `to_vec()` / `from_slice()` host bounce is acceptable inside
+  the benchmark-active trace commitment lane
+
+Context:
+
+After direct trace-column slicing made trace generation benchmark-faithful, the
+next measured benchmark wall inside the trace half was commitment work. The
+native FFT/IFFT path still forced a full host materialization and re-upload
+before launching the native kernels, even though the values were already in
+Metal-owned buffers. Retiring that hidden round-trip moved the measured row to
+`wide_fibonacci_prove_verify_v1 = 2823.8264590000003 ms`, with
+`prove_ms = 2823.629792`, `trace_generation_ms = 65.444416`,
+`trace_commit_ms = 409.924625`, `trace_commit_interpolation_ms = 51.244667`,
+and `trace_commit_extension_ms = 121.42966700000001`.
+
+Alternatives rejected:
+
+- keep the host bounce because the kernels themselves were already native
+- move directly to a GPU-side hash program while the FFT/poly lane still
+  carried obvious avoidable host materialization
+- bundle this behavior under an implicit optimizer rule rather than recording
+  it as a benchmark-facing boundary law
+
+Impact:
+
+- the measured end-to-end row is now about `2.03x` slower than the SIMD
+  `log20` reference instead of `2.23x` slower
+- trace commitment is no longer hiding avoidable host transport inside the
+  native FFT path
+- the next honest wall is even clearer: `prove_values` now dominates the
+  production-grade wide-fibonacci row
+
+Superseded by:
+
+- none
+
+### DEC-0063: Release-grade benchmark work now treats direct Metal trace slicing and indexed column queries as mandatory boundaries, and the next measured wall is `prove_values`
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The active benchmark-grade Metal boundary now requires:
+
+- direct coordinate-wise `AccumulationOps` and quotient accumulation over
+  Metal-owned buffers rather than row-wise `SecureField` reconstruction
+- indexed query reads for `MetalBaseFieldVec::batch_at` so decommit queries do
+  not force whole-column readback when only a small query set is needed
+- direct slicing of native wide-fibonacci trace columns out of the flat Metal
+  trace buffer rather than element-wise host reads followed by re-upload
+
+The next measured optimization target is no longer trace generation. It is the
+`prove_values` phase, with trace commitment the next measured cost behind it.
+
+Context:
+
+The prior production-grade row had already fallen from the old debug-inflated
+measurements to the `4859.213000 ms` range, but it still carried two hidden
+host taxes:
+
+- wide-fibonacci trace columns were being reconstructed by repeated
+  `buffer_get` reads and then uploaded back into Metal-owned columns
+- base-field batch queries in the lifted decommit path still defaulted to full
+  host materialization when no cache existed
+
+After retiring those taxes and keeping the direct Metal-owned PCS accumulation
+refactor in place, the benchmark moved to
+`wide_fibonacci_prove_verify_v1 = 3105.399292 ms`, with
+`prove_ms = 3105.208917`, `verify_ms = 0.19037500000000002`,
+`trace_generation_ms = 66.355792`, `trace_commit_ms = 616.476209`, and
+`prove_core_prove_values_ms = 1881.806083`.
+
+Alternatives rejected:
+
+- keep treating the old trace materialization path as “native enough” because
+  the kernel itself was already Metal-backed
+- keep optimizing host commitment code first after the benchmark showed that
+  trace generation had fallen out of the dominant-cost set
+- add a benchmark-only semantic shortcut rather than first retiring the hidden
+  host round-trips at the actual runtime boundary
+
+Impact:
+
+- the benchmark row is now about `2.23x` slower than the SIMD `log20`
+  reference instead of `7.8x` slower
+- direct trace generation is no longer a first-order blocker in the benchmark
+  optimization program
+- the next honest tranche is the measured `prove_values` wall, with trace
+  commitment and composition generation behind it
+
+Superseded by:
+
+- none
+
 ### DEC-0062: Production benchmark measurements now require `cargo_profile = release`, `STWO_METAL_MODE = metal-prod`, and Metal-backed wide-fibonacci quotient staging
 
 - Date: `2026-03-10`

@@ -4,9 +4,7 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
-use stwo::core::pcs::quotients::{
-    accumulate_row_partial_numerators, denominator_inverses, quotient_constants, ColumnSampleBatch,
-};
+use stwo::core::pcs::quotients::{denominator_inverses, quotient_constants, ColumnSampleBatch};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::bit_reverse_index;
 use stwo::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
@@ -246,18 +244,30 @@ impl QuotientOps for MetalBackend {
             #[cfg(not(feature = "parallel"))]
             let values = (0..size)
                 .map(|row| {
-                    let query_values_at_row =
-                        host_columns.iter().map(|column| column[row]).collect_vec();
-                    accumulate_row_partial_numerators(batch, &query_values_at_row, &coeffs)
+                    let mut numerator = SecureField::zero();
+                    for (
+                        stwo::core::pcs::quotients::NumeratorData { column_index, .. },
+                        (_, b, c),
+                    ) in batch.cols_vals_randpows.iter().zip_eq(coeffs.iter())
+                    {
+                        numerator += host_columns[*column_index][row] * *c - *b;
+                    }
+                    numerator
                 })
                 .collect();
             #[cfg(feature = "parallel")]
             let values = (0..size)
                 .into_par_iter()
                 .map(|row| {
-                    let query_values_at_row =
-                        host_columns.iter().map(|column| column[row]).collect_vec();
-                    accumulate_row_partial_numerators(batch, &query_values_at_row, &coeffs)
+                    let mut numerator = SecureField::zero();
+                    for (
+                        stwo::core::pcs::quotients::NumeratorData { column_index, .. },
+                        (_, b, c),
+                    ) in batch.cols_vals_randpows.iter().zip_eq(coeffs.iter())
+                    {
+                        numerator += host_columns[*column_index][row] * *c - *b;
+                    }
+                    numerator
                 })
                 .collect();
 
@@ -276,14 +286,15 @@ impl QuotientOps for MetalBackend {
     ) -> SecureEvaluation<Self, BitReversedOrder> {
         let domain = CanonicCoset::new(lifting_log_size).circle_domain();
         let host_accumulations = accumulations
-            .into_iter()
+            .iter()
             .map(|acc| {
-                let cpu_values = acc.partial_numerators_acc.to_cpu();
                 (
                     acc.sample_point,
-                    (0..cpu_values.len())
-                        .map(|index| cpu_values.at(index))
-                        .collect_vec(),
+                    acc.partial_numerators_acc
+                        .columns
+                        .each_ref()
+                        .map(|column| column.host_slice()),
+                    acc.partial_numerators_acc.len(),
                     acc.first_linear_term_acc,
                 )
             })
@@ -299,13 +310,17 @@ impl QuotientOps for MetalBackend {
                 let domain_point = domain.at(bit_reverse_index(row, lifting_log_size));
                 let inverses = denominator_inverses(&sample_points, domain_point);
                 let mut quotient = SecureField::zero();
-                for ((_, partial_numerators_acc, first_linear_term_acc), den_inv) in
-                    host_accumulations.iter().zip_eq(inverses)
+                for (
+                    (_, partial_numerator_coords, partial_numerator_len, first_linear_term_acc),
+                    den_inv,
+                ) in host_accumulations.iter().zip_eq(inverses)
                 {
-                    let log_ratio = lifting_log_size - partial_numerators_acc.len().ilog2();
+                    let log_ratio = lifting_log_size - partial_numerator_len.ilog2();
                     let lifted_idx = (row >> (log_ratio + 1) << 1) + (row & 1);
-                    let full_numerator = partial_numerators_acc[lifted_idx]
-                        - *first_linear_term_acc * domain_point.y;
+                    let full_numerator =
+                        SecureField::from_m31_array(std::array::from_fn(|coord| {
+                            partial_numerator_coords[coord][lifted_idx]
+                        })) - *first_linear_term_acc * domain_point.y;
                     quotient += full_numerator.mul_cm31(den_inv);
                 }
                 quotient
@@ -318,13 +333,17 @@ impl QuotientOps for MetalBackend {
                 let domain_point = domain.at(bit_reverse_index(row, lifting_log_size));
                 let inverses = denominator_inverses(&sample_points, domain_point);
                 let mut quotient = SecureField::zero();
-                for ((_, partial_numerators_acc, first_linear_term_acc), den_inv) in
-                    host_accumulations.iter().zip_eq(inverses)
+                for (
+                    (_, partial_numerator_coords, partial_numerator_len, first_linear_term_acc),
+                    den_inv,
+                ) in host_accumulations.iter().zip_eq(inverses)
                 {
-                    let log_ratio = lifting_log_size - partial_numerators_acc.len().ilog2();
+                    let log_ratio = lifting_log_size - partial_numerator_len.ilog2();
                     let lifted_idx = (row >> (log_ratio + 1) << 1) + (row & 1);
-                    let full_numerator = partial_numerators_acc[lifted_idx]
-                        - *first_linear_term_acc * domain_point.y;
+                    let full_numerator =
+                        SecureField::from_m31_array(std::array::from_fn(|coord| {
+                            partial_numerator_coords[coord][lifted_idx]
+                        })) - *first_linear_term_acc * domain_point.y;
                     quotient += full_numerator.mul_cm31(den_inv);
                 }
                 quotient

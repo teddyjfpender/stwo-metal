@@ -735,14 +735,14 @@ benchmark-boundary debt is retired. The benchmark contract is now explicit:
 non-plan benchmark measurements must use `cargo_profile = release` and
 `STWO_METAL_MODE=metal-prod` unless an override is set for diagnostics. Even
 under that production-grade contract, the row is still far from the declared
-north star: `10900.002875 ms` total, with
-`prove_ms = 10899.813583000001` and `verify_ms = 0.18929200000000002`, at
+north star: `2823.8264590000003 ms` total, with
+`prove_ms = 2823.629792` and `verify_ms = 0.196667`, at
 `log_n_instances = 20`, `n_columns = 100`, `warmups = 0`, `samples = 1`, and
 `threads = 14`. The dominant measured costs are now
-`prove_core_prove_values_ms = 4686.306874999999`,
-`prove_core_composition_generation_ms = 3729.947666`,
-`trace_generation_ms = 1691.5720410000001`, and
-`trace_commit_merkle_ms = 214.14654099999998`.
+`prove_core_prove_values_ms = 1832.9360829999998`,
+`trace_commit_ms = 409.924625`,
+`prove_core_composition_generation_ms = 379.02112500000004`, and
+`trace_commit_merkle_ms = 237.249916`.
 
 Current containment:
 
@@ -765,7 +765,7 @@ The project could confuse benchmark-boundary closure with performance closure,
 or it could optimize the wrong layer without using the measured phase
 breakdown. That would make the `90 ms` reference goal look arbitrary instead of
 turning it into a disciplined optimization program. The row is also still
-about `7.8x` slower than the current `log_n_instances = 20` SIMD reference
+about `2.03x` slower than the current `log_n_instances = 20` SIMD reference
 (`1390 ms`) and far from the historical GPU row (`87 ms`).
 
 Exit condition:

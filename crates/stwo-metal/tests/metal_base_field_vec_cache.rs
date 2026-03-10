@@ -48,3 +48,23 @@ fn metal_base_field_vec_host_cache_is_invalidated_by_mutation() {
         ]
     );
 }
+
+#[test]
+fn metal_base_field_vec_batch_at_without_cache_reads_only_requested_positions() {
+    require_metal_runtime();
+
+    let mut column = unsafe { MetalBaseFieldVec::uninitialized(32) };
+    for index in 0..32usize {
+        column.set(index, BaseField::from((index as u32) * 3));
+    }
+
+    assert_eq!(
+        column.batch_at(&[1, 7, 18, 31]),
+        vec![
+            BaseField::from(3u32),
+            BaseField::from(21u32),
+            BaseField::from(54u32),
+            BaseField::from(93u32),
+        ]
+    );
+}

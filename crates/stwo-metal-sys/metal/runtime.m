@@ -370,6 +370,62 @@ bool stwo_metal_u32_buffer_copy(
     }
 }
 
+bool stwo_metal_u32_buffer_copy_range(
+    void *src_ptr,
+    void *dst_ptr,
+    size_t src_offset,
+    size_t len,
+    size_t dst_offset,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalBufferBox *src = stwo_metal_buffer_box(src_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        if (src_offset + len > src.len || dst_offset + len > dst.len) {
+            stwo_metal_write_error(error_message, error_message_len, @"Metal buffer range copy exceeds source or destination length.");
+            return false;
+        }
+
+        memmove(
+            ((uint32_t *)dst.buffer.contents) + dst_offset,
+            ((uint32_t *)src.buffer.contents) + src_offset,
+            len * sizeof(uint32_t)
+        );
+        return true;
+    }
+}
+
+bool stwo_metal_u32_buffer_read_indices(
+    void *runtime_ptr,
+    void *buffer_ptr,
+    const uint32_t *indices,
+    size_t indices_len,
+    uint32_t *host_ptr,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        (void)runtime_ptr;
+        StwoMetalBufferBox *buffer = stwo_metal_buffer_box(buffer_ptr);
+        if (indices_len > 0 && (indices == NULL || host_ptr == NULL)) {
+            stwo_metal_write_error(error_message, error_message_len, @"Indexed Metal buffer read requires non-null indices and destination pointers.");
+            return false;
+        }
+
+        const uint32_t *values = (const uint32_t *)buffer.buffer.contents;
+        for (size_t i = 0; i < indices_len; ++i) {
+            uint32_t index = indices[i];
+            if ((NSUInteger)index >= buffer.len) {
+                stwo_metal_write_error(error_message, error_message_len, @"Indexed Metal buffer read exceeded source bounds.");
+                return false;
+            }
+            host_ptr[i] = values[index];
+        }
+        return true;
+    }
+}
+
 bool stwo_metal_bit_reverse_u32(
     void *runtime_ptr,
     void *buffer_ptr,

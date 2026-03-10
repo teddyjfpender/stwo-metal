@@ -29,7 +29,7 @@ Invariants:
 
 - Date opened: `2026-03-09`
 - Status: `in_progress`
-- Active tranche: `T8 fifteenth implementation slice: native Metal point evaluation is parity-tested and benchmark-active, and the next bottleneck remains above PolyOps in PCS prove-values and host-owned commitment work`
+- Active tranche: `T8 sixteenth implementation slice: Metal-backed PCS accumulation, indexed query reads, and direct trace-column slicing are benchmark-active, and the next bottleneck is centered on prove-values with trace commitment next`
 - Objective:
   convert the now-truthful Metal benchmark row into benchmark-grade
   performance by reducing the dominant prove-stage bottlenecks without hiding
@@ -97,19 +97,21 @@ Invariants:
   non-plan benchmark measurements must use `cargo_profile = release` and
   `STWO_METAL_MODE=metal-prod` unless an override is set for diagnostic runs
 - the current production-grade Apple Silicon benchmark row is now:
-  `wide_fibonacci_prove_verify_v1 = 10900.002875 ms`, with
-  `prove_ms = 10899.813583000001` and `verify_ms = 0.18929200000000002`,
+  `wide_fibonacci_prove_verify_v1 = 2823.8264590000003 ms`, with
+  `prove_ms = 2823.629792` and `verify_ms = 0.196667`,
   under `cargo_profile = release`, `STWO_METAL_MODE=metal-prod`,
   `warmups = 0`, and `samples = 1`
 - the benchmark boundary is now support-honest, but the measured dominant
   costs are still far from the `90 ms` north star:
-  `prove_core_prove_values_ms = 4686.306874999999`,
-  `prove_core_composition_generation_ms = 3729.947666`,
-  `trace_generation_ms = 1691.5720410000001`, and
-  `trace_commit_merkle_ms = 214.14654099999998`
+  `prove_core_prove_values_ms = 1832.9360829999998`,
+  `trace_commit_ms = 409.924625`,
+  `prove_core_composition_generation_ms = 379.02112500000004`, and
+  `trace_commit_merkle_ms = 237.249916`
 - the benchmark runner now enables the `parallel` proving surface for the
   Metal benchmark fixture, and the latest measured row used `threads = 14`
-- the end-to-end row is still approximately `7.8x` slower than the current
+- the direct Metal trace boundary is now benchmark-faithful:
+  `trace_generation_ms = 65.444416` in the same production-grade row
+- the end-to-end row is still approximately `2.03x` slower than the current
   SIMD reference at `log_n_instances = 20` (`1390 ms`) and still far from the
   historical GPU row (`87 ms`)
 - the native point-evaluation lane is now compile-active, parity-tested, and
@@ -131,11 +133,11 @@ Invariants:
 
 ## Next three deliverables
 
-1. Turn the new production-grade `10900.002875 ms` benchmark row into the next
-   optimization program by attacking PCS prove-values duplication above the
-   now-native point-evaluation lane.
-2. Keep the host-owned commitment/hash path explicit while prove-values and
-   composition-generation work are reduced as separate benchmark-facing costs.
+1. Turn the new production-grade `2823.8264590000003 ms` benchmark row into the next
+   optimization program by attacking the measured `prove_values` bottleneck
+   above the now-native point-evaluation lane.
+2. Reduce trace commitment cost now that trace generation is no longer a
+   first-order blocker.
 3. Keep the acceptance-local adapter debt and the bounded small-domain
    `PolyOps` fallback explicit while T8 focuses on benchmark-grade
    performance.
