@@ -304,6 +304,16 @@ The nineteenth G5 slice is now landed:
   `MetalExecutionAuthority` consumers after this root-surface shrink and
   deciding which one can move lower or disappear next
 
+The twentieth G5 slice is now landed:
+
+- the private benchmark and acceptance support crates no longer import or
+  validate through `MetalExecutionAuthority`; they now read directly from the
+  workload and benchmark boundaries they already receive
+- that leaves `MetalExecutionAuthority` with only workload- and benchmark-API
+  consumers plus the workload-scoped companion export
+- the next honest G5 work is deciding whether one of those remaining public
+  consumers can shrink without lying about the current workload boundary law
+
 ## G2 progress snapshot
 
 G2 is now complete:

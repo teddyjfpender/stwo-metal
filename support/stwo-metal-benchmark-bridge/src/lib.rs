@@ -4,10 +4,9 @@ use stwo::core::pcs::utils::get_lifting_log_size;
 use stwo::core::pcs::TreeVec;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::{CommitmentSchemeProver, ComponentProver, ComponentProvers};
-use stwo_metal::workload::MetalExecutionAuthority;
 use stwo_metal::{
-    MetalBackend, MetalExecutionPlan, MetalWideFibonacciBenchmarkBoundary, MetalWorkloadOwnership,
-    MetalWorkloadStage,
+    MetalBackend, MetalExecutionPlan, MetalWideFibonacciBenchmarkBoundary, MetalWorkloadBoundary,
+    MetalWorkloadOwnership, MetalWorkloadStage,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -44,19 +43,19 @@ pub struct WideFibonacciProveValuesStaging {
 }
 
 fn wide_fibonacci_prove_values_lane(
-    workload_name: &'static str,
-    execution_authority: MetalExecutionAuthority,
+    boundary: &MetalWorkloadBoundary,
 ) -> Result<WideFibonacciProveValuesLane, WideFibonacciProveValuesLaneError> {
+    let workload_name = boundary.workload_name();
     if !matches!(
-        execution_authority.plan(),
+        boundary.plan(),
         MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull
     ) {
         return Err(WideFibonacciProveValuesLaneError::PlanNotMetalCapable {
             workload_name,
-            plan: execution_authority.plan(),
+            plan: boundary.plan(),
         });
     }
-    if execution_authority.stage_ownership(MetalWorkloadStage::WitnessMain)
+    if boundary.stage_ownership(MetalWorkloadStage::WitnessMain)
         != Some(MetalWorkloadOwnership::CpuOwned)
     {
         return Err(
@@ -66,7 +65,7 @@ fn wide_fibonacci_prove_values_lane(
             },
         );
     }
-    if execution_authority.stage_ownership(MetalWorkloadStage::FriBlake2s)
+    if boundary.stage_ownership(MetalWorkloadStage::FriBlake2s)
         != Some(MetalWorkloadOwnership::MetalNative)
     {
         return Err(WideFibonacciProveValuesLaneError::UnsupportedFriOwnership {
@@ -81,10 +80,7 @@ fn wide_fibonacci_prove_values_lane(
 pub fn registered_wide_fibonacci_prove_values_lane(
     benchmark_boundary: &MetalWideFibonacciBenchmarkBoundary,
 ) -> Result<WideFibonacciProveValuesLane, WideFibonacciProveValuesLaneError> {
-    wide_fibonacci_prove_values_lane(
-        benchmark_boundary.target().workload_name,
-        benchmark_boundary.execution_authority(),
-    )
+    wide_fibonacci_prove_values_lane(benchmark_boundary.workload_boundary())
 }
 
 pub fn stage_wide_fibonacci_prove_values(
@@ -147,11 +143,7 @@ mod tests {
             "fibonacci_example",
         )
         .unwrap();
-        let lane = wide_fibonacci_prove_values_lane(
-            boundary.workload_name(),
-            boundary.execution_authority(),
-        )
-        .unwrap();
+        let lane = wide_fibonacci_prove_values_lane(&boundary).unwrap();
 
         assert_eq!(lane.workload_name(), "fibonacci_example");
     }
@@ -177,11 +169,7 @@ mod tests {
         )
         .unwrap();
 
-        let error = wide_fibonacci_prove_values_lane(
-            boundary.workload_name(),
-            boundary.execution_authority(),
-        )
-        .unwrap_err();
+        let error = wide_fibonacci_prove_values_lane(&boundary).unwrap_err();
 
         assert_eq!(
             error,

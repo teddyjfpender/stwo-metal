@@ -72,7 +72,10 @@ Invariants:
   the dead transitional planning helpers that lost all live callers have been
   removed instead of left as dormant API; the redundant root-level companion
   export for `MetalExecutionAuthority` is now gone, so the type is available
-  through the workload-facing module where its semantics actually live
+  through the workload-facing module where its semantics actually live; the
+  private support crates no longer import or validate through the authority
+  type at all, so the remaining direct consumers are now the workload/benchmark
+  API and the workload-scoped companion reexport
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row

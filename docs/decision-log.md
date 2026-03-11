@@ -28,6 +28,49 @@ Superseded by:
 
 ## Entries
 
+### DEC-0104: Private support crates should validate directly from workload and benchmark boundaries once the root authority export is gone
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+After the root-level `MetalExecutionAuthority` export is removed, the private
+benchmark and acceptance support crates should stop importing or validating via
+that type and should instead validate directly from the workload and benchmark
+boundaries they already receive.
+
+Context:
+
+Leaving the support crates on `MetalExecutionAuthority` after the root export
+shrink would keep the next G5 decision muddy: it would look as if the
+remaining consumer set still included private bridge validation, when in fact
+the only durable question left is what the workload and benchmark public law
+should expose. The clean next step was therefore to move those private crates
+onto their boundary inputs directly.
+
+Alternatives rejected:
+
+- keep private support-crate validation on `MetalExecutionAuthority`
+- add a second private replacement type just for support-crate validation
+- postpone the support-crate cleanup until after changing the public workload
+  or benchmark API
+
+Impact:
+
+- private support crates no longer depend on `MetalExecutionAuthority`
+- the remaining direct consumers are now the workload/benchmark API and the
+  workload-scoped companion surface
+- the next honest G5 task is deciding whether one of those remaining public
+  consumers can shrink without obscuring workload-stage law
+
+Superseded by:
+
+- none
+
 ### DEC-0103: `MetalExecutionAuthority` should live on the workload-facing companion surface, not the root companion export
 
 - Date: `2026-03-11`

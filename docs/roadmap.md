@@ -180,6 +180,9 @@ The next active work is:
   private contract that can shrink safely
 - once that consumer set is smaller, remove any redundant companion-surface
   export path that duplicates the workload-facing home of execution-law types
+- once private support crates no longer depend on the authority type, make the
+  next G5 decision explicitly about workload and benchmark public law rather
+  than private bridge validation glue
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs
