@@ -327,54 +327,87 @@ impl QuotientOps for MetalBackend {
                 .expect("Metal quotient column staging should copy");
         }
         let quotient_constants = quotient_constants(sample_batches);
+        let mut concatenated_column_indices = Vec::new();
+        let mut concatenated_b_coeffs = Vec::new();
+        let mut concatenated_c_coeffs = Vec::new();
+        let mut term_offsets = Vec::with_capacity(sample_batches.len());
+        let mut term_counts = Vec::with_capacity(sample_batches.len());
+        let mut first_linear_term_accs = Vec::with_capacity(sample_batches.len());
 
         for (batch, coeffs) in sample_batches
             .iter()
             .zip(quotient_constants.line_coeffs.into_iter())
         {
-            let column_indices = batch
-                .cols_vals_randpows
-                .iter()
-                .map(|data| {
-                    data.column_index
-                        .try_into()
-                        .expect("Metal quotient column index should fit in u32")
-                })
-                .collect::<Vec<u32>>();
-            let b_coeffs = coeffs
-                .iter()
-                .flat_map(|(_, b, _)| b.to_m31_array().map(|limb| limb.0))
-                .collect::<Vec<u32>>();
-            let c_coeffs = coeffs
-                .iter()
-                .flat_map(|(_, _, c)| c.to_m31_array().map(|limb| limb.0))
-                .collect::<Vec<u32>>();
-            let column_indices = U32Buffer::from_slice(&column_indices)
-                .expect("Metal quotient index upload should initialize");
-            let b_coeffs = U32Buffer::from_slice(&b_coeffs)
-                .expect("Metal quotient b upload should initialize");
-            let c_coeffs = U32Buffer::from_slice(&c_coeffs)
-                .expect("Metal quotient c upload should initialize");
-            let values = SecureFieldVec::from_buffer(
-                U32Buffer::accumulate_partial_numerators(
-                    &flat_columns,
-                    &column_indices,
-                    &b_coeffs,
-                    &c_coeffs,
-                    size,
-                )
-                .expect("Metal partial numerator accumulation should succeed"),
+            term_offsets.push(
+                concatenated_column_indices
+                    .len()
+                    .try_into()
+                    .expect("Metal quotient term offset should fit in u32"),
             );
-            let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
+            term_counts.push(
+                batch
+                    .cols_vals_randpows
+                    .len()
+                    .try_into()
+                    .expect("Metal quotient term count should fit in u32"),
+            );
+            concatenated_column_indices.extend(batch.cols_vals_randpows.iter().map(|data| {
+                u32::try_from(data.column_index)
+                    .expect("Metal quotient column index should fit in u32")
+            }));
+            concatenated_b_coeffs.extend(
+                coeffs
+                    .iter()
+                    .flat_map(|(_, b, _)| b.to_m31_array().map(|limb| limb.0)),
+            );
+            concatenated_c_coeffs.extend(
+                coeffs
+                    .iter()
+                    .flat_map(|(_, _, c)| c.to_m31_array().map(|limb| limb.0)),
+            );
+            first_linear_term_accs.push(coeffs.iter().map(|(a, ..)| a).sum::<SecureField>());
+        }
+
+        let column_indices = U32Buffer::from_slice(&concatenated_column_indices)
+            .expect("Metal quotient index upload should initialize");
+        let b_coeffs = U32Buffer::from_slice(&concatenated_b_coeffs)
+            .expect("Metal quotient b upload should initialize");
+        let c_coeffs = U32Buffer::from_slice(&concatenated_c_coeffs)
+            .expect("Metal quotient c upload should initialize");
+        let term_offsets = U32Buffer::from_slice(&term_offsets)
+            .expect("Metal quotient term-offset upload should initialize");
+        let term_counts = U32Buffer::from_slice(&term_counts)
+            .expect("Metal quotient term-count upload should initialize");
+        let batched_values = U32Buffer::accumulate_partial_numerators_batched(
+            &flat_columns,
+            &column_indices,
+            &b_coeffs,
+            &c_coeffs,
+            &term_offsets,
+            &term_counts,
+            size,
+        )
+        .expect("Metal batched partial numerator accumulation should succeed");
+
+        for (batch_index, batch) in sample_batches.iter().enumerate() {
+            let packed_values = Arc::new(
+                batched_values
+                    .clone_range(batch_index * size * 4, size * 4)
+                    .expect("Metal batched partial numerator slice should clone"),
+            );
+            let values = SecureFieldVec::from_buffer(
+                (*packed_values)
+                    .clone_range(0, size * 4)
+                    .expect("Metal partial numerator buffer should clone"),
+            );
             let partial_columns = values.to_base_coords();
-            let packed_values = Arc::new(values.into_buffer());
             cache_packed_partial_numerators(&partial_columns, packed_values);
             accumulated_numerators_vec.push(AccumulatedNumerators {
                 sample_point: batch.point,
                 partial_numerators_acc: stwo::prover::secure_column::SecureColumnByCoords {
                     columns: partial_columns,
                 },
-                first_linear_term_acc,
+                first_linear_term_acc: first_linear_term_accs[batch_index],
             });
         }
     }

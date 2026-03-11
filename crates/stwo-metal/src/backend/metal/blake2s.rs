@@ -37,6 +37,19 @@ fn decode_packed_blake2s_hashes(words: Vec<u32>) -> Vec<Blake2sHash> {
         .collect()
 }
 
+fn decode_packed_blake2s_hashes_from_words(words: &[u32]) -> Vec<Blake2sHash> {
+    words
+        .chunks_exact(8)
+        .map(|chunk| {
+            let mut bytes = [0u8; 32];
+            for (word_index, word) in chunk.iter().enumerate() {
+                bytes[word_index * 4..(word_index + 1) * 4].copy_from_slice(&word.to_le_bytes());
+            }
+            Blake2sHash(bytes)
+        })
+        .collect()
+}
+
 fn encode_packed_blake2s_hashes(hashes: &[Blake2sHash]) -> Vec<u32> {
     let mut words = Vec::with_capacity(hashes.len() * 8);
     for hash in hashes {
@@ -165,12 +178,17 @@ fn build_leaves_native_wide_packed(
         .iter()
         .map(|column| column.len().ilog2())
         .collect_vec();
-    U32Buffer::blake2s_build_leaves_lifted_wide(&column_buffers, &column_log_sizes, lifting_log_size)
-        .ok()
+    U32Buffer::blake2s_build_leaves_lifted_wide(
+        &column_buffers,
+        &column_log_sizes,
+        lifting_log_size,
+    )
+    .ok()
 }
 
 fn decode_packed_blake2s_layer(buffer: &U32Buffer) -> Option<Vec<Blake2sHash>> {
-    Some(decode_packed_blake2s_hashes(buffer.to_vec().ok()?))
+    let words = unsafe { std::slice::from_raw_parts(buffer.host_ptr(), buffer.len()) };
+    Some(decode_packed_blake2s_hashes_from_words(words))
 }
 
 fn build_merkle_layers_native_standard(
@@ -352,7 +370,9 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         let build_tree_start = Instant::now();
         let sorted_columns = columns.into_iter().sorted_by_key(|c| c.len()).collect_vec();
         if !IS_M31_OUTPUT {
-            if let Some(layers) = build_merkle_layers_native_standard(&sorted_columns, lifting_log_size) {
+            if let Some(layers) =
+                build_merkle_layers_native_standard(&sorted_columns, lifting_log_size)
+            {
                 if profile_merkle {
                     eprintln!(
                         "metal_merkle_timing phase=build_merkle_layers columns={} lifting_log_size={} ms={}",
@@ -365,12 +385,9 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
             }
         }
 
-        let mut layers = vec![
-            <Self as MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>>::build_leaves(
-                &sorted_columns,
-                lifting_log_size,
-            ),
-        ];
+        let mut layers = vec![<Self as MerkleOpsLifted<
+            Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>,
+        >>::build_leaves(&sorted_columns, lifting_log_size)];
         for _ in 0..lifting_log_size {
             let next =
                 <Self as MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>>::build_next_layer(

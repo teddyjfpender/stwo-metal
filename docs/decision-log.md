@@ -28,6 +28,80 @@ Superseded by:
 
 ## Entries
 
+### DEC-0141: Partial numerator accumulation should batch all sample batches through one Metal kernel launch
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+`MetalBackend::accumulate_numerators` now concatenates per-batch quotient
+metadata and launches one batched partial-numerator kernel for the whole sample
+set, rather than issuing one Metal kernel and one upload set per sample batch.
+
+Context:
+
+After quotient combination and the first FRI fold became materially cheaper on
+warm runs, the remaining quotient wall moved earlier: numerator accumulation
+was still rebuilding and uploading one `(column_indices, b_coeffs, c_coeffs)`
+triple per sample batch and paying a separate Metal launch for each one.
+
+Alternatives rejected:
+
+- keep one-kernel-per-batch staging and only micro-optimize the inner kernel
+- widen the public quotient contract with a batched metadata object
+- add a benchmark-only quotient fast path outside `MetalBackend`
+
+Impact:
+
+- quotient numerator accumulation is now expressed as one batched Metal launch
+- public quotient interfaces remain unchanged
+- warm generated-lane `wide_fibonacci` runs now spend meaningfully less time in
+  the numerator-accumulation phase
+
+Superseded by:
+
+- none
+
+### DEC-0142: Packed native Merkle layers should decode directly from shared Metal buffers
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+When `MetalBackend` already has a packed native Blake2s layer buffer in shared
+memory, decoding it into host-visible `Vec<Blake2sHash>` must read directly from
+the shared buffer instead of first copying the words into an intermediate host
+`Vec<u32>`.
+
+Context:
+
+Early FRI commitments now build more of their tree natively, but the generic
+Merkle contract still needs host hash columns. The previous decode path paid an
+extra whole-layer host copy before translating words into `Blake2sHash` values,
+which was unnecessary once the command buffer had completed and the shared
+buffer was already readable from the host.
+
+Alternatives rejected:
+
+- keep the extra host copy and rely only on more kernel-side optimizations
+- widen the public Merkle contract before removing this decode overhead
+- special-case only the benchmark row instead of fixing the native Metal
+  commitment path generically
+
+Impact:
+
+- native packed Merkle layers now decode directly from shared Metal storage
+- the public Merkle contract remains unchanged
+- early FRI commitment construction pays less host-side decode overhead
+
+Superseded by:
+
+- none
+
 ### DEC-0139: Packed quotient partial numerators stay private but live across the quotient-combine boundary
 
 - Date: `2026-03-11`

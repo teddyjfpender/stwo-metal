@@ -82,7 +82,9 @@ Why it exists now:
 After batching full Blake2s parent-layer construction for the generic Metal
 Merkle path, then keeping quotient partial numerators packed through
 `compute_quotients_and_combine`, and then specializing the generic first FRI
-layer fold to skip zero-destination accumulation work, the measured
+layer fold to skip zero-destination accumulation work, then batching
+partial-numerator accumulation across sample batches, and finally decoding
+packed native Merkle layers directly from shared Metal buffers, the measured
 `wide_fibonacci` `log20` generated-lane profile no longer points at repeated
 parent-layer host re-encoding, quotient combination, or the generic first fold
 kernel as the dominant remaining work. The next dominant subphases are now:
@@ -101,9 +103,9 @@ Current containment:
 
 Risk if left in place:
 
-The generated lane may remain in the SIMD-parity band instead of reaching
-clear GPU-class speedups, even after quotient combination and the generic
-first-layer fold are substantially more native.
+The generated lane may stall near SIMD parity instead of reaching clear
+GPU-class speedups, even after quotient combination, numerator staging, and the
+generic first-layer fold are substantially more native.
 
 Exit condition:
 

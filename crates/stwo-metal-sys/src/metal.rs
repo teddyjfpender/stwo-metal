@@ -1226,6 +1226,63 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    pub fn accumulate_partial_numerators_batched(
+        columns: &Self,
+        column_indices: &Self,
+        b_coeffs: &Self,
+        c_coeffs: &Self,
+        term_offsets: &Self,
+        term_counts: &Self,
+        row_count: usize,
+    ) -> Result<Self, MetalError> {
+        assert!(
+            row_count > 0,
+            "batched partial numerator accumulation requires a non-zero row count"
+        );
+        assert_eq!(
+            columns.len % row_count,
+            0,
+            "batched partial numerator accumulation expects flattened base columns with an integral number of rows"
+        );
+        assert_eq!(
+            column_indices.len * 4,
+            b_coeffs.len,
+            "batched partial numerator accumulation expects one qm31 b coefficient per column index"
+        );
+        assert_eq!(
+            column_indices.len * 4,
+            c_coeffs.len,
+            "batched partial numerator accumulation expects one qm31 c coefficient per column index"
+        );
+        assert_eq!(
+            term_offsets.len, term_counts.len,
+            "batched partial numerator accumulation expects one term offset per batch"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(row_count * term_counts.len * 4)?;
+        unsafe {
+            ffi::accumulate_partial_numerators_batched_u32x4(
+                runtime.raw.as_ptr(),
+                columns.raw.as_ptr(),
+                column_indices.raw.as_ptr(),
+                b_coeffs.raw.as_ptr(),
+                c_coeffs.raw.as_ptr(),
+                term_offsets.raw.as_ptr(),
+                term_counts.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                row_count
+                    .try_into()
+                    .expect("batched partial numerator accumulation row count should fit in u32"),
+                term_counts
+                    .len
+                    .try_into()
+                    .expect("batched partial numerator accumulation batch count should fit in u32"),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
     pub fn compute_quotients_and_combine(
         partial_coord_columns: [&Self; 4],
         sample_points: &Self,
@@ -1926,6 +1983,20 @@ mod ffi {
             dst: *mut c_void,
             row_count: u32,
             n_terms: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_accumulate_partial_numerators_batched_u32x4(
+            runtime: *mut c_void,
+            columns: *mut c_void,
+            column_indices: *mut c_void,
+            b_coeffs: *mut c_void,
+            c_coeffs: *mut c_void,
+            term_offsets: *mut c_void,
+            term_counts: *mut c_void,
+            dst: *mut c_void,
+            row_count: u32,
+            n_batches: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -2997,6 +3068,41 @@ mod ffi {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub unsafe fn accumulate_partial_numerators_batched_u32x4(
+        runtime: *mut c_void,
+        columns: *mut c_void,
+        column_indices: *mut c_void,
+        b_coeffs: *mut c_void,
+        c_coeffs: *mut c_void,
+        term_offsets: *mut c_void,
+        term_counts: *mut c_void,
+        dst: *mut c_void,
+        row_count: u32,
+        n_batches: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_accumulate_partial_numerators_batched_u32x4(
+            runtime,
+            columns,
+            column_indices,
+            b_coeffs,
+            c_coeffs,
+            term_offsets,
+            term_counts,
+            dst,
+            row_count,
+            n_batches,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub unsafe fn compute_quotients_and_combine_u32x4(
         runtime: *mut c_void,
         partial_coord_0: *mut c_void,
@@ -3721,6 +3827,25 @@ mod ffi {
         _dst: *mut c_void,
         _row_count: u32,
         _n_terms: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn accumulate_partial_numerators_batched_u32x4(
+        _runtime: *mut c_void,
+        _columns: *mut c_void,
+        _column_indices: *mut c_void,
+        _b_coeffs: *mut c_void,
+        _c_coeffs: *mut c_void,
+        _term_offsets: *mut c_void,
+        _term_counts: *mut c_void,
+        _dst: *mut c_void,
+        _row_count: u32,
+        _n_batches: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

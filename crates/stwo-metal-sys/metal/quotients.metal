@@ -78,6 +78,45 @@ kernel void accumulate_partial_numerators_u32x4(
     stwo_metal_store_qm31(dst, row_index, numerator);
 }
 
+kernel void accumulate_partial_numerators_batched_u32x4(
+    device const uint *columns [[buffer(0)]],
+    device const uint *column_indices [[buffer(1)]],
+    device const uint *b_coeffs [[buffer(2)]],
+    device const uint *c_coeffs [[buffer(3)]],
+    device const uint *term_offsets [[buffer(4)]],
+    device const uint *term_counts [[buffer(5)]],
+    device uint *dst [[buffer(6)]],
+    constant uint &row_count [[buffer(7)]],
+    constant uint &n_batches [[buffer(8)]],
+    uint gid [[thread_position_in_grid]]
+) {
+    uint total_rows = row_count * n_batches;
+    if (gid >= total_rows) {
+        return;
+    }
+
+    uint batch_index = gid / row_count;
+    uint row_index = gid - batch_index * row_count;
+    uint term_offset = term_offsets[batch_index];
+    uint n_terms = term_counts[batch_index];
+
+    StwoMetalQm31 numerator = StwoMetalQm31 { 0u, 0u, 0u, 0u };
+    for (uint term_index = 0u; term_index < n_terms; ++term_index) {
+        uint offset = term_offset + term_index;
+        uint column_index = column_indices[offset];
+        uint value = columns[column_index * row_count + row_index];
+        numerator = stwo_metal_qm31_add(
+            numerator,
+            stwo_metal_qm31_sub(
+                stwo_metal_qm31_mul_base(stwo_metal_load_qm31(c_coeffs, offset), value),
+                stwo_metal_load_qm31(b_coeffs, offset)
+            )
+        );
+    }
+
+    stwo_metal_store_qm31(dst, gid, numerator);
+}
+
 kernel void compute_quotients_and_combine_u32x4(
     device const uint *partial_coord_0 [[buffer(0)]],
     device const uint *partial_coord_1 [[buffer(1)]],

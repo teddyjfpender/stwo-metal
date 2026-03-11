@@ -2796,6 +2796,105 @@ bool stwo_metal_accumulate_partial_numerators_u32x4(
     }
 }
 
+bool stwo_metal_accumulate_partial_numerators_batched_u32x4(
+    void *runtime_ptr,
+    void *columns_ptr,
+    void *column_indices_ptr,
+    void *b_coeffs_ptr,
+    void *c_coeffs_ptr,
+    void *term_offsets_ptr,
+    void *term_counts_ptr,
+    void *dst_ptr,
+    uint32_t row_count,
+    uint32_t n_batches,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *columns = stwo_metal_buffer_box(columns_ptr);
+        StwoMetalBufferBox *column_indices = stwo_metal_buffer_box(column_indices_ptr);
+        StwoMetalBufferBox *b_coeffs = stwo_metal_buffer_box(b_coeffs_ptr);
+        StwoMetalBufferBox *c_coeffs = stwo_metal_buffer_box(c_coeffs_ptr);
+        StwoMetalBufferBox *term_offsets = stwo_metal_buffer_box(term_offsets_ptr);
+        StwoMetalBufferBox *term_counts = stwo_metal_buffer_box(term_counts_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+
+        if (row_count == 0u) {
+            stwo_metal_write_error(error_message, error_message_len, @"Batched partial numerator accumulation requires a non-zero row count.");
+            return false;
+        }
+        if (columns.len % row_count != 0u) {
+            stwo_metal_write_error(error_message, error_message_len, @"Batched partial numerator accumulation expects flattened base columns with an integral number of rows.");
+            return false;
+        }
+        if (term_offsets.len != n_batches) {
+            stwo_metal_write_error(error_message, error_message_len, @"Batched partial numerator accumulation expects one term offset per batch.");
+            return false;
+        }
+        if (term_counts.len != n_batches) {
+            stwo_metal_write_error(error_message, error_message_len, @"Batched partial numerator accumulation expects one term count per batch.");
+            return false;
+        }
+        if (column_indices.len * 4u != b_coeffs.len) {
+            stwo_metal_write_error(error_message, error_message_len, @"Batched partial numerator accumulation expects one qm31 b coefficient per column index.");
+            return false;
+        }
+        if (column_indices.len * 4u != c_coeffs.len) {
+            stwo_metal_write_error(error_message, error_message_len, @"Batched partial numerator accumulation expects one qm31 c coefficient per column index.");
+            return false;
+        }
+        if (dst.len != (NSUInteger)(row_count * n_batches * 4u)) {
+            stwo_metal_write_error(error_message, error_message_len, @"Batched partial numerator accumulation expects one qm31 output per (batch, row).");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"accumulate_partial_numerators_batched_u32x4", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:columns.buffer offset:0 atIndex:0];
+        [encoder setBuffer:column_indices.buffer offset:0 atIndex:1];
+        [encoder setBuffer:b_coeffs.buffer offset:0 atIndex:2];
+        [encoder setBuffer:c_coeffs.buffer offset:0 atIndex:3];
+        [encoder setBuffer:term_offsets.buffer offset:0 atIndex:4];
+        [encoder setBuffer:term_counts.buffer offset:0 atIndex:5];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:6];
+        [encoder setBytes:&row_count length:sizeof(row_count) atIndex:7];
+        [encoder setBytes:&n_batches length:sizeof(n_batches) atIndex:8];
+        NSUInteger total_rows = (NSUInteger)row_count * (NSUInteger)n_batches;
+        MTLSize grid_size = MTLSizeMake(total_rows, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_compute_quotients_and_combine_u32x4(
     void *runtime_ptr,
     void *partial_coord_0_ptr,

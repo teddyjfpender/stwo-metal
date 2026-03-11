@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `generated-lane hotspot retirement: packed quotient staging plus specialized
-  first-layer FRI fold`
+  `generated-lane hotspot retirement: batched quotient numerator accumulation
+  plus zero-copy native FRI commitment decode`
 - Objective:
   reduce the remaining generated-lane `prove_values` and early FRI commit
   costs without widening public contracts or changing proving semantics
@@ -151,9 +151,13 @@ Invariants:
   evaluations; on the `wide_fibonacci` generated lane this moved `log20` to
   about `1157 ms` mean and then `1132 ms` mean across successive bounded
   slices, with `compute_quotients_and_combine` dropping sharply on warm runs;
-  the next dominant subphases are now quotient numerator accumulation and the
-  first FRI commitments rather than obvious quotient-combine or fold-kernel
-  overhead
+  the next quotient/FRI slice now batches partial-numerator accumulation across
+  all sample batches in one Metal launch and decodes packed native Merkle
+  layers without an intermediate host copy; the current `wide_fibonacci` `log20`
+  generated row is now about `1066 ms` mean / `842 ms` median, with warm
+  `accumulate_numerators` in the `~82-88 ms` range and early FRI commitment
+  rounds still the clearest remaining interior cost rather than obvious
+  quotient-combine or first-fold overhead
 
 ## Next three deliverables
 
@@ -162,8 +166,8 @@ Invariants:
    interpolation, and the bounded FRI commitment slice no longer route through
    `CpuBackend`.
 2. Reduce the remaining `prove_values` wall in the PCS prover, with the next
-   measured targets now being quotient numerator accumulation and early FRI
-   commitment construction.
+   measured targets now being quotient numerator accumulation before
+   lift-and-accumulate and the earliest FRI commitment rounds after warm-up.
 3. Keep downstream `stark-v` hardening iced unless an external support signal
    appears.
 
