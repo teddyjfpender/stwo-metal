@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G8 fifth slice: enumerate the pinned stark-v generated-contract gap against
-  the frozen minimum generated subset`
+  `G8 seventh slice: promote the vendored stark-v fail-closed status into one
+  deterministic local hardening row`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -119,12 +119,12 @@ Invariants:
 
 ## Next three deliverables
 
-1. Keep one deterministic local report for the vendored `stark-v` contract,
-   attachment classification, generated readiness, and generated gap.
+1. Keep one deterministic local fail-closed row for the vendored `stark-v`
+   input.
 2. Keep one frozen minimum generated subset for the first supported `stark-v`
    row without weakening the fail-closed generic-lane policy.
-3. Decide whether the first executable downstream row is a vendored mapping
-   experiment or an explicit long-lived unsupported fence.
+3. Decide whether the first supported downstream row is a vendored mapping
+   experiment or a future downstream-produced generated artifact.
 
 ## Explicitly not doing now
 

@@ -73,7 +73,7 @@ Target retirement point:
 
 ### TD-0029: Vendored `stark-v` input is still not executed through `stwo-metal`
 
-- Status: `active`
+- Status: `retired`
 - Category: `downstream hardening gap`
 - Introduced: `2026-03-11`
 - Owner area: `G8 downstream hardening`
@@ -90,6 +90,7 @@ Current containment:
 - `docs/dn-0004-stark-v-hardening-input-and-contract.md`
 - `scripts/check_stark_v_contract.sh`
 - `scripts/run_vendored_stark_v_hardening_report.sh`
+- `scripts/check_vendored_stark_v_fail_closed.sh`
 - `vendor/stark-v-pinned-3a3cb4cf576d7d7e8ca82815acfb31bbc10e48ef`
 
 Risk if left in place:
@@ -99,9 +100,9 @@ an executable downstream row or making an explicit fail-closed decision.
 
 Exit condition:
 
-One executable or explicitly fail-closed `stark-v` hardening row exists and is
-tracked through the same generic/generated contract vocabulary as the rest of
-the program.
+One executable and explicitly fail-closed `stark-v` hardening row exists and
+is tracked through the same generic/generated contract vocabulary as the rest
+of the program.
 
 Target retirement point:
 

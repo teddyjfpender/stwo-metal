@@ -147,6 +147,8 @@ The next active work is:
 - keep one deterministic generated-gap check against the frozen minimum subset
 - keep one vendored local downstream input so G8 does not depend on a temp
   checkout
+- keep one deterministic vendored fail-closed row so the current downstream
+  status is regression-checkable
 - keep the dual-lane benchmark contract stable while downstream hardening
   proceeds
 

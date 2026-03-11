@@ -66,7 +66,7 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G8 sixth slice: vendor the pinned stark-v input locally and keep one
+`G8 seventh slice: promote the vendored stark-v fail-closed result into one
 deterministic local hardening row`
 
 The active formal basis is:

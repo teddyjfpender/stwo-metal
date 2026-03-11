@@ -28,6 +28,46 @@ Superseded by:
 
 ## Entries
 
+### DEC-0125: The current vendored stark-v hardening row should be executable and fail-closed
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0005-stark-v-attachment-strategy.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0005-stark-v-attachment-strategy.md)
+  - [`dn-0006-stark-v-generated-minimum-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0006-stark-v-generated-minimum-contract.md)
+
+Decision:
+
+The current vendored `stark-v` downstream row should exist as one deterministic
+local fail-closed check, rather than only as a collection of report scripts and
+notes.
+
+Context:
+
+After vendoring the pinned downstream input, the program had enough structure
+to run a full hardening report locally, but not yet one single executable row
+that asserted the expected unsupported status. That made G8 progress harder to
+regress-check than the benchmark and acceptance lanes.
+
+Alternatives rejected:
+
+- leave the vendored downstream row as report-only
+- wait for a supported row before adding any downstream regression check
+- fold the fail-closed row into unrelated benchmark or acceptance scripts
+
+Impact:
+
+- the current vendored downstream status is now executable and regression-
+  checkable
+- `TD-0029` can retire because a vendored executable hardening row now exists
+- the remaining G8 blocker narrows to achieving a supported row, not preserving
+  the current unsupported one
+
+Superseded by:
+
+- none
+
 ### DEC-0124: G8 should vendor the pinned stark-v input locally before claiming downstream hardening progress
 
 - Date: `2026-03-11`
