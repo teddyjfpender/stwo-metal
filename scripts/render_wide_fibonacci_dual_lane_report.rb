@@ -21,12 +21,14 @@ def load_rows(dir)
     throughput =
       timings["steady_state_throughput_kelem_per_second"] ||
       timings["throughput_kelem_per_second"]
+    cold_start_phase = timings["cold_start_phase_ms"] || {}
 
     {
       "lane" => data["benchmark_lane"] || "unknown",
       "log_n_instances" => workload.fetch("log_n_instances"),
       "prove_ms" => prove_summary["mean"],
-      "throughput" => throughput
+      "throughput" => throughput,
+      "cold_start_prove_ms" => cold_start_phase["prove_ms"]
     }
   end
 end
@@ -60,7 +62,9 @@ puts
 puts "- Generated lane range: `#{format_logs(generated_rows)}`"
 puts "- Generic lane range: `#{format_logs(generic_rows)}`"
 puts "- Generated `log_size = 20` prove ms: `#{format_decimal(generated_log20&.fetch("prove_ms", nil))}`"
+puts "- Generated `log_size = 20` cold-start prove ms: `#{format_decimal(generated_log20&.fetch("cold_start_prove_ms", nil))}`"
 puts "- Generic first-row prove ms: `#{format_decimal(generic_first&.fetch("prove_ms", nil))}` at `log_size = #{generic_first&.fetch("log_n_instances", "N/A")}`"
+puts "- Generic first-row cold-start prove ms: `#{format_decimal(generic_first&.fetch("cold_start_prove_ms", nil))}`"
 puts "- Active optimization target: `generated-metal`"
 puts
 puts "## Generated Lane"

@@ -17,12 +17,16 @@ runner = data.fetch("runner")
 workload = data.fetch("workload")
 timings = data.fetch("timings")
 summary = timings["steady_state_summary_ms"] || timings["summary_ms"]
+cold_start_sample = timings["cold_start_sample_ms"]
+cold_start_phase = timings["cold_start_phase_ms"]
 
 errors = []
 errors << "status is not completed" unless data["status"] == "completed"
 errors << "runner_class is not benchmark-gpu" unless runner["runner_class"] == "benchmark-gpu"
 errors << "warmup_iterations < 1" unless workload.fetch("warmup_iterations", 0) >= 1
 errors << "sample_iterations < 5" unless workload.fetch("sample_iterations", 0) >= 5
+errors << "cold_start_sample_ms is missing" if data["status"] == "completed" && cold_start_sample.nil?
+errors << "cold_start_phase_ms is missing" if data["status"] == "completed" && cold_start_phase.nil?
 
 if summary.nil?
   errors << "summary_ms is missing"

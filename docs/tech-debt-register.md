@@ -86,16 +86,15 @@ fold to skip zero-destination accumulation work, then batching
 partial-numerator accumulation across sample batches, then decoding packed
 native Merkle layers directly from shared Metal buffers, then keeping generic
 Blake2s commitment layers on a Metal-backed packed hash column across the
-native commitment chain, and now finally building generic parent-layer chains
-inside one Metal command buffer while removing the second packed-buffer clone
-before quotient unpack, the measured `wide_fibonacci` `log20` generated-lane
-profile had moved to about `854 ms` mean / `638 ms` median, while the new
-steady-state benchmark contract first showed a warmed `log20` row of about
-`655 ms` mean after the cold first sample was excluded and then, after
-lowering the standard native Blake2s threshold to `log_size = 12`, moved that
-warmed row again to about `620 ms` mean. The new contiguous eval-domain column
-batch removes the quotient-side evaluation restaging pass and moves the warmed
-row again to about `587 ms` mean. The dominant remaining subphases are now:
+native commitment chain, and then building generic parent-layer chains inside
+one Metal command buffer while removing the second packed-buffer clone before
+quotient unpack, the measured `wide_fibonacci` `log20` generated-lane profile
+had moved to about `854 ms` mean / `638 ms` median. The benchmark contract now
+also publishes explicit cold-start and warmed steady-state timings; after
+lowering the standard native Blake2s threshold to `log_size = 12` and keeping
+the eval-domain quotient feed contiguous, the latest explicit contract reports
+about `671 ms` cold-start prove time and about `636 ms` warmed prove mean. The
+dominant remaining subphases are now:
 
 - quotient numerator accumulation before lift-and-accumulate
 - the earliest FRI commitment construction rounds

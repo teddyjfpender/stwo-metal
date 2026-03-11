@@ -139,6 +139,9 @@ struct TimingMetadata {
     samples_ms: Vec<f64>,
     summary_ms: Option<SummaryStats>,
     throughput_kelem_per_second: Option<f64>,
+    cold_start_sample_ms: Option<f64>,
+    cold_start_phase_ms: Option<SinglePhaseTimings>,
+    cold_start_prove_breakdown_ms: Option<SingleProveBreakdownTimings>,
     steady_state_samples_ms: Option<Vec<f64>>,
     steady_state_summary_ms: Option<SummaryStats>,
     steady_state_throughput_kelem_per_second: Option<f64>,
@@ -162,6 +165,12 @@ struct PhaseSampleTimings {
 struct PhaseSummaryTimings {
     prove_ms: SummaryStats,
     verify_ms: SummaryStats,
+}
+
+#[derive(Serialize)]
+struct SinglePhaseTimings {
+    prove_ms: f64,
+    verify_ms: f64,
 }
 
 #[derive(Serialize)]
@@ -192,6 +201,21 @@ struct ProveBreakdownSummaryTimings {
     prove_core_composition_commit_ms: SummaryStats,
     prove_core_prove_values_ms: SummaryStats,
     prove_core_sanity_check_ms: SummaryStats,
+}
+
+#[derive(Serialize)]
+struct SingleProveBreakdownTimings {
+    setup_and_preprocessed_commit_ms: f64,
+    trace_generation_ms: f64,
+    trace_commit_ms: f64,
+    trace_commit_interpolation_ms: f64,
+    trace_commit_extension_ms: f64,
+    trace_commit_merkle_ms: f64,
+    prove_core_ms: f64,
+    prove_core_composition_generation_ms: f64,
+    prove_core_composition_commit_ms: f64,
+    prove_core_prove_values_ms: f64,
+    prove_core_sanity_check_ms: f64,
 }
 
 #[cfg(feature = "metal-runtime")]
@@ -227,6 +251,14 @@ fn phase_summary_timings_from_samples(samples: &[SampleResult]) -> PhaseSummaryT
                 .map(|sample| sample.verify_elapsed_ms)
                 .collect::<Vec<_>>(),
         ),
+    }
+}
+
+#[cfg(feature = "metal-runtime")]
+fn single_phase_timings_from_sample(sample: &SampleResult) -> SinglePhaseTimings {
+    SinglePhaseTimings {
+        prove_ms: sample.prove_elapsed_ms,
+        verify_ms: sample.verify_elapsed_ms,
     }
 }
 
@@ -364,6 +396,25 @@ fn prove_breakdown_summary_from_samples(samples: &[ProveBreakdown]) -> ProveBrea
     }
 }
 
+#[cfg(feature = "metal-runtime")]
+fn single_prove_breakdown_timings_from_sample(
+    sample: &ProveBreakdown,
+) -> SingleProveBreakdownTimings {
+    SingleProveBreakdownTimings {
+        setup_and_preprocessed_commit_ms: sample.setup_and_preprocessed_commit_ms,
+        trace_generation_ms: sample.trace_generation_ms,
+        trace_commit_ms: sample.trace_commit_ms,
+        trace_commit_interpolation_ms: sample.trace_commit_interpolation_ms,
+        trace_commit_extension_ms: sample.trace_commit_extension_ms,
+        trace_commit_merkle_ms: sample.trace_commit_merkle_ms,
+        prove_core_ms: sample.prove_core_ms,
+        prove_core_composition_generation_ms: sample.prove_core_composition_generation_ms,
+        prove_core_composition_commit_ms: sample.prove_core_composition_commit_ms,
+        prove_core_prove_values_ms: sample.prove_core_prove_values_ms,
+        prove_core_sanity_check_ms: sample.prove_core_sanity_check_ms,
+    }
+}
+
 #[derive(Clone, Serialize)]
 struct WideFibonacciSentinel {
     first_column_first_value: u32,
@@ -438,6 +489,9 @@ fn main() {
                 samples_ms: Vec::new(),
                 summary_ms: None,
                 throughput_kelem_per_second: None,
+                cold_start_sample_ms: None,
+                cold_start_phase_ms: None,
+                cold_start_prove_breakdown_ms: None,
                 steady_state_samples_ms: None,
                 steady_state_summary_ms: None,
                 steady_state_throughput_kelem_per_second: None,
@@ -504,6 +558,7 @@ fn main() {
             let total_summary = summarize(&samples_ms);
             let prove_summary = summarize(&prove_samples_ms);
             let verify_summary = summarize(&verify_samples_ms);
+            let cold_start_result = sample_results.first();
             let steady_state_results = steady_state_tail(&sample_results);
             let steady_state_samples_ms =
                 steady_state_results.map(|samples| samples.iter().map(|sample| sample.total_elapsed_ms).collect::<Vec<_>>());
@@ -547,6 +602,11 @@ fn main() {
                     samples_ms,
                     summary_ms: Some(total_summary),
                     throughput_kelem_per_second: throughput,
+                    cold_start_sample_ms: cold_start_result.map(|sample| sample.total_elapsed_ms),
+                    cold_start_phase_ms: cold_start_result.map(single_phase_timings_from_sample),
+                    cold_start_prove_breakdown_ms: cold_start_result
+                        .and_then(|sample| sample.prove_breakdown.as_ref())
+                        .map(single_prove_breakdown_timings_from_sample),
                     steady_state_samples_ms,
                     steady_state_summary_ms: steady_state_summary,
                     steady_state_throughput_kelem_per_second: steady_state_throughput,

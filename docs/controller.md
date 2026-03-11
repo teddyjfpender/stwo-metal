@@ -185,6 +185,11 @@ Invariants:
   than a mixed cold-start mean; on the current `da9c598` baseline, the warmed
   `log20` row is about `655.18 ms` mean / `654.97 ms` prove mean while the full
   three-sample mean remains about `867.79 ms`
+- the `wide_fibonacci` benchmark artifact now also emits explicit
+  `cold_start_*` timing fields alongside the warmed `steady_state_*` fields, so
+  one-time pipeline cost and repeat proving throughput are separate benchmark
+  contracts; the latest `log20` generated-lane artifact reports about
+  `671.19 ms` cold-start prove time and about `635.95 ms` warmed prove mean
 - lowering the standard native Blake2s commitment threshold from `log_size 16`
   to `log_size 12` keeps more early FRI commitment rounds on Metal and moves
   the warmed generated `wide_fibonacci` `log20` row to about `619.55 ms` mean /
@@ -204,8 +209,9 @@ Invariants:
 2. Reduce the first FRI fold and commit band from the same baseline now that
    repeated Merkle parent-layer dispatch and eval-domain restaging are no
    longer the dominant early-commit tax.
-3. Keep downstream `stark-v` hardening iced unless an external support signal
-   appears.
+3. Keep cold-start and warmed steady-state benchmark reporting separate in all
+   generated-lane artifacts and reports while downstream `stark-v` hardening
+   stays iced unless an external support signal appears.
 
 ## Explicitly not doing now
 

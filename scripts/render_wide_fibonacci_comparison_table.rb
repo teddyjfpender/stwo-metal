@@ -66,13 +66,15 @@ rows = paths.map do |path|
   throughput =
     timings["steady_state_throughput_kelem_per_second"] ||
     timings["throughput_kelem_per_second"]
+  cold_start = timings["cold_start_phase_ms"] || {}
 
   {
     "path" => path,
     "lane" => data["benchmark_lane"] || "unknown",
     "log_n_instances" => workload.fetch("log_n_instances"),
     "prove_ms" => prove_summary["mean"],
-    "throughput" => throughput
+    "throughput" => throughput,
+    "cold_start_prove_ms" => cold_start["prove_ms"]
   }
 end.compact
 
@@ -100,6 +102,12 @@ SIMD_BASELINE.keys.sort.each do |log_size|
     format_decimal(metal_throughput),
     format_speedup(metal_throughput, simd["throughput"])
   ].join(" | ").prepend("| ").concat(" |")
+end
+
+best_cold_row = lane_rows.min_by { |row| row.fetch("log_n_instances") }
+if best_cold_row && best_cold_row["cold_start_prove_ms"]
+  puts
+  puts "Cold-start first-row prove ms for #{metal_label}: `#{format_decimal(best_cold_row["cold_start_prove_ms"])}` at `log_size = #{best_cold_row["log_n_instances"]}`"
 end
 
 puts

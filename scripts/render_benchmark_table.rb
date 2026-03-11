@@ -26,6 +26,8 @@ rows = ARGV.map do |path|
   throughput =
     timings["steady_state_throughput_kelem_per_second"] ||
     timings["throughput_kelem_per_second"]
+  cold_start = timings["cold_start_sample_ms"]
+  cold_start_phase = timings["cold_start_phase_ms"] || {}
 
   {
     "workload" => "#{workload.fetch("family")}/#{workload.fetch("operation")}",
@@ -34,6 +36,8 @@ rows = ARGV.map do |path|
     "log_n_instances" => workload.fetch("log_n_instances"),
     "n_columns" => workload.fetch("n_columns"),
     "mean_ms" => summary["mean"],
+    "cold_start_ms" => cold_start,
+    "cold_start_prove_ms" => cold_start_phase["prove_ms"],
     "prove_mean_ms" => prove_summary["mean"],
     "verify_mean_ms" => verify_summary["mean"],
     "median_ms" => summary["median"],
@@ -45,8 +49,8 @@ rows = ARGV.map do |path|
   }
 end
 
-puts "| Workload | Lane | Channel | Log(Size) | Columns | Mean ms | Prove ms | Verify ms | Median ms | Min ms | Max ms | Thr Kelem/s | Classification | Commit |"
-puts "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+puts "| Workload | Lane | Channel | Log(Size) | Columns | Cold ms | Cold prove ms | Mean ms | Prove ms | Verify ms | Median ms | Min ms | Max ms | Thr Kelem/s | Classification | Commit |"
+puts "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
 rows.each do |row|
   puts [
     row["workload"],
@@ -54,6 +58,8 @@ rows.each do |row|
     row["channel"],
     row["log_n_instances"],
     row["n_columns"],
+    format_number(row["cold_start_ms"]),
+    format_number(row["cold_start_prove_ms"]),
     format_number(row["mean_ms"]),
     format_number(row["prove_mean_ms"]),
     format_number(row["verify_mean_ms"]),

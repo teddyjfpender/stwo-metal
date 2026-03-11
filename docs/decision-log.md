@@ -28,6 +28,48 @@ Superseded by:
 
 ## Entries
 
+### DEC-0151: Generated-lane benchmark artifacts must publish cold-start and warmed steady-state as separate contracts
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+The generated-lane benchmark artifact and report surface must publish
+`cold_start_*` timings and warmed `steady_state_*` timings as separate
+contracts instead of leaving cold-start as an implicit first sample inside the
+raw arrays.
+
+Context:
+
+Once the wide-fibonacci generated lane moved well below the old SIMD reference,
+the remaining performance work became sensitive to whether a change improved
+repeat proving throughput or only shifted one-time pipeline setup. The warmed
+`steady_state_*` summaries already existed, but cold-start was still only
+recoverable by manually inspecting the first sample in the raw arrays.
+
+Alternatives rejected:
+
+- keep the first sample implicit and require humans to reconstruct cold-start
+  from raw arrays
+- publish only warmed steady-state and drop cold-start visibility
+- create a second independent report pipeline instead of extending the existing
+  benchmark artifact
+
+Impact:
+
+- benchmark JSON now carries explicit cold-start totals, phases, and prove
+  breakdowns
+- report and acceptance tooling can reason about one-time and warmed costs
+  separately
+- future generated-lane optimization work has a stable measurement contract for
+  both throughput and startup cost
+
+Superseded by:
+
+- none
+
 ### DEC-0150: Eval-domain extension for the generated wide-fibonacci quotient path should stay in one contiguous Metal column batch
 
 - Date: `2026-03-11`
