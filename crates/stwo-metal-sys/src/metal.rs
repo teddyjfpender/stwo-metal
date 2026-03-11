@@ -1762,6 +1762,34 @@ impl U32Buffer {
         }
         Ok(dst)
     }
+
+    pub fn sampled_values_v1_wide_fibonacci_u32x4(
+        tree_descs: &Self,
+        column_descs: &Self,
+        values: &Self,
+        n_trees: u32,
+        point_x: &Self,
+    ) -> Result<Self, MetalError> {
+        let runtime = shared_runtime()?;
+        assert!(
+            point_x.len == 4,
+            "sampled-values V1 wide-fibonacci lane expects a single secure-field point coordinate"
+        );
+        let dst = Self::uninitialized(4)?;
+        unsafe {
+            ffi::sampled_values_v1_wide_fibonacci_u32x4(
+                runtime.raw.as_ptr(),
+                tree_descs.raw.as_ptr(),
+                column_descs.raw.as_ptr(),
+                values.raw.as_ptr(),
+                point_x.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_trees,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
 }
 
 impl Clone for U32Buffer {
@@ -2398,6 +2426,17 @@ mod ffi {
             row_count: u32,
             n_interactions: u32,
             n_constraints: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_sampled_values_v1_wide_fibonacci_u32x4(
+            runtime: *mut c_void,
+            tree_descs: *mut c_void,
+            column_descs: *mut c_void,
+            values: *mut c_void,
+            point_x: *mut c_void,
+            dst: *mut c_void,
+            n_trees: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -3817,6 +3856,34 @@ mod ffi {
         }
     }
 
+    pub unsafe fn sampled_values_v1_wide_fibonacci_u32x4(
+        runtime: *mut c_void,
+        tree_descs: *mut c_void,
+        column_descs: *mut c_void,
+        values: *mut c_void,
+        point_x: *mut c_void,
+        dst: *mut c_void,
+        n_trees: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_sampled_values_v1_wide_fibonacci_u32x4(
+            runtime,
+            tree_descs,
+            column_descs,
+            values,
+            point_x,
+            dst,
+            n_trees,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn buffer_read_indices(
         runtime: *mut c_void,
         buffer: *mut c_void,
@@ -4525,6 +4592,21 @@ mod ffi {
         _n_base_insts: u32,
         _n_ext_insts: u32,
         _n_constraints: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn sampled_values_v1_wide_fibonacci_u32x4(
+        _runtime: *mut c_void,
+        _tree_descs: *mut c_void,
+        _column_descs: *mut c_void,
+        _values: *mut c_void,
+        _point_x: *mut c_void,
+        _dst: *mut c_void,
+        _n_trees: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

@@ -69,6 +69,7 @@ pub mod program {
         MetalEvaluationProgramRuntimeInputsV1, MetalEvaluationProgramSectionDescV1,
         MetalEvaluationProgramSectionKindV1, MetalEvaluationProgramSpecializationV1,
         MetalSampledValuesColumnDescV1, MetalSampledValuesHeaderV1,
+        MetalSampledValuesDispatchKindV1, MetalSampledValuesExecutionError,
         MetalSampledValuesInterpreterError, MetalSampledValuesLoweringError,
         MetalSampledValuesTreeDescV1, MetalSampledValuesValidationError,
         MetalSecureFieldValueV1,
@@ -82,8 +83,9 @@ pub mod program {
         STWO_METAL_EVAL_PROGRAM_FLAG_PREFINALIZED_LOGUP_V1, STWO_METAL_EVAL_PROGRAM_MAGIC_V1,
         STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1,
         STWO_METAL_SAMPLED_VALUES_ABI_MAJOR_V1, STWO_METAL_SAMPLED_VALUES_ABI_MINOR_V1,
-        STWO_METAL_SAMPLED_VALUES_MAGIC_V1, interpret_metal_sampled_values_v1,
-        lower_metal_sampled_values_v1,
+        STWO_METAL_SAMPLED_VALUES_MAGIC_V1, execute_selected_metal_sampled_values_v1,
+        interpret_metal_sampled_values_v1, interpret_metal_sampled_values_v1_reference,
+        lower_metal_sampled_values_v1, select_metal_sampled_values_dispatch_v1,
     };
 }
 
@@ -188,6 +190,7 @@ pub use program::{
     MetalEvaluationProgramOverlayV1, MetalEvaluationProgramRuntimeInputsV1,
     MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
     MetalSampledValuesColumnDescV1, MetalSampledValuesHeaderV1,
+    MetalSampledValuesDispatchKindV1, MetalSampledValuesExecutionError,
     MetalSampledValuesInterpreterError, MetalSampledValuesLoweringError,
     MetalSampledValuesTreeDescV1, MetalSampledValuesValidationError,
     MetalSecureFieldValueV1,
@@ -201,8 +204,9 @@ pub use program::{
     STWO_METAL_EVAL_PROGRAM_FLAG_PREFINALIZED_LOGUP_V1, STWO_METAL_EVAL_PROGRAM_MAGIC_V1,
     STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1,
     STWO_METAL_SAMPLED_VALUES_ABI_MAJOR_V1, STWO_METAL_SAMPLED_VALUES_ABI_MINOR_V1,
-    STWO_METAL_SAMPLED_VALUES_MAGIC_V1, interpret_metal_sampled_values_v1,
-    lower_metal_sampled_values_v1,
+    STWO_METAL_SAMPLED_VALUES_MAGIC_V1, execute_selected_metal_sampled_values_v1,
+    interpret_metal_sampled_values_v1, interpret_metal_sampled_values_v1_reference,
+    lower_metal_sampled_values_v1, select_metal_sampled_values_dispatch_v1,
 };
 #[cfg(feature = "prover")]
 pub use quotient::{

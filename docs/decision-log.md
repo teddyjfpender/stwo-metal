@@ -28,6 +28,50 @@ Superseded by:
 
 ## Entries
 
+### DEC-0169: Post-composition sampled-values execution now belongs to one backend-owned ABI family
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
+
+Decision:
+
+`OwnedMetalSampledValuesV1` is now the shared post-composition execution
+contract for the active generated `wide_fibonacci` row, and that contract now
+has both a correctness-first reference lane and a first Metal runtime lane.
+Benchmark boundaries may still use that ABI for post-composition sanity
+checks, but they may no longer introduce new benchmark-local sampled-values
+reinterpretation paths outside the ABI family.
+
+Context:
+
+`DEC-0168` froze the need for a dedicated sampled-values ABI and a reference
+lane once selected `MetalEvaluationProgramV1` became the authority for
+composition generation. The next honest step was to make that ABI executable
+on Metal too, so the generated row could stop treating post-composition
+sampled-values execution as a host-only law.
+
+Alternatives rejected:
+
+- keep post-composition execution reference-only
+- add a benchmark-local Metal helper instead of a backend-owned ABI lane
+- widen the trace-interaction ABI until it implicitly covered sampled values
+
+Impact:
+
+- post-composition sampled-values execution now belongs to one backend-owned
+  ABI family with reference and Metal lanes
+- the remaining G10 blocker is narrowed to legacy `prove_values` and decommit
+  ownership above that ABI
+- future post-composition migration must build on this ABI family rather than
+  introduce new local reinterpretation seams
+
+Superseded by:
+
+- none
+
 ### DEC-0168: Post-composition sampled values require a distinct V1-family ABI and reference lane
 
 - Date: `2026-03-11`

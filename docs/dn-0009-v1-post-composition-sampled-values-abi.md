@@ -153,12 +153,13 @@ The first implementation slice is now landed:
 - the backend can lower the live generated post-composition sampled-values
   shape into that ABI
 - the backend can interpret that ABI through a correctness-first reference lane
+- the backend now has a first Metal runtime lane for the active generated
+  `wide_fibonacci` sampled-values shape
 - the active generated `wide_fibonacci` row now uses that backend-owned
-  sampled-values ABI/reference boundary for its post-composition sanity check
+  sampled-values ABI/runtime boundary for its post-composition sanity check
 
 What is still missing:
 
-- a Metal runtime lane for post-composition sampled-values execution
 - migration of the remaining prove-values and decommit flow onto that ABI
 - removal of the remaining legacy post-composition ownership from the
   generated row

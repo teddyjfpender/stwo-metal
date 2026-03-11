@@ -41,9 +41,10 @@ use super::quotient::{
     MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciQuotientRequest,
 };
 use super::sampled_values_v1::{
-    interpret_metal_sampled_values_v1, lower_metal_sampled_values_v1,
-    MetalSampledValuesInterpreterError, MetalSampledValuesLoweringError,
-    OwnedMetalSampledValuesV1,
+    execute_selected_metal_sampled_values_v1, interpret_metal_sampled_values_v1,
+    interpret_metal_sampled_values_v1_reference, lower_metal_sampled_values_v1,
+    MetalSampledValuesDispatchKindV1, MetalSampledValuesExecutionError,
+    MetalSampledValuesInterpreterError, MetalSampledValuesLoweringError, OwnedMetalSampledValuesV1,
 };
 use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload::{declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary};
@@ -207,6 +208,8 @@ pub struct MetalGeneratedWideFibonacciBenchmarkBreakdown {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MetalBenchmarkProveValuesBreakdown {
     pub prove_values_ms: f64,
+    pub sampled_values_v1_ms: f64,
+    pub sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
     pub sanity_check_ms: f64,
 }
 
@@ -493,8 +496,6 @@ impl MetalWideFibonacciBenchmarkBoundary {
 
     pub fn execute_prove_values(
         &self,
-        component_provers: &ComponentProvers<'_, super::MetalBackend>,
-        random_coeff: SecureField,
         channel: &mut Blake2sChannel,
         commitment_scheme: CommitmentSchemeProver<'_, super::MetalBackend, Blake2sMerkleChannel>,
         staging: MetalBenchmarkProveValuesStaging,
@@ -514,18 +515,20 @@ impl MetalWideFibonacciBenchmarkBoundary {
             .lower_post_composition_sampled_values_v1(&proof)
             .map_err(|_| ProvingError::ConstraintsNotSatisfied)?;
 
+        let sampled_values_v1_start = std::time::Instant::now();
+        let (post_composition_eval, sampled_values_dispatch) = self
+            .execute_post_composition_sampled_values_v1(
+                staging.oods_point,
+                &sampled_values,
+                staging.max_log_degree_bound,
+            )
+            .map_err(|_| ProvingError::ConstraintsNotSatisfied)?;
+        let sampled_values_v1_ms = sampled_values_v1_start.elapsed().as_secs_f64() * 1000.0;
+
         let sanity_check_start = std::time::Instant::now();
         if extract_composition_oods_eval(&proof, staging.oods_point, staging.max_log_degree_bound)
             .unwrap()
-            != self
-                .interpret_post_composition_sampled_values_v1(
-                    &component_provers.components(),
-                    staging.oods_point,
-                    &sampled_values,
-                    random_coeff,
-                    staging.max_log_degree_bound,
-                )
-                .map_err(|_| ProvingError::ConstraintsNotSatisfied)?
+            != post_composition_eval
         {
             return Err(ProvingError::ConstraintsNotSatisfied);
         }
@@ -535,6 +538,8 @@ impl MetalWideFibonacciBenchmarkBoundary {
             proof,
             MetalBenchmarkProveValuesBreakdown {
                 prove_values_ms,
+                sampled_values_v1_ms,
+                sampled_values_dispatch,
                 sanity_check_ms,
             },
         ))
@@ -563,6 +568,33 @@ impl MetalWideFibonacciBenchmarkBoundary {
             point,
             sampled_values.sampled_values(),
             random_coeff,
+            max_log_degree_bound,
+        )
+    }
+
+    pub fn interpret_post_composition_sampled_values_v1_reference(
+        &self,
+        point: stwo::core::circle::CirclePoint<SecureField>,
+        sampled_values: &MetalBenchmarkPostCompositionSampledValuesV1,
+        max_log_degree_bound: u32,
+    ) -> Result<SecureField, MetalSampledValuesExecutionError> {
+        interpret_metal_sampled_values_v1_reference(
+            point,
+            sampled_values.sampled_values(),
+            max_log_degree_bound,
+        )
+    }
+
+    pub fn execute_post_composition_sampled_values_v1(
+        &self,
+        point: stwo::core::circle::CirclePoint<SecureField>,
+        sampled_values: &MetalBenchmarkPostCompositionSampledValuesV1,
+        max_log_degree_bound: u32,
+    ) -> Result<(SecureField, MetalSampledValuesDispatchKindV1), MetalSampledValuesExecutionError>
+    {
+        execute_selected_metal_sampled_values_v1(
+            point,
+            sampled_values.sampled_values(),
             max_log_degree_bound,
         )
     }
@@ -614,8 +646,6 @@ impl MetalWideFibonacciBenchmarkBoundary {
             .expect("registered benchmark boundary must satisfy the prove-values lane contract");
         let (proof, prove_values_breakdown) = self
             .execute_prove_values(
-                &component_provers,
-                random_coeff,
                 channel,
                 commitment_scheme,
                 prove_values_stage,

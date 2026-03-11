@@ -227,3 +227,67 @@ kernel void eval_program_v1_wide_fibonacci_u32x4(
 
     stwo_metal_store_qm31(dst, row_index, acc);
 }
+
+kernel void sampled_values_v1_wide_fibonacci_u32x4(
+    device const uint *tree_descs [[buffer(0)]],
+    device const uint *column_descs [[buffer(1)]],
+    device const uint *values [[buffer(2)]],
+    device const uint *point_x [[buffer(3)]],
+    device uint *dst [[buffer(4)]],
+    constant uint &n_trees [[buffer(5)]],
+    uint thread_index [[thread_position_in_grid]]
+) {
+    if (thread_index != 0 || n_trees == 0u) {
+        return;
+    }
+
+    uint last_tree_base = (n_trees - 1u) * 2u;
+    uint first_column = tree_descs[last_tree_base + 0u];
+
+    uint left_value_index_0 = column_descs[(first_column + 0u) * 2u + 0u];
+    uint left_value_index_1 = column_descs[(first_column + 1u) * 2u + 0u];
+    uint left_value_index_2 = column_descs[(first_column + 2u) * 2u + 0u];
+    uint left_value_index_3 = column_descs[(first_column + 3u) * 2u + 0u];
+    uint right_value_index_0 = column_descs[(first_column + 4u) * 2u + 0u];
+    uint right_value_index_1 = column_descs[(first_column + 5u) * 2u + 0u];
+    uint right_value_index_2 = column_descs[(first_column + 6u) * 2u + 0u];
+    uint right_value_index_3 = column_descs[(first_column + 7u) * 2u + 0u];
+
+    StwoMetalQm31 basis_i = StwoMetalQm31 { 0u, 1u, 0u, 0u };
+    StwoMetalQm31 basis_u = StwoMetalQm31 { 0u, 0u, 1u, 0u };
+    StwoMetalQm31 basis_iu = StwoMetalQm31 { 0u, 0u, 0u, 1u };
+
+    StwoMetalQm31 left_eval_0 = stwo_metal_load_qm31(values, left_value_index_0);
+    StwoMetalQm31 left_eval_1 = stwo_metal_load_qm31(values, left_value_index_1);
+    StwoMetalQm31 left_eval_2 = stwo_metal_load_qm31(values, left_value_index_2);
+    StwoMetalQm31 left_eval_3 = stwo_metal_load_qm31(values, left_value_index_3);
+    StwoMetalQm31 right_eval_0 = stwo_metal_load_qm31(values, right_value_index_0);
+    StwoMetalQm31 right_eval_1 = stwo_metal_load_qm31(values, right_value_index_1);
+    StwoMetalQm31 right_eval_2 = stwo_metal_load_qm31(values, right_value_index_2);
+    StwoMetalQm31 right_eval_3 = stwo_metal_load_qm31(values, right_value_index_3);
+
+    StwoMetalQm31 left = stwo_metal_qm31_add(
+        stwo_metal_qm31_add(
+            left_eval_0,
+            stwo_metal_qm31_mul(left_eval_1, basis_i)
+        ),
+        stwo_metal_qm31_add(
+            stwo_metal_qm31_mul(left_eval_2, basis_u),
+            stwo_metal_qm31_mul(left_eval_3, basis_iu)
+        )
+    );
+    StwoMetalQm31 right = stwo_metal_qm31_add(
+        stwo_metal_qm31_add(
+            right_eval_0,
+            stwo_metal_qm31_mul(right_eval_1, basis_i)
+        ),
+        stwo_metal_qm31_add(
+            stwo_metal_qm31_mul(right_eval_2, basis_u),
+            stwo_metal_qm31_mul(right_eval_3, basis_iu)
+        )
+    );
+    StwoMetalQm31 point_x_qm31 = stwo_metal_load_qm31(point_x, 0u);
+    StwoMetalQm31 acc =
+        stwo_metal_qm31_add(left, stwo_metal_qm31_mul(right, point_x_qm31));
+    stwo_metal_store_qm31(dst, 0u, acc);
+}

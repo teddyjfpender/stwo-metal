@@ -2,6 +2,7 @@ use stwo::core::air::Components;
 use stwo::core::circle::CirclePoint;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::pcs::TreeVec;
+use stwo_metal_sys::metal::{metal_runtime_support, MetalError, MetalRuntimeSupport, U32Buffer};
 
 pub const STWO_METAL_SAMPLED_VALUES_MAGIC_V1: u32 = u32::from_le_bytes(*b"SMS1");
 pub const STWO_METAL_SAMPLED_VALUES_ABI_MAJOR_V1: u16 = 1;
@@ -202,6 +203,77 @@ impl OwnedMetalSampledValuesV1 {
                 .collect(),
         ))
     }
+
+    fn validate_wide_fibonacci_post_composition_shape(
+        &self,
+    ) -> Result<WideFibonacciPostCompositionShapeV1, MetalSampledValuesExecutionError> {
+        self.validate()
+            .map_err(|source| MetalSampledValuesExecutionError::Validation { source })?;
+
+        let Some(last_tree) = self.tree_descs.last().copied() else {
+            return Err(MetalSampledValuesExecutionError::UnsupportedShape {
+                message: "sampled-values ABI requires at least one tree".to_owned(),
+            });
+        };
+        if last_tree.n_columns != 8 {
+            return Err(MetalSampledValuesExecutionError::UnsupportedShape {
+                message: format!(
+                    "wide-fibonacci post-composition lane expects 8 columns in the last tree, got {}",
+                    last_tree.n_columns
+                ),
+            });
+        }
+        let first_column = last_tree.first_column as usize;
+        for (offset, column) in self.column_descs[first_column..first_column + last_tree.n_columns as usize]
+            .iter()
+            .enumerate()
+        {
+            if column.n_values != 1 {
+                return Err(MetalSampledValuesExecutionError::UnsupportedShape {
+                    message: format!(
+                        "wide-fibonacci post-composition lane expects exactly one sampled value per final-tree column; column {} had {}",
+                        first_column + offset,
+                        column.n_values
+                    ),
+                });
+            }
+        }
+
+        Ok(WideFibonacciPostCompositionShapeV1 { first_column })
+    }
+
+    fn last_tree_wide_fibonacci_values(
+        &self,
+        shape: WideFibonacciPostCompositionShapeV1,
+    ) -> [SecureField; 8] {
+        let mut values = [SecureField::from_u32_unchecked(0, 0, 0, 0); 8];
+        for (index, slot) in values.iter_mut().enumerate() {
+            let desc = self.column_descs[shape.first_column + index];
+            *slot = self.values[desc.first_value as usize].into();
+        }
+        values
+    }
+
+    fn tree_desc_words(&self) -> Vec<u32> {
+        self.tree_descs
+            .iter()
+            .flat_map(|desc| [desc.first_column, desc.n_columns])
+            .collect()
+    }
+
+    fn column_desc_words(&self) -> Vec<u32> {
+        self.column_descs
+            .iter()
+            .flat_map(|desc| [desc.first_value, desc.n_values])
+            .collect()
+    }
+
+    fn value_words(&self) -> Vec<u32> {
+        self.values
+            .iter()
+            .flat_map(|value| value.limbs)
+            .collect()
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -235,6 +307,25 @@ pub enum MetalSampledValuesValidationError {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalSampledValuesInterpreterError {
     Validation { source: MetalSampledValuesValidationError },
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalSampledValuesDispatchKindV1 {
+    ReferenceInterpreter,
+    GeneratedOverlayWideFibonacci,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MetalSampledValuesExecutionError {
+    Validation { source: MetalSampledValuesValidationError },
+    UnsupportedShape { message: String },
+    MetalRuntimeUnavailable { support: MetalRuntimeSupport },
+    Metal { source: MetalError },
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct WideFibonacciPostCompositionShapeV1 {
+    first_column: usize,
 }
 
 pub fn lower_metal_sampled_values_v1(
@@ -300,14 +391,98 @@ pub fn interpret_metal_sampled_values_v1(
     ))
 }
 
+pub fn interpret_metal_sampled_values_v1_reference(
+    point: CirclePoint<SecureField>,
+    sampled_values: &OwnedMetalSampledValuesV1,
+    max_log_degree_bound: u32,
+) -> Result<SecureField, MetalSampledValuesExecutionError> {
+    let shape = sampled_values.validate_wide_fibonacci_post_composition_shape()?;
+    let values = sampled_values.last_tree_wide_fibonacci_values(shape);
+    let (left_values, right_values) = values.split_at(4);
+    let left =
+        SecureField::from_partial_evals(left_values.try_into().expect("fixed-width split"));
+    let right =
+        SecureField::from_partial_evals(right_values.try_into().expect("fixed-width split"));
+    let x = point.repeated_double(max_log_degree_bound - 1).x;
+    Ok(left + x * right)
+}
+
+pub fn select_metal_sampled_values_dispatch_v1(
+    sampled_values: &OwnedMetalSampledValuesV1,
+) -> Result<MetalSampledValuesDispatchKindV1, MetalSampledValuesExecutionError> {
+    sampled_values.validate_wide_fibonacci_post_composition_shape()?;
+    match metal_runtime_support() {
+        MetalRuntimeSupport::Available => {
+            Ok(MetalSampledValuesDispatchKindV1::GeneratedOverlayWideFibonacci)
+        }
+        _ => Ok(MetalSampledValuesDispatchKindV1::ReferenceInterpreter),
+    }
+}
+
+pub fn execute_selected_metal_sampled_values_v1(
+    point: CirclePoint<SecureField>,
+    sampled_values: &OwnedMetalSampledValuesV1,
+    max_log_degree_bound: u32,
+) -> Result<(SecureField, MetalSampledValuesDispatchKindV1), MetalSampledValuesExecutionError> {
+    let dispatch = select_metal_sampled_values_dispatch_v1(sampled_values)?;
+    let value = match dispatch {
+        MetalSampledValuesDispatchKindV1::ReferenceInterpreter => {
+            interpret_metal_sampled_values_v1_reference(point, sampled_values, max_log_degree_bound)?
+        }
+        MetalSampledValuesDispatchKindV1::GeneratedOverlayWideFibonacci => {
+            execute_metal_sampled_values_v1_wide_fibonacci(point, sampled_values, max_log_degree_bound)?
+        }
+    };
+    Ok((value, dispatch))
+}
+
+fn execute_metal_sampled_values_v1_wide_fibonacci(
+    point: CirclePoint<SecureField>,
+    sampled_values: &OwnedMetalSampledValuesV1,
+    max_log_degree_bound: u32,
+) -> Result<SecureField, MetalSampledValuesExecutionError> {
+    sampled_values.validate_wide_fibonacci_post_composition_shape()?;
+    let tree_descs = U32Buffer::from_slice(&sampled_values.tree_desc_words())
+        .map_err(|source| MetalSampledValuesExecutionError::Metal { source })?;
+    let column_descs = U32Buffer::from_slice(&sampled_values.column_desc_words())
+        .map_err(|source| MetalSampledValuesExecutionError::Metal { source })?;
+    let values = U32Buffer::from_slice(&sampled_values.value_words())
+        .map_err(|source| MetalSampledValuesExecutionError::Metal { source })?;
+    let point_x = point
+        .repeated_double(max_log_degree_bound - 1)
+        .x
+        .to_m31_array()
+        .map(|limb| limb.0);
+    let point_x = U32Buffer::from_slice(&point_x)
+        .map_err(|source| MetalSampledValuesExecutionError::Metal { source })?;
+    let dst = U32Buffer::sampled_values_v1_wide_fibonacci_u32x4(
+        &tree_descs,
+        &column_descs,
+        &values,
+        sampled_values.header.n_trees,
+        &point_x,
+    )
+    .map_err(|source| MetalSampledValuesExecutionError::Metal { source })?;
+    let limbs: [u32; 4] = dst
+        .to_vec()
+        .map_err(|source| MetalSampledValuesExecutionError::Metal { source })?
+        .try_into()
+        .expect("sampled-values V1 wide-fibonacci lane must return one secure field");
+    Ok(SecureField::from_u32_unchecked(
+        limbs[0], limbs[1], limbs[2], limbs[3],
+    ))
+}
+
 #[cfg(test)]
 mod tests {
+    use stwo::core::channel::Blake2sChannel;
     use stwo::core::fields::qm31::SecureField;
     use stwo::core::fields::m31::BaseField;
     use stwo::core::pcs::TreeVec;
 
     use super::{
-        lower_metal_sampled_values_v1,
+        execute_selected_metal_sampled_values_v1, interpret_metal_sampled_values_v1_reference,
+        lower_metal_sampled_values_v1, MetalRuntimeSupport, MetalSampledValuesDispatchKindV1,
     };
 
     #[test]
@@ -345,5 +520,86 @@ mod tests {
                 actual: 1
             })
         );
+    }
+
+    #[test]
+    fn sampled_values_v1_reference_lane_matches_wide_fibonacci_post_composition_formula() {
+        let sampled_values = TreeVec(vec![
+            vec![vec![SecureField::from_u32_unchecked(99, 98, 97, 96)]],
+            vec![
+                vec![SecureField::from_u32_unchecked(1, 2, 3, 4)],
+                vec![SecureField::from_u32_unchecked(5, 6, 7, 8)],
+                vec![SecureField::from_u32_unchecked(9, 10, 11, 12)],
+                vec![SecureField::from_u32_unchecked(13, 14, 15, 16)],
+                vec![SecureField::from_u32_unchecked(17, 18, 19, 20)],
+                vec![SecureField::from_u32_unchecked(21, 22, 23, 24)],
+                vec![SecureField::from_u32_unchecked(25, 26, 27, 28)],
+                vec![SecureField::from_u32_unchecked(29, 30, 31, 32)],
+            ],
+        ]);
+        let lowered = lower_metal_sampled_values_v1(&sampled_values).unwrap();
+        let point = stwo::core::circle::CirclePoint::get_random_point(&mut Blake2sChannel::default());
+        let max_log_degree_bound = 6;
+
+        let value =
+            interpret_metal_sampled_values_v1_reference(point, &lowered, max_log_degree_bound)
+                .unwrap();
+        let expected = {
+            let left = SecureField::from_partial_evals(
+                [
+                    SecureField::from_u32_unchecked(1, 2, 3, 4),
+                    SecureField::from_u32_unchecked(5, 6, 7, 8),
+                    SecureField::from_u32_unchecked(9, 10, 11, 12),
+                    SecureField::from_u32_unchecked(13, 14, 15, 16),
+                ]
+            );
+            let right = SecureField::from_partial_evals(
+                [
+                    SecureField::from_u32_unchecked(17, 18, 19, 20),
+                    SecureField::from_u32_unchecked(21, 22, 23, 24),
+                    SecureField::from_u32_unchecked(25, 26, 27, 28),
+                    SecureField::from_u32_unchecked(29, 30, 31, 32),
+                ]
+            );
+            left + point.repeated_double(max_log_degree_bound - 1).x * right
+        };
+
+        assert_eq!(value, expected);
+    }
+
+    #[test]
+    fn sampled_values_v1_selected_lane_matches_reference() {
+        let sampled_values = TreeVec(vec![
+            vec![vec![SecureField::from_u32_unchecked(99, 98, 97, 96)]],
+            vec![
+                vec![SecureField::from_u32_unchecked(1, 2, 3, 4)],
+                vec![SecureField::from_u32_unchecked(5, 6, 7, 8)],
+                vec![SecureField::from_u32_unchecked(9, 10, 11, 12)],
+                vec![SecureField::from_u32_unchecked(13, 14, 15, 16)],
+                vec![SecureField::from_u32_unchecked(17, 18, 19, 20)],
+                vec![SecureField::from_u32_unchecked(21, 22, 23, 24)],
+                vec![SecureField::from_u32_unchecked(25, 26, 27, 28)],
+                vec![SecureField::from_u32_unchecked(29, 30, 31, 32)],
+            ],
+        ]);
+        let lowered = lower_metal_sampled_values_v1(&sampled_values).unwrap();
+        let point = stwo::core::circle::CirclePoint::get_random_point(&mut Blake2sChannel::default());
+        let max_log_degree_bound = 6;
+
+        let reference =
+            interpret_metal_sampled_values_v1_reference(point, &lowered, max_log_degree_bound)
+                .unwrap();
+        let (selected, dispatch) =
+            execute_selected_metal_sampled_values_v1(point, &lowered, max_log_degree_bound)
+                .unwrap();
+
+        assert_eq!(selected, reference);
+        match super::metal_runtime_support() {
+            MetalRuntimeSupport::Available => assert_eq!(
+                dispatch,
+                MetalSampledValuesDispatchKindV1::GeneratedOverlayWideFibonacci
+            ),
+            _ => assert_eq!(dispatch, MetalSampledValuesDispatchKindV1::ReferenceInterpreter),
+        }
     }
 }

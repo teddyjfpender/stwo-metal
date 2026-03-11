@@ -3185,6 +3185,76 @@ bool stwo_metal_eval_program_v1_wide_fibonacci_u32x4(
     }
 }
 
+bool stwo_metal_sampled_values_v1_wide_fibonacci_u32x4(
+    void *runtime_ptr,
+    void *tree_descs_ptr,
+    void *column_descs_ptr,
+    void *values_ptr,
+    void *point_x_ptr,
+    void *dst_ptr,
+    uint32_t n_trees,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *tree_descs = stwo_metal_buffer_box(tree_descs_ptr);
+        StwoMetalBufferBox *column_descs = stwo_metal_buffer_box(column_descs_ptr);
+        StwoMetalBufferBox *values = stwo_metal_buffer_box(values_ptr);
+        StwoMetalBufferBox *point_x = stwo_metal_buffer_box(point_x_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+
+        if (n_trees == 0u ||
+            tree_descs.len != (NSUInteger)n_trees * 2u ||
+            point_x.len != 4u ||
+            dst.len != 4u) {
+            stwo_metal_write_error(error_message, error_message_len, @"Sampled-values V1 wide-fibonacci lane expects canonical tree descriptors, one secure-field point coordinate, and a single secure-field destination.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"sampled_values_v1_wide_fibonacci_u32x4", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:tree_descs.buffer offset:0 atIndex:0];
+        [encoder setBuffer:column_descs.buffer offset:0 atIndex:1];
+        [encoder setBuffer:values.buffer offset:0 atIndex:2];
+        [encoder setBuffer:point_x.buffer offset:0 atIndex:3];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:4];
+        [encoder setBytes:&n_trees length:sizeof(n_trees) atIndex:5];
+
+        MTLSize grid_size = MTLSizeMake(1, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(1, 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_accumulate_partial_numerators_u32x4(
     void *runtime_ptr,
     void *columns_ptr,

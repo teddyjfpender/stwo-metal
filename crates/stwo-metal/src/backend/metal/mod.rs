@@ -100,11 +100,14 @@ pub use quotient::{
 };
 pub use row::MetalFriInnerLayerRow;
 pub use sampled_values_v1::{
-    interpret_metal_sampled_values_v1, lower_metal_sampled_values_v1,
-    MetalSampledValuesColumnDescV1, MetalSampledValuesHeaderV1,
-    MetalSampledValuesInterpreterError, MetalSampledValuesLoweringError,
-    MetalSampledValuesTreeDescV1, MetalSampledValuesValidationError,
-    MetalSecureFieldValueV1, OwnedMetalSampledValuesV1,
+    execute_selected_metal_sampled_values_v1, interpret_metal_sampled_values_v1,
+    interpret_metal_sampled_values_v1_reference, lower_metal_sampled_values_v1,
+    select_metal_sampled_values_dispatch_v1, MetalSampledValuesColumnDescV1,
+    MetalSampledValuesDispatchKindV1, MetalSampledValuesExecutionError,
+    MetalSampledValuesHeaderV1, MetalSampledValuesInterpreterError,
+    MetalSampledValuesLoweringError, MetalSampledValuesTreeDescV1,
+    MetalSampledValuesValidationError, MetalSecureFieldValueV1,
+    OwnedMetalSampledValuesV1,
     STWO_METAL_SAMPLED_VALUES_ABI_MAJOR_V1, STWO_METAL_SAMPLED_VALUES_ABI_MINOR_V1,
     STWO_METAL_SAMPLED_VALUES_MAGIC_V1,
 };
