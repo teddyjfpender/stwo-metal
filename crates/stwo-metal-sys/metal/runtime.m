@@ -3488,6 +3488,78 @@ bool stwo_metal_blake2s_build_next_layer_u32(
     }
 }
 
+bool stwo_metal_blake2s_build_merkle_layers_u32(
+    void *runtime_ptr,
+    void *leaf_layer_ptr,
+    void *const *layer_ptrs,
+    uint32_t leaf_log_size,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *src_layer = stwo_metal_buffer_box(leaf_layer_ptr);
+        if (src_layer.len != (((NSUInteger)1u) << leaf_log_size) * 8u) {
+            stwo_metal_write_error(error_message, error_message_len, @"Packed Blake2s leaf layers must contain eight words per leaf hash.");
+            return false;
+        }
+        if (leaf_log_size > 0u && layer_ptrs == NULL) {
+            stwo_metal_write_error(error_message, error_message_len, @"Merkle-layer output pointers must be present when upper layers are requested.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"blake2s_build_next_layer_u32", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        uint32_t next_len = ((uint32_t)1u) << leaf_log_size;
+        for (uint32_t layer_index = 0u; layer_index < leaf_log_size; ++layer_index) {
+            next_len >>= 1u;
+            StwoMetalBufferBox *dst_layer = stwo_metal_buffer_box(layer_ptrs[layer_index]);
+            if (dst_layer.len != ((NSUInteger)next_len) * 8u) {
+                stwo_metal_write_error(error_message, error_message_len, @"Packed Blake2s parent layers must contain eight words per hash.");
+                return false;
+            }
+
+            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+            if (encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                return false;
+            }
+
+            [encoder setComputePipelineState:pipeline];
+            [encoder setBuffer:src_layer.buffer offset:0 atIndex:0];
+            [encoder setBuffer:dst_layer.buffer offset:0 atIndex:1];
+            [encoder setBytes:&next_len length:sizeof(next_len) atIndex:2];
+
+            MTLSize grid_size = MTLSizeMake(next_len, 1, 1);
+            MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+            [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+            [encoder endEncoding];
+
+            src_layer = dst_layer;
+        }
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_generate_wide_fibonacci_trace_u32(
     void *runtime_ptr,
     void *input_a_ptr,

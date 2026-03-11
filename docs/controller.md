@@ -170,16 +170,23 @@ Invariants:
   `trace_commit_merkle_ms` about `29 ms` mean; the next measured walls are the
   numerator-accumulation kernel itself and the first FRI commitment rounds,
   not hidden CPU accumulation helpers
+- the generic Blake2s commitment path now builds full parent-layer chains from
+  one packed native leaf layer inside one Metal command buffer, and the batched
+  quotient feeder no longer clones the same packed partial-numerator slice a
+  second time before secure-coordinate unpack; the measured generated
+  `wide_fibonacci` `log20` row is now about `854 ms` mean / `638 ms` median,
+  with `prove_core_prove_values_ms` about `405 ms` mean; the remaining hot
+  wall is no longer repeated Merkle dispatch setup or quotient unpack
+  duplication, but numerator accumulation plus the first FRI fold/commit band
 
 ## Next three deliverables
 
-1. Lower the broader FRI/PCS CPU-ownership boundary above the generated
-   wide-fibonacci lane now that workload ingress, the final FRI last-layer
-   interpolation, and the bounded FRI commitment slice no longer route through
-   `CpuBackend`.
-2. Reduce the remaining `prove_values` wall in the PCS prover, with the next
-   measured targets now being quotient numerator accumulation before
-   lift-and-accumulate and the earliest FRI commitment rounds after warm-up.
+1. Reduce numerator accumulation in the generated `prove_values` lane from the
+   new `~854 ms` / `~638 ms` baseline, with the next measured target still
+   being the quotient numerator kernel before lift-and-accumulate.
+2. Reduce the first FRI fold and commit band from the same baseline now that
+   repeated Merkle parent-layer dispatch is no longer the dominant early-commit
+   tax.
 3. Keep downstream `stark-v` hardening iced unless an external support signal
    appears.
 

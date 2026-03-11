@@ -1610,6 +1610,51 @@ impl U32Buffer {
         }
         Ok(dst)
     }
+
+    pub fn blake2s_build_merkle_layers_from_leaves(
+        leaf_layer: Self,
+    ) -> Result<Vec<Self>, MetalError> {
+        assert!(
+            leaf_layer.len.is_multiple_of(8),
+            "packed Blake2s leaves should contain eight words per hash"
+        );
+        let mut current_hash_count = leaf_layer.len / 8;
+        assert!(
+            current_hash_count.is_power_of_two(),
+            "packed Blake2s leaves should contain a power-of-two hash count"
+        );
+
+        if current_hash_count == 0 {
+            return Ok(vec![leaf_layer]);
+        }
+
+        let leaf_log_size = current_hash_count.ilog2();
+        let runtime = shared_runtime()?;
+        let mut upper_layers = Vec::with_capacity(leaf_log_size as usize);
+        while current_hash_count > 1 {
+            current_hash_count /= 2;
+            upper_layers.push(Self::uninitialized(current_hash_count * 8)?);
+        }
+
+        let layer_ptrs = upper_layers
+            .iter_mut()
+            .map(|layer| layer.raw.as_ptr())
+            .collect::<Vec<_>>();
+        unsafe {
+            ffi::blake2s_build_merkle_layers_u32(
+                runtime.raw.as_ptr(),
+                leaf_layer.raw.as_ptr(),
+                layer_ptrs.as_ptr(),
+                leaf_log_size,
+                error_buffer_mut_ptr,
+            )?;
+        }
+
+        let mut layers = Vec::with_capacity(upper_layers.len() + 1);
+        layers.push(leaf_layer);
+        layers.extend(upper_layers);
+        Ok(layers)
+    }
 }
 
 impl Clone for U32Buffer {
@@ -2194,6 +2239,14 @@ mod ffi {
             prev_layer: *mut c_void,
             dst: *mut c_void,
             next_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_blake2s_build_merkle_layers_u32(
+            runtime: *mut c_void,
+            leaf_layer: *mut c_void,
+            layer_ptrs: *const *mut c_void,
+            leaf_log_size: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -3484,6 +3537,28 @@ mod ffi {
         }
     }
 
+    pub unsafe fn blake2s_build_merkle_layers_u32(
+        runtime: *mut c_void,
+        leaf_layer: *mut c_void,
+        layer_ptrs: *const *mut c_void,
+        leaf_log_size: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_blake2s_build_merkle_layers_u32(
+            runtime,
+            leaf_layer,
+            layer_ptrs,
+            leaf_log_size,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn buffer_read_indices(
         runtime: *mut c_void,
         buffer: *mut c_void,
@@ -4152,6 +4227,18 @@ mod ffi {
         _dst: *mut c_void,
         _lifting_log_size: u32,
         _n_accumulations: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn blake2s_build_merkle_layers_u32(
+        _runtime: *mut c_void,
+        _leaf_layer: *mut c_void,
+        _layer_ptrs: *const *mut c_void,
+        _leaf_log_size: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

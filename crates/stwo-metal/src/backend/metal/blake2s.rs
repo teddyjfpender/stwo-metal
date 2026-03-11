@@ -149,18 +149,12 @@ fn build_merkle_layers_native_standard(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
 ) -> Option<Vec<MetalBlake2sHashVec>> {
-    let mut packed_layer = if columns.len() > 8 {
+    let packed_layer = if columns.len() > 8 {
         build_leaves_native_wide_packed(columns, lifting_log_size)?
     } else {
         build_leaves_native_standard_packed(columns, lifting_log_size)?
     };
-
-    let mut packed_layers = Vec::with_capacity((lifting_log_size + 1) as usize);
-    packed_layers.push(packed_layer);
-    for _ in 0..lifting_log_size {
-        packed_layer = U32Buffer::blake2s_build_next_layer(packed_layers.last().unwrap()).ok()?;
-        packed_layers.push(packed_layer);
-    }
+    let packed_layers = U32Buffer::blake2s_build_merkle_layers_from_leaves(packed_layer).ok()?;
 
     let mut layers = packed_layers
         .into_iter()

@@ -28,6 +28,87 @@ Superseded by:
 
 ## Entries
 
+### DEC-0146: Generic Metal Blake2s commitment should build full parent-layer chains in one command buffer
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+When the generic Blake2s commitment path already has a packed native Metal leaf
+layer, `MetalBackend` should build the full parent-layer chain inside one Metal
+command buffer instead of dispatching one host-synchronized command buffer per
+Merkle layer.
+
+Context:
+
+After keeping generic Blake2s commitment layers on a Metal-backed packed hash
+column, the remaining early FRI commitment wall still included repeated runtime
+round-trips during generic Merkle construction. The runtime already had the
+information needed to walk the whole parent-layer chain from one packed leaf
+buffer, so leaving that work as one command-buffer round-trip per layer was an
+unnecessary CPU-shaped control path inside an otherwise native commitment lane.
+
+Alternatives rejected:
+
+- keep one-command-buffer-per-layer dispatch because the kernel itself was now
+  native
+- special-case only the benchmark trace tree while leaving the generic
+  commitment law host-shaped
+- widen the public Merkle API instead of changing the private runtime path
+
+Impact:
+
+- generic Blake2s parent-layer construction is less CPU-shaped
+- early FRI commitment rounds stop paying repeated command-buffer setup and
+  synchronization overhead
+- the next remaining measured hot path is numerator accumulation and the fold
+  and commit work around the first FRI layers, not repeated Merkle layer
+  dispatch setup
+
+Superseded by:
+
+- none
+
+### DEC-0147: Batched quotient partial numerators should unpack directly from packed Metal slices
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+The batched partial-numerator path should unpack secure-field coordinates
+directly from the cached packed Metal slice instead of cloning the same packed
+buffer again through an intermediate `SecureFieldVec`.
+
+Context:
+
+Once numerator accumulation itself had become the dominant quotient-side hot
+path, the feeder code still performed an avoidable second packed-buffer clone
+for every sample batch before unpacking secure-field coordinates. That was not
+the main benchmark wall, but it was still repeated CPU-side memory churn inside
+the hot quotient lane.
+
+Alternatives rejected:
+
+- keep the extra clone because the surrounding kernel work dominated cold runs
+- add a benchmark-only fast path instead of simplifying the generic quotient
+  feeder
+
+Impact:
+
+- the quotient feeder keeps less redundant host-side memory traffic
+- cached packed partial numerators remain the single source of truth for later
+  quotient combination
+- the next measured quotient wall is the numerator kernel itself, not a second
+  buffer clone before unpack
+
+Superseded by:
+
+- none
+
 ### DEC-0144: Metal accumulation stays on native coordinate buffers through lift-and-accumulate
 
 - Date: `2026-03-11`

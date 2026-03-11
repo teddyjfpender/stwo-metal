@@ -84,12 +84,13 @@ Merkle path, then keeping quotient partial numerators packed through
 `compute_quotients_and_combine`, then specializing the generic first FRI layer
 fold to skip zero-destination accumulation work, then batching
 partial-numerator accumulation across sample batches, then decoding packed
-native Merkle layers directly from shared Metal buffers, and now keeping
-generic Blake2s commitment layers on a Metal-backed packed hash column across
-the native commitment chain, the measured `wide_fibonacci` `log20`
-generated-lane profile no longer points at repeated parent-layer
-materialization, quotient combination, or the generic first fold kernel as the
-dominant remaining work. The next dominant subphases are now:
+native Merkle layers directly from shared Metal buffers, then keeping generic
+Blake2s commitment layers on a Metal-backed packed hash column across the
+native commitment chain, and now finally building generic parent-layer chains
+inside one Metal command buffer while removing the second packed-buffer clone
+before quotient unpack, the measured `wide_fibonacci` `log20` generated-lane
+profile has moved to about `854 ms` mean / `638 ms` median. The dominant
+remaining subphases are now:
 
 - quotient numerator accumulation before lift-and-accumulate
 - the earliest FRI commitment construction rounds
@@ -106,10 +107,10 @@ Current containment:
 
 Risk if left in place:
 
-The generated lane may stall near SIMD parity instead of reaching clear
-GPU-class speedups, even after quotient combination, numerator staging, and the
-generic first-layer fold plus generic Merkle layer residency are substantially
-more native and `AccumulationOps` itself no longer has a CPU fallback.
+The generated lane may stall around low-single-digit-speedup territory instead
+of moving toward clearer GPU-class wins, even after quotient combination,
+numerator staging, generic Merkle residency, batched parent-layer dispatch, and
+native `AccumulationOps` are all materially more GPU-shaped.
 
 Exit condition:
 

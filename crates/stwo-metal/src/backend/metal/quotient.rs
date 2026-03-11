@@ -395,12 +395,10 @@ impl QuotientOps for MetalBackend {
                     .clone_range(batch_index * size * 4, size * 4)
                     .expect("Metal batched partial numerator slice should clone"),
             );
-            let values = SecureFieldVec::from_buffer(
-                (*packed_values)
-                    .clone_range(0, size * 4)
-                    .expect("Metal partial numerator buffer should clone"),
-            );
-            let partial_columns = values.to_base_coords();
+            let partial_columns = packed_values
+                .unpack_secure_column_coords()
+                .expect("Metal partial numerator unpack should succeed")
+                .map(BaseFieldVec::from_buffer);
             cache_packed_partial_numerators(&partial_columns, packed_values);
             accumulated_numerators_vec.push(AccumulatedNumerators {
                 sample_point: batch.point,
