@@ -148,7 +148,8 @@ The next active work is:
 - migrate the active generated benchmark row onto the first live
   `MetalEvaluationProgramV1` runtime contract instead of benchmark-specialized
   lowering
-- define the overlay lookup law keyed by semantic hash and capability profile
+- attach generated overlays to the explicit lookup law keyed by semantic hash
+  and capability profile
 - migrate the active generated benchmark row onto the same program contract
 - keep examples as the acceptance matrix for the generic and generated lanes
 - keep `stark-v` iced until the V1 contract is available to test downstream

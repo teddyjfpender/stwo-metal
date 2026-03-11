@@ -53,7 +53,7 @@ The superseded `T0` through `T8` sequence now lives in:
 | G7 | Retire temporary compatibility shims | `completed` | acceptance-local adapters and example-specific wrappers are removed or clearly reduced to non-architectural fixtures |
 | G8 | Harden the contract against `stark-v` workloads | `iced` | `stark-v` uses the same generic/generated backend contract successfully |
 | G9 | Freeze and implement `MetalEvaluationProgramV1` | `in_progress` | generic and generated Metal execution consume one validated lowered program contract |
-| G10 | Migrate the active generated lane onto the V1 program contract | `planned` | the benchmark-specialized generated row is driven by the V1 program and overlay law rather than bespoke lowering |
+| G10 | Migrate the active generated lane onto the V1 program contract | `in_progress` | the benchmark-specialized generated row is driven by the V1 program and overlay law rather than bespoke lowering |
 | G11 | Re-open downstream hardening on the V1 contract | `planned` | downstream consumers are evaluated against the V1 program contract instead of the pre-V1 bridge surface |
 
 ## Immediate sequencing rules
@@ -69,7 +69,7 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G10 first slice: execute MetalEvaluationProgramV1 on the live generated trace`
+`G10 migration: move the generated row onto selected V1 runtime law`
 
 The active formal basis is:
 
@@ -577,8 +577,12 @@ The current G10 prove-path migration state is:
 - the old prove-values helper module under
   `fixtures/stwo-metal-fixture-shims/src/benchmark.rs` is retired because the
   generated benchmark no longer depends on it
+- `MetalEvaluationProgramV1` now has an explicit capability-profile and
+  semantic-hash-based dispatch selector, and the benchmark boundary executes
+  live generated traces through that selected V1 runtime contract
 - the next honest G10 work is the next live prove boundary after
-  benchmark-boundary-owned prove core
+  benchmark-boundary-owned prove core, plus the first real generated overlay
+  registration on top of the now-explicit selector
   boundary surface
 
 The twenty-seventh G5 slice is now landed:

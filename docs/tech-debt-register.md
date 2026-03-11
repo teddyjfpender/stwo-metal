@@ -45,6 +45,11 @@ runtime glue rather than executing through the validated
 now lower, validate, and execute on the live generated trace for the currently
 supported subset.
 
+The runtime contract now includes an explicit capability-profile and
+semantic-hash-based selector, but the overlay registry is still empty and the
+generated benchmark row still depends on direct benchmark-boundary prove logic
+beyond the migrated prove-core boundary.
+
 Current containment:
 
 - `docs/dn-0008-metal-evaluation-program-v1.md`
@@ -62,7 +67,8 @@ Exit condition:
 
 The active generated lane consumes a validated `MetalEvaluationProgramV1`
 artifact for at least one live prove-phase boundary, and the generic
-interpreter lane and generated overlay lane share that same contract.
+interpreter lane and generated overlay lane share that same contract with at
+least one real overlay registration.
 
 Target retirement point:
 

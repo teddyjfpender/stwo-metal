@@ -199,6 +199,50 @@ Superseded by:
 
 - none
 
+### DEC-0160: V1 runtime selection must be explicit before the first generated overlay lands
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+`MetalEvaluationProgramV1` execution must now flow through an explicit
+capability-profile and semantic-hash-based selector, even when no generated
+overlay is currently registered. The absence of a matching overlay must fall
+back only to the generic Metal interpreter lane, never to CPU or benchmark-
+local execution.
+
+Context:
+
+After `DEC-0159`, the generated `wide_fibonacci` benchmark row depended on
+`stwo-metal` for prove-values staging, prove-values execution, and prove-core
+law. The next architectural risk was letting benchmark migration proceed by
+directly calling the raw V1 Metal execution helper, which would postpone the
+overlay contract again and leave no stable selection seam for the later
+generated fast path.
+
+Alternatives rejected:
+
+- keep direct V1 Metal execution as the live benchmark contract until an
+  actual overlay implementation exists
+- let the first generated overlay define the selection law implicitly
+
+Impact:
+
+- `MetalEvaluationProgramV1` now has an explicit capability profile and
+  dispatch-selection surface
+- the generated benchmark boundary now uses that selected runtime contract for
+  live trace execution
+- the next honest migration target is the first real overlay registration and
+  the next live prove boundary beyond benchmark-boundary-owned prove core
+
+Superseded by:
+
+- none
+
 ### DEC-0157: The first G10 migration step is live-trace V1 execution, not a fake full prove-path claim
 
 - Date: `2026-03-11`

@@ -10,12 +10,13 @@ use stwo::prover::{CommitmentSchemeProver, ComponentProvers, ProvingError};
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
 use super::eval_program_v1::{
-    execute_metal_evaluation_program_v1_on_metal, interpret_metal_evaluation_program_v1,
+    execute_selected_metal_evaluation_program_v1_on_metal, interpret_metal_evaluation_program_v1,
     lower_registered_metal_evaluation_program_v1, MetalEvaluationProgramBudgetV1,
+    MetalEvaluationProgramCapabilityProfileV1, MetalEvaluationProgramDispatchKindV1,
     MetalEvaluationProgramExecutionError, MetalEvaluationProgramInterpreterError,
     MetalEvaluationProgramLoweringError, MetalEvaluationProgramRuntimeInputsV1,
     MetalEvaluationProgramSpecializationV1, MetalEvaluationProgramTraceViewV1,
-    OwnedMetalEvaluationProgramV1,
+    OwnedMetalEvaluationProgramV1, select_metal_evaluation_program_dispatch_v1,
 };
 use super::execution_plan::{
     registered_execution_binding, registered_execution_seed, RegisteredMetalExecutionSeed,
@@ -427,6 +428,34 @@ impl MetalWideFibonacciBenchmarkBoundary {
         trace: &MetalWideFibonacciTrace,
         random_coeff_powers: &[SecureField],
     ) -> Result<Vec<SecureField>, MetalBenchmarkProgramExecutionError> {
+        let (row_res, _) = self.execute_selected_evaluation_program_v1_on_trace(
+            trace,
+            random_coeff_powers,
+        )?;
+        Ok(row_res)
+    }
+
+    pub fn select_evaluation_program_v1_dispatch(
+        &self,
+    ) -> Result<MetalEvaluationProgramDispatchKindV1, MetalBenchmarkProgramExecutionError> {
+        let program = self
+            .evaluation_program_v1()
+            .map_err(|source| MetalBenchmarkProgramExecutionError::ProgramContract { source })?;
+        select_metal_evaluation_program_dispatch_v1(
+            &program,
+            MetalEvaluationProgramCapabilityProfileV1::current(),
+        )
+        .map_err(|source| MetalBenchmarkProgramExecutionError::Execution { source })
+    }
+
+    pub fn execute_selected_evaluation_program_v1_on_trace(
+        &self,
+        trace: &MetalWideFibonacciTrace,
+        random_coeff_powers: &[SecureField],
+    ) -> Result<
+        (Vec<SecureField>, MetalEvaluationProgramDispatchKindV1),
+        MetalBenchmarkProgramExecutionError,
+    > {
         let program = self
             .evaluation_program_v1()
             .map_err(|source| MetalBenchmarkProgramExecutionError::ProgramContract { source })?;
@@ -445,8 +474,12 @@ impl MetalWideFibonacciBenchmarkBoundary {
             random_coeff_powers,
         };
 
-        execute_metal_evaluation_program_v1_on_metal(&program, runtime)
-            .map_err(|source| MetalBenchmarkProgramExecutionError::Execution { source })
+        execute_selected_metal_evaluation_program_v1_on_metal(
+            &program,
+            runtime,
+            MetalEvaluationProgramCapabilityProfileV1::current(),
+        )
+        .map_err(|source| MetalBenchmarkProgramExecutionError::Execution { source })
     }
 
     pub fn interpret_evaluation_program_v1_on_trace(
@@ -683,8 +716,9 @@ mod tests {
     };
     use crate::backend::metal::artifact::MetalGeneratedRouteKind;
     use crate::backend::metal::{
-        metal_runtime_support, MetalExecutionPlan, MetalPlannerError, MetalRuntimeSupport,
-        MetalWorkloadOwnership, MetalWorkloadStage, UnsupportedGeneratedMetalRoute,
+        metal_runtime_support, MetalEvaluationProgramDispatchKindV1, MetalExecutionPlan,
+        MetalPlannerError, MetalRuntimeSupport, MetalWorkloadOwnership, MetalWorkloadStage,
+        UnsupportedGeneratedMetalRoute,
     };
 
     #[test]
@@ -823,14 +857,17 @@ mod tests {
             .unwrap()
             .generate_trace()
             .unwrap();
+        let dispatch = boundary.select_evaluation_program_v1_dispatch().unwrap();
 
         let reference = boundary
             .interpret_evaluation_program_v1_on_trace(&trace, &random_coeff_powers)
             .unwrap();
-        let device = boundary
-            .execute_evaluation_program_v1_on_trace(&trace, &random_coeff_powers)
+        let (device, selected_dispatch) = boundary
+            .execute_selected_evaluation_program_v1_on_trace(&trace, &random_coeff_powers)
             .unwrap();
 
+        assert_eq!(dispatch, MetalEvaluationProgramDispatchKindV1::GenericMetalInterpreter);
+        assert_eq!(selected_dispatch, dispatch);
         assert_eq!(device, reference);
     }
 

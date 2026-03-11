@@ -7,18 +7,21 @@ use stwo_metal::{
     cuda_backend_surface_status, declare_exemplar_hybrid_fri_workload,
     declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
     evaluate_polys_on_domain_batch, execute_metal_evaluation_program_v1_on_metal,
+    execute_selected_metal_evaluation_program_v1_on_metal,
     lower_registered_metal_evaluation_program_v1, plan_exemplar_metal_prove_by_name,
-    plan_exemplar_prove_by_name, validate_metal_evaluation_program_v1, BaseFieldVec, CudaBackend,
-    CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan,
-    MetalBackend, MetalBaseFieldColumnBatch, MetalBaseFieldVec, MetalBenchmarkInputError,
-    MetalBenchmarkProgramError, MetalBenchmarkProgramExecutionError,
-    MetalBenchmarkProveCoreBreakdown,
+    plan_exemplar_prove_by_name, select_metal_evaluation_program_dispatch_v1,
+    validate_metal_evaluation_program_v1, BaseFieldVec, CudaBackend, CudaBackendSurface,
+    CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan, MetalBackend,
+    MetalBaseFieldColumnBatch, MetalBaseFieldVec, MetalBenchmarkInputError,
+    MetalBenchmarkProgramError, MetalBenchmarkProgramExecutionError, MetalBenchmarkProveCoreBreakdown,
     MetalBenchmarkProveValuesBreakdown, MetalBenchmarkProveValuesStaging, MetalBenchmarkTarget,
     MetalBenchmarkTraceShapeError, MetalCpuQuotientEvaluationInput,
     MetalCpuWideFibonacciWitnessInput, MetalEvaluationProgramBaseInstV1,
-    MetalEvaluationProgramBudgetV1, MetalEvaluationProgramExecutionError,
+    MetalEvaluationProgramBudgetV1, MetalEvaluationProgramCapabilityProfileV1,
+    MetalEvaluationProgramDispatchKindV1, MetalEvaluationProgramExecutionError,
     MetalEvaluationProgramExtInstV1, MetalEvaluationProgramHeaderV1,
     MetalEvaluationProgramInterpreterError, MetalEvaluationProgramLoweringError,
+    MetalEvaluationProgramOverlayV1,
     MetalEvaluationProgramRuntimeInputsV1, MetalEvaluationProgramSectionDescV1,
     MetalEvaluationProgramSectionKindV1, MetalEvaluationProgramSpecializationV1,
     MetalEvaluationProgramTraceViewV1, MetalEvaluationProgramValidationError, MetalExecutionIntent,
@@ -32,6 +35,7 @@ use stwo_metal::{
     MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     OwnedConstraintEvalAbiV1, OwnedMetalEvaluationProgramV1, SecureFieldVec,
     StwoCudaWideFibonacciEvalAbiV1, STWO_CUDA_BACKEND_SURFACES_V1,
+    STWO_METAL_EVAL_PROGRAM_OVERLAYS_V1,
     STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1, STWO_METAL_EVAL_PROGRAM_MAGIC_V1,
     STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
 };
@@ -226,10 +230,13 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
     let _ = std::mem::size_of::<MetalBenchmarkProveValuesStaging>();
     let _ = std::mem::size_of::<MetalBenchmarkTraceShapeError>();
     let _ = std::mem::size_of::<MetalEvaluationProgramBaseInstV1>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramCapabilityProfileV1>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramDispatchKindV1>();
     let _ = std::mem::size_of::<MetalEvaluationProgramExecutionError>();
     let _ = std::mem::size_of::<MetalEvaluationProgramExtInstV1>();
     let _ = std::mem::size_of::<MetalEvaluationProgramInterpreterError>();
     let _ = std::mem::size_of::<MetalEvaluationProgramLoweringError>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramOverlayV1>();
     let _ = std::mem::size_of::<MetalEvaluationProgramHeaderV1>();
     let _ = std::mem::size_of::<MetalEvaluationProgramRuntimeInputsV1<'static>>();
     let _ = std::mem::size_of::<MetalEvaluationProgramSpecializationV1>();
@@ -240,6 +247,7 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
     assert_eq!(lowered.header().n_constraints, 98);
     assert_eq!(lowered.base_insts().len(), 1 + 98 * 7);
     assert_eq!(lowered.ext_insts().len(), 98);
+    assert!(STWO_METAL_EVAL_PROGRAM_OVERLAYS_V1.is_empty());
     let _ = lower_registered_metal_evaluation_program_v1
         as fn(
             &'static str,
@@ -260,6 +268,26 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
             MetalEvaluationProgramRuntimeInputsV1<'_>,
         ) -> Result<
             Vec<stwo::core::fields::qm31::SecureField>,
+            MetalEvaluationProgramExecutionError,
+        >;
+    let _ = execute_selected_metal_evaluation_program_v1_on_metal
+        as fn(
+            &OwnedMetalEvaluationProgramV1,
+            MetalEvaluationProgramRuntimeInputsV1<'_>,
+            MetalEvaluationProgramCapabilityProfileV1,
+        ) -> Result<
+            (
+                Vec<stwo::core::fields::qm31::SecureField>,
+                MetalEvaluationProgramDispatchKindV1,
+            ),
+            MetalEvaluationProgramExecutionError,
+        >;
+    let _ = select_metal_evaluation_program_dispatch_v1
+        as fn(
+            &OwnedMetalEvaluationProgramV1,
+            MetalEvaluationProgramCapabilityProfileV1,
+        ) -> Result<
+            MetalEvaluationProgramDispatchKindV1,
             MetalEvaluationProgramExecutionError,
         >;
 }

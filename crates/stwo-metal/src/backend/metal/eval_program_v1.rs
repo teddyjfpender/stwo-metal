@@ -461,6 +461,60 @@ pub enum MetalEvaluationProgramExecutionError {
     },
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct MetalEvaluationProgramCapabilityProfileV1 {
+    pub runtime_support: MetalRuntimeSupport,
+    pub capability_bits: u64,
+    pub max_base_regs: u32,
+    pub max_ext_regs: u32,
+}
+
+impl MetalEvaluationProgramCapabilityProfileV1 {
+    pub const fn new(
+        runtime_support: MetalRuntimeSupport,
+        capability_bits: u64,
+        max_base_regs: u32,
+        max_ext_regs: u32,
+    ) -> Self {
+        Self {
+            runtime_support,
+            capability_bits,
+            max_base_regs,
+            max_ext_regs,
+        }
+    }
+
+    pub fn current() -> Self {
+        Self {
+            runtime_support: metal_runtime_support(),
+            capability_bits: STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1
+                | STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1
+                | STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
+            max_base_regs: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET.max_base_regs,
+            max_ext_regs: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET.max_ext_regs,
+        }
+    }
+
+    pub const fn budget(self) -> MetalEvaluationProgramBudgetV1 {
+        MetalEvaluationProgramBudgetV1::new(self.max_base_regs, self.max_ext_regs)
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct MetalEvaluationProgramOverlayV1 {
+    pub name: &'static str,
+    pub semantic_hash: u64,
+    pub required_capability_bits: u64,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalEvaluationProgramDispatchKindV1 {
+    GenericMetalInterpreter,
+    GeneratedOverlay(MetalEvaluationProgramOverlayV1),
+}
+
+pub const STWO_METAL_EVAL_PROGRAM_OVERLAYS_V1: &[MetalEvaluationProgramOverlayV1] = &[];
+
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Eq, PartialEq)]
 enum MetalEvaluationProgramDeviceInterpreterError {
@@ -1163,7 +1217,74 @@ pub fn execute_metal_evaluation_program_v1_on_metal(
     program: &OwnedMetalEvaluationProgramV1,
     runtime: MetalEvaluationProgramRuntimeInputsV1<'_>,
 ) -> Result<Vec<SecureField>, MetalEvaluationProgramExecutionError> {
-    interpret_metal_evaluation_program_v1_on_metal(program, runtime).map_err(Into::into)
+    let (row_res, _) = execute_selected_metal_evaluation_program_v1_on_metal(
+        program,
+        runtime,
+        MetalEvaluationProgramCapabilityProfileV1::current(),
+    )?;
+    Ok(row_res)
+}
+
+pub fn lookup_metal_evaluation_program_overlay_v1(
+    program: &OwnedMetalEvaluationProgramV1,
+    profile: MetalEvaluationProgramCapabilityProfileV1,
+) -> Option<MetalEvaluationProgramOverlayV1> {
+    STWO_METAL_EVAL_PROGRAM_OVERLAYS_V1
+        .iter()
+        .copied()
+        .find(|overlay| {
+            overlay.semantic_hash == program.header().semantic_hash
+                && profile.capability_bits & overlay.required_capability_bits
+                    == overlay.required_capability_bits
+        })
+}
+
+pub fn select_metal_evaluation_program_dispatch_v1(
+    program: &OwnedMetalEvaluationProgramV1,
+    profile: MetalEvaluationProgramCapabilityProfileV1,
+) -> Result<MetalEvaluationProgramDispatchKindV1, MetalEvaluationProgramExecutionError> {
+    if profile.runtime_support != MetalRuntimeSupport::Available {
+        return Err(MetalEvaluationProgramExecutionError::RuntimeUnavailable(
+            profile.runtime_support,
+        ));
+    }
+
+    program
+        .validate(profile.budget())
+        .map_err(
+            |_| MetalEvaluationProgramExecutionError::RegisterBudgetExceeded {
+                required_base: program.header().max_base_regs,
+                required_ext: program.header().max_ext_regs,
+                supported_base: profile.max_base_regs,
+                supported_ext: profile.max_ext_regs,
+            },
+        )?;
+
+    Ok(
+        lookup_metal_evaluation_program_overlay_v1(program, profile)
+            .map(MetalEvaluationProgramDispatchKindV1::GeneratedOverlay)
+            .unwrap_or(MetalEvaluationProgramDispatchKindV1::GenericMetalInterpreter),
+    )
+}
+
+pub fn execute_selected_metal_evaluation_program_v1_on_metal(
+    program: &OwnedMetalEvaluationProgramV1,
+    runtime: MetalEvaluationProgramRuntimeInputsV1<'_>,
+    profile: MetalEvaluationProgramCapabilityProfileV1,
+) -> Result<(Vec<SecureField>, MetalEvaluationProgramDispatchKindV1), MetalEvaluationProgramExecutionError>
+{
+    let dispatch = select_metal_evaluation_program_dispatch_v1(program, profile)?;
+    let row_res = match dispatch {
+        MetalEvaluationProgramDispatchKindV1::GenericMetalInterpreter => {
+            interpret_metal_evaluation_program_v1_on_metal(program, runtime)
+                .map_err(MetalEvaluationProgramExecutionError::from)?
+        }
+        MetalEvaluationProgramDispatchKindV1::GeneratedOverlay(_overlay) => {
+            interpret_metal_evaluation_program_v1_on_metal(program, runtime)
+                .map_err(MetalEvaluationProgramExecutionError::from)?
+        }
+    };
+    Ok((row_res, dispatch))
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -1548,11 +1669,14 @@ mod tests {
     use stwo::core::fields::FieldExpOps;
 
     use super::{
+        execute_selected_metal_evaluation_program_v1_on_metal,
         interpret_metal_evaluation_program_v1, interpret_metal_evaluation_program_v1_on_metal,
         lower_registered_metal_evaluation_program_v1, lower_wide_fibonacci_evaluation_program_v1,
-        metal_evaluation_program_semantic_hash_v1, metal_runtime_support,
+        lookup_metal_evaluation_program_overlay_v1, metal_evaluation_program_semantic_hash_v1,
+        metal_runtime_support, select_metal_evaluation_program_dispatch_v1,
         validate_metal_evaluation_program_v1, MetalEvaluationProgramBaseOpcodeV1,
-        MetalEvaluationProgramBudgetV1, MetalEvaluationProgramDeviceInterpreterError,
+        MetalEvaluationProgramBudgetV1, MetalEvaluationProgramCapabilityProfileV1,
+        MetalEvaluationProgramDeviceInterpreterError, MetalEvaluationProgramDispatchKindV1,
         MetalEvaluationProgramHeaderV1, MetalEvaluationProgramInterpreterError,
         MetalEvaluationProgramLoweringError, MetalEvaluationProgramRuntimeInputsV1,
         MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
@@ -2041,6 +2165,97 @@ mod tests {
             interpret_metal_evaluation_program_v1_on_metal(&program, runtime).unwrap();
 
         assert_eq!(device_interpreted, interpreted);
+    }
+
+    #[test]
+    fn selection_defaults_to_generic_metal_interpreter_when_no_overlay_is_registered() {
+        let program =
+            lower_wide_fibonacci_evaluation_program_v1(MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 3,
+                n_columns: 5,
+            })
+            .unwrap();
+        let profile = MetalEvaluationProgramCapabilityProfileV1::new(
+            MetalRuntimeSupport::Available,
+            STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1
+                | STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1
+                | STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
+            1024,
+            256,
+        );
+
+        assert_eq!(lookup_metal_evaluation_program_overlay_v1(&program, profile), None);
+        assert_eq!(
+            select_metal_evaluation_program_dispatch_v1(&program, profile).unwrap(),
+            MetalEvaluationProgramDispatchKindV1::GenericMetalInterpreter
+        );
+    }
+
+    #[test]
+    fn selection_fails_closed_when_runtime_is_unavailable() {
+        let program =
+            lower_wide_fibonacci_evaluation_program_v1(MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 3,
+                n_columns: 5,
+            })
+            .unwrap();
+        let profile = MetalEvaluationProgramCapabilityProfileV1::new(
+            MetalRuntimeSupport::DisabledByConfiguration,
+            STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1
+                | STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1
+                | STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
+            1024,
+            256,
+        );
+
+        let error = select_metal_evaluation_program_dispatch_v1(&program, profile).unwrap_err();
+
+        assert_eq!(
+            error,
+            super::MetalEvaluationProgramExecutionError::RuntimeUnavailable(
+                MetalRuntimeSupport::DisabledByConfiguration
+            )
+        );
+    }
+
+    #[test]
+    fn selected_execution_reports_dispatch_kind() {
+        if !matches!(metal_runtime_support(), MetalRuntimeSupport::Available) {
+            return;
+        }
+
+        let program =
+            lower_wide_fibonacci_evaluation_program_v1(MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 3,
+                n_columns: 5,
+            })
+            .unwrap();
+        let columns = wide_fibonacci_trace(8, 5);
+        let trace_columns = columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let trace_interactions = [&[][..], trace_columns.as_slice()];
+        let random_coeff_powers = [
+            SecureField::from_u32_unchecked(3, 5, 7, 11),
+            SecureField::from_u32_unchecked(13, 17, 19, 23),
+            SecureField::from_u32_unchecked(29, 31, 37, 41),
+        ];
+        let runtime = MetalEvaluationProgramRuntimeInputsV1 {
+            trace: MetalEvaluationProgramTraceViewV1 {
+                trace_interactions: &trace_interactions,
+                preprocessed_columns: &[],
+            },
+            base_params: &[],
+            ext_params: &[],
+            random_coeff_powers: &random_coeff_powers,
+        };
+
+        let (_, dispatch) = execute_selected_metal_evaluation_program_v1_on_metal(
+            &program,
+            runtime,
+            MetalEvaluationProgramCapabilityProfileV1::current(),
+        )
+        .unwrap();
+
+        assert_eq!(dispatch, MetalEvaluationProgramDispatchKindV1::GenericMetalInterpreter);
     }
 
     #[test]
