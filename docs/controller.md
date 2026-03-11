@@ -60,7 +60,8 @@ Invariants:
   first real `wide_fibonacci` generated overlay registration, but the benchmark
   still does not prove through the selected V1 runtime contract end to end;
   prove core now treats selected V1 execution as a fail-closed preflight rather
-  than a side API
+  than a side API, and that migrated authority currently carries a measurable
+  performance cost that remains active G10 work
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
   row still does not prove through that V1 runtime contract

@@ -217,6 +217,9 @@ The fifth G10 slice is now landed in code:
   instead of a side benchmark API
 - benchmark reporting now records explicit `prove_core_evaluation_program_v1_ms`
   so the migrated prove-core contract is visible in the live row
+- this slice is architecturally correct but currently expensive, so the next
+  honest G10 work must keep migrating prove-path ownership while driving that
+  selected-runtime preflight cost down
 
 ## Current implementation obligations under G3
 

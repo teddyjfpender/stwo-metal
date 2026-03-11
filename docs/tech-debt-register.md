@@ -75,6 +75,42 @@ Target retirement point:
 
 - `G10`
 
+### TD-0036: Selected V1 runtime authority is now part of prove core, but its live cost is still too high
+
+- Status: `active`
+- Category: `generated-lane migration cost`
+- Introduced: `2026-03-11`
+- Owner area: `G10 selected-runtime migration`
+
+Why it exists now:
+
+The generated `wide_fibonacci` row now treats selected
+`MetalEvaluationProgramV1` execution as a fail-closed prove-core preflight
+instead of a side API. That is the correct ownership move, but the migrated
+authority currently adds substantial cost to the live benchmark row.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/benchmark.rs`
+- `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
+
+Risk if left in place:
+
+The repository can continue migrating the prove path onto the V1 contract
+while regressing the active generated benchmark row enough to obscure whether
+the selected-runtime architecture is converging on a viable proving path.
+
+Exit condition:
+
+Selected-runtime-owned prove boundaries remain in place, but the explicit
+`prove_core_evaluation_program_v1_ms` budget is reduced to a non-dominant part
+of the generated `wide_fibonacci` row.
+
+Target retirement point:
+
+- `G10`
+
 ### TD-0033: FRI and workload handoff surfaces still own CPU-shaped evaluation transitions above the native last-layer path
 
 - Status: `active`

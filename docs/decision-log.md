@@ -154,6 +154,45 @@ Impact:
 - the next honest G10 work is the next live prove boundary after prove core,
   not another selector-only or overlay-only slice
 
+### DEC-0163: Once selected V1 execution becomes part of prove core, its cost must be treated as live benchmark debt
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+After selected `MetalEvaluationProgramV1` execution becomes a fail-closed part
+of the generated prove-core boundary, its timing must be surfaced explicitly in
+the benchmark contract and treated as active migration debt until broader
+selected-runtime prove ownership and optimization bring the cost back down.
+
+Context:
+
+The prove-core migration slice is architecturally correct because it stops
+treating selected V1 execution as a side lane. But that same move currently
+adds visible cost to the live benchmark row. Hiding that cost would make the
+migration look cleaner than it is and would break the project’s measurement
+discipline.
+
+Alternatives rejected:
+
+- keep selected-runtime preflight inside prove core but hide its timing from the
+  benchmark row
+- defer prove-core migration until selected-runtime overhead is already solved
+- treat the current cost spike as irrelevant because the architecture is more
+  correct
+
+Impact:
+
+- benchmark reporting now includes `prove_core_evaluation_program_v1_ms`
+- selected-runtime prove authority is now measurable, not just structurally
+  present
+- the next honest G10 work is both more prove-path migration and optimization
+  of the selected-runtime authority that has now become part of the live row
+
 ### DEC-0159: Generated prove-values execution for `wide_fibonacci` now belongs to `stwo-metal`
 
 - Date: `2026-03-11`

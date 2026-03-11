@@ -147,6 +147,9 @@ The next active work is:
 - expand the live generated benchmark row from “selected V1 side execution plus
   backend-owned prove core” toward end-to-end selected V1 runtime ownership;
   prove core is now selected-runtime-gated rather than selected-runtime-blind
+- keep the migrated selected-runtime authority measurable and optimize it once
+  it becomes part of the live prove path, instead of treating V1 as a free side
+  check
 - widen the first generated overlay registration into a durable overlay law
   instead of leaving it as one benchmark-shape registration
 - keep examples as the acceptance matrix for the generic and generated lanes
