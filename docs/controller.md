@@ -46,6 +46,8 @@ Invariants:
   [`dn-0004-stark-v-hardening-input-and-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0004-stark-v-hardening-input-and-contract.md)
   and
   [`dn-0005-stark-v-attachment-strategy.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0005-stark-v-attachment-strategy.md)
+  and
+  [`dn-0006-stark-v-generated-minimum-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0006-stark-v-generated-minimum-contract.md)
 - Current owner area:
   `acceptance integration against the stable planning seam`
 
@@ -110,16 +112,18 @@ Invariants:
 - `stark-v` is now pinned as the first real G8 downstream input, and the
   current snapshot is now classified as `generic_lane = unsupported`,
   `generated_lane = required`, `status = fail_closed`; it is still not
-  vendored locally and not yet executed through `stwo-metal`
+  vendored locally and not yet executed through `stwo-metal`; the minimum
+  generated subset for the first supported downstream row is now frozen, but
+  no compatible artifact exists yet
 
 ## Next three deliverables
 
 1. Keep one deterministic local report for the pinned `stark-v` contract and
    attachment classification.
-2. Decide the first executable `supported` downstream row for `stark-v`
-   without weakening the fail-closed generic-lane policy.
-3. Keep the dual-lane benchmark contract stable while the downstream hardening
-   tranche lands.
+2. Keep one frozen minimum generated subset for the first supported `stark-v`
+   row without weakening the fail-closed generic-lane policy.
+3. Decide how that generated subset will be produced or mapped in the first
+   executable downstream row.
 
 ## Explicitly not doing now
 

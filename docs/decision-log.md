@@ -28,6 +28,45 @@ Superseded by:
 
 ## Entries
 
+### DEC-0121: The first supported `stark-v` row must come through a bounded generated subset
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0006-stark-v-generated-minimum-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0006-stark-v-generated-minimum-contract.md)
+
+Decision:
+
+The first supported downstream `stark-v` row must come through a bounded
+generated-artifact subset rather than through a speculative generic backend
+swap or a one-off downstream-specific API.
+
+Context:
+
+`DEC-0119` fixed the current pinned snapshot as generic-lane unsupported. The
+next honest move is not to leave the generated path vague; it is to freeze the
+minimum generated subset that would satisfy the existing `ArtifactRegistry` and
+`ExecutionPlan` seam.
+
+Alternatives rejected:
+
+- keep the generated downstream path unspecified
+- require one artifact per tiny internal opcode helper for the first supported
+  row
+- add `stark-v`-specific public APIs instead of using the generated contract
+
+Impact:
+
+- G8 now has a concrete supported-path target even though the current pinned
+  snapshot still fails closed
+- future downstream work can be judged against one bounded generated subset
+- the benchmark and acceptance lanes stay separate from downstream hardening
+
+Superseded by:
+
+- none
+
 ### DEC-0120: G8 should emit a deterministic downstream hardening report before any support claim changes
 
 - Date: `2026-03-11`

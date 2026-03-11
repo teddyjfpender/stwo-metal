@@ -140,6 +140,8 @@ The next active work is:
 - keep one deterministic local checker for the downstream contract shape
 - keep one deterministic local report artifact for the downstream hardening
   result
+- freeze the minimum generated subset required for the first supported
+  `stark-v` row
 - keep the dual-lane benchmark contract stable while downstream hardening
   proceeds
 
