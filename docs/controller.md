@@ -161,6 +161,15 @@ Invariants:
   `trace_commit_merkle_ms` to about `29 ms`; the remaining measured interior
   walls are now quotient numerator accumulation before lift-and-accumulate and
   the earliest FRI commitment rounds rather than Merkle layer decode
+- `AccumulationOps` for `MetalBackend` no longer routes through host slices for
+  `accumulate` or `lift_and_accumulate`; both now execute through native Metal
+  coordinate-buffer kernels, and the standard Blake2s native commitment
+  threshold now reaches down to `log_size = 16`; the measured generated
+  `wide_fibonacci` `log20` row is now about `927 ms` mean / `674 ms` median,
+  with `prove_core_prove_values_ms` about `427 ms` mean and
+  `trace_commit_merkle_ms` about `29 ms` mean; the next measured walls are the
+  numerator-accumulation kernel itself and the first FRI commitment rounds,
+  not hidden CPU accumulation helpers
 
 ## Next three deliverables
 

@@ -9,6 +9,68 @@ static inline uint stwo_metal_trace_value(
     return trace_evaluations[column_index * eval_domain_size + row_index];
 }
 
+static inline uint stwo_metal_lifted_index(uint index, uint log_ratio) {
+    if (log_ratio == 0u) {
+        return index;
+    }
+    return (index >> (log_ratio + 1u) << 1u) + (index & 1u);
+}
+
+kernel void accumulate_secure_columns_coords_u32x4(
+    device const uint *lhs_0 [[buffer(0)]],
+    device const uint *lhs_1 [[buffer(1)]],
+    device const uint *lhs_2 [[buffer(2)]],
+    device const uint *lhs_3 [[buffer(3)]],
+    device const uint *rhs_0 [[buffer(4)]],
+    device const uint *rhs_1 [[buffer(5)]],
+    device const uint *rhs_2 [[buffer(6)]],
+    device const uint *rhs_3 [[buffer(7)]],
+    device uint *dst_0 [[buffer(8)]],
+    device uint *dst_1 [[buffer(9)]],
+    device uint *dst_2 [[buffer(10)]],
+    device uint *dst_3 [[buffer(11)]],
+    constant uint &element_len [[buffer(12)]],
+    uint row_index [[thread_position_in_grid]]
+) {
+    if (row_index >= element_len) {
+        return;
+    }
+
+    dst_0[row_index] = stwo_metal_m31_add(lhs_0[row_index], rhs_0[row_index]);
+    dst_1[row_index] = stwo_metal_m31_add(lhs_1[row_index], rhs_1[row_index]);
+    dst_2[row_index] = stwo_metal_m31_add(lhs_2[row_index], rhs_2[row_index]);
+    dst_3[row_index] = stwo_metal_m31_add(lhs_3[row_index], rhs_3[row_index]);
+}
+
+kernel void lift_accumulate_secure_columns_coords_u32x4(
+    device const uint *lifted_0 [[buffer(0)]],
+    device const uint *lifted_1 [[buffer(1)]],
+    device const uint *lifted_2 [[buffer(2)]],
+    device const uint *lifted_3 [[buffer(3)]],
+    device const uint *current_0 [[buffer(4)]],
+    device const uint *current_1 [[buffer(5)]],
+    device const uint *current_2 [[buffer(6)]],
+    device const uint *current_3 [[buffer(7)]],
+    device uint *dst_0 [[buffer(8)]],
+    device uint *dst_1 [[buffer(9)]],
+    device uint *dst_2 [[buffer(10)]],
+    device uint *dst_3 [[buffer(11)]],
+    constant uint &current_log_size [[buffer(12)]],
+    constant uint &log_ratio [[buffer(13)]],
+    uint row_index [[thread_position_in_grid]]
+) {
+    uint element_len = 1u << current_log_size;
+    if (row_index >= element_len) {
+        return;
+    }
+
+    uint lifted_index = stwo_metal_lifted_index(row_index, log_ratio);
+    dst_0[row_index] = stwo_metal_m31_add(current_0[row_index], lifted_0[lifted_index]);
+    dst_1[row_index] = stwo_metal_m31_add(current_1[row_index], lifted_1[lifted_index]);
+    dst_2[row_index] = stwo_metal_m31_add(current_2[row_index], lifted_2[lifted_index]);
+    dst_3[row_index] = stwo_metal_m31_add(current_3[row_index], lifted_3[lifted_index]);
+}
+
 kernel void accumulate_wide_fibonacci_quotients_u32x4(
     device const uint *trace_evaluations [[buffer(0)]],
     device const uint *random_coeff_powers [[buffer(1)]],

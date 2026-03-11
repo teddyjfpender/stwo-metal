@@ -888,6 +888,100 @@ impl U32Buffer {
         Ok([coord_0, coord_1, coord_2, coord_3])
     }
 
+    pub fn accumulate_secure_columns_coords(
+        lhs_columns: [&Self; 4],
+        rhs_columns: [&Self; 4],
+    ) -> Result<[Self; 4], MetalError> {
+        let [lhs_0, lhs_1, lhs_2, lhs_3] = lhs_columns;
+        let [rhs_0, rhs_1, rhs_2, rhs_3] = rhs_columns;
+        let element_len = lhs_0.len;
+        assert_eq!(lhs_1.len, element_len);
+        assert_eq!(lhs_2.len, element_len);
+        assert_eq!(lhs_3.len, element_len);
+        assert_eq!(rhs_0.len, element_len);
+        assert_eq!(rhs_1.len, element_len);
+        assert_eq!(rhs_2.len, element_len);
+        assert_eq!(rhs_3.len, element_len);
+
+        let runtime = shared_runtime()?;
+        let dst_0 = Self::uninitialized(element_len)?;
+        let dst_1 = Self::uninitialized(element_len)?;
+        let dst_2 = Self::uninitialized(element_len)?;
+        let dst_3 = Self::uninitialized(element_len)?;
+        unsafe {
+            ffi::accumulate_secure_columns_coords_u32x4(
+                runtime.raw.as_ptr(),
+                lhs_0.raw.as_ptr(),
+                lhs_1.raw.as_ptr(),
+                lhs_2.raw.as_ptr(),
+                lhs_3.raw.as_ptr(),
+                rhs_0.raw.as_ptr(),
+                rhs_1.raw.as_ptr(),
+                rhs_2.raw.as_ptr(),
+                rhs_3.raw.as_ptr(),
+                dst_0.raw.as_ptr(),
+                dst_1.raw.as_ptr(),
+                dst_2.raw.as_ptr(),
+                dst_3.raw.as_ptr(),
+                element_len
+                    .try_into()
+                    .expect("secure-column accumulation length should fit in u32"),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok([dst_0, dst_1, dst_2, dst_3])
+    }
+
+    pub fn lift_accumulate_secure_columns_coords(
+        lifted_columns: [&Self; 4],
+        current_columns: [&Self; 4],
+    ) -> Result<[Self; 4], MetalError> {
+        let [lifted_0, lifted_1, lifted_2, lifted_3] = lifted_columns;
+        let [current_0, current_1, current_2, current_3] = current_columns;
+        let current_len = current_0.len;
+        assert_eq!(current_1.len, current_len);
+        assert_eq!(current_2.len, current_len);
+        assert_eq!(current_3.len, current_len);
+        assert!(current_len.is_power_of_two() && current_len >= 2);
+        let lifted_len = lifted_0.len;
+        assert_eq!(lifted_1.len, lifted_len);
+        assert_eq!(lifted_2.len, lifted_len);
+        assert_eq!(lifted_3.len, lifted_len);
+        assert!(lifted_len.is_power_of_two() && lifted_len >= 2);
+        assert!(
+            current_len >= lifted_len,
+            "lift-and-accumulate requires current length >= lifted length"
+        );
+        let log_ratio = current_len.ilog2() - lifted_len.ilog2();
+
+        let runtime = shared_runtime()?;
+        let dst_0 = Self::uninitialized(current_len)?;
+        let dst_1 = Self::uninitialized(current_len)?;
+        let dst_2 = Self::uninitialized(current_len)?;
+        let dst_3 = Self::uninitialized(current_len)?;
+        unsafe {
+            ffi::lift_accumulate_secure_columns_coords_u32x4(
+                runtime.raw.as_ptr(),
+                lifted_0.raw.as_ptr(),
+                lifted_1.raw.as_ptr(),
+                lifted_2.raw.as_ptr(),
+                lifted_3.raw.as_ptr(),
+                current_0.raw.as_ptr(),
+                current_1.raw.as_ptr(),
+                current_2.raw.as_ptr(),
+                current_3.raw.as_ptr(),
+                dst_0.raw.as_ptr(),
+                dst_1.raw.as_ptr(),
+                dst_2.raw.as_ptr(),
+                dst_3.raw.as_ptr(),
+                current_len.ilog2(),
+                log_ratio,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok([dst_0, dst_1, dst_2, dst_3])
+    }
+
     pub fn fri_fold_circle_into_line_first_layer_u32x4(
         &self,
         inverse_y_factors: &Self,
@@ -1883,6 +1977,43 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_accumulate_secure_columns_coords_u32x4(
+            runtime: *mut c_void,
+            lhs_0: *mut c_void,
+            lhs_1: *mut c_void,
+            lhs_2: *mut c_void,
+            lhs_3: *mut c_void,
+            rhs_0: *mut c_void,
+            rhs_1: *mut c_void,
+            rhs_2: *mut c_void,
+            rhs_3: *mut c_void,
+            dst_0: *mut c_void,
+            dst_1: *mut c_void,
+            dst_2: *mut c_void,
+            dst_3: *mut c_void,
+            element_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_lift_accumulate_secure_columns_coords_u32x4(
+            runtime: *mut c_void,
+            lifted_0: *mut c_void,
+            lifted_1: *mut c_void,
+            lifted_2: *mut c_void,
+            lifted_3: *mut c_void,
+            current_0: *mut c_void,
+            current_1: *mut c_void,
+            current_2: *mut c_void,
+            current_3: *mut c_void,
+            dst_0: *mut c_void,
+            dst_1: *mut c_void,
+            dst_2: *mut c_void,
+            dst_3: *mut c_void,
+            current_log_size: u32,
+            log_ratio: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_fri_fold_circle_into_line_first_layer_u32x4(
             runtime: *mut c_void,
             src: *mut c_void,
@@ -2500,6 +2631,94 @@ mod ffi {
             coord_2,
             coord_3,
             element_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn accumulate_secure_columns_coords_u32x4(
+        runtime: *mut c_void,
+        lhs_0: *mut c_void,
+        lhs_1: *mut c_void,
+        lhs_2: *mut c_void,
+        lhs_3: *mut c_void,
+        rhs_0: *mut c_void,
+        rhs_1: *mut c_void,
+        rhs_2: *mut c_void,
+        rhs_3: *mut c_void,
+        dst_0: *mut c_void,
+        dst_1: *mut c_void,
+        dst_2: *mut c_void,
+        dst_3: *mut c_void,
+        element_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_accumulate_secure_columns_coords_u32x4(
+            runtime,
+            lhs_0,
+            lhs_1,
+            lhs_2,
+            lhs_3,
+            rhs_0,
+            rhs_1,
+            rhs_2,
+            rhs_3,
+            dst_0,
+            dst_1,
+            dst_2,
+            dst_3,
+            element_len,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn lift_accumulate_secure_columns_coords_u32x4(
+        runtime: *mut c_void,
+        lifted_0: *mut c_void,
+        lifted_1: *mut c_void,
+        lifted_2: *mut c_void,
+        lifted_3: *mut c_void,
+        current_0: *mut c_void,
+        current_1: *mut c_void,
+        current_2: *mut c_void,
+        current_3: *mut c_void,
+        dst_0: *mut c_void,
+        dst_1: *mut c_void,
+        dst_2: *mut c_void,
+        dst_3: *mut c_void,
+        current_log_size: u32,
+        log_ratio: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_lift_accumulate_secure_columns_coords_u32x4(
+            runtime,
+            lifted_0,
+            lifted_1,
+            lifted_2,
+            lifted_3,
+            current_0,
+            current_1,
+            current_2,
+            current_3,
+            dst_0,
+            dst_1,
+            dst_2,
+            dst_3,
+            current_log_size,
+            log_ratio,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -3536,6 +3755,51 @@ mod ffi {
         _coord_2: *mut c_void,
         _coord_3: *mut c_void,
         _element_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn accumulate_secure_columns_coords_u32x4(
+        _runtime: *mut c_void,
+        _lhs_0: *mut c_void,
+        _lhs_1: *mut c_void,
+        _lhs_2: *mut c_void,
+        _lhs_3: *mut c_void,
+        _rhs_0: *mut c_void,
+        _rhs_1: *mut c_void,
+        _rhs_2: *mut c_void,
+        _rhs_3: *mut c_void,
+        _dst_0: *mut c_void,
+        _dst_1: *mut c_void,
+        _dst_2: *mut c_void,
+        _dst_3: *mut c_void,
+        _element_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn lift_accumulate_secure_columns_coords_u32x4(
+        _runtime: *mut c_void,
+        _lifted_0: *mut c_void,
+        _lifted_1: *mut c_void,
+        _lifted_2: *mut c_void,
+        _lifted_3: *mut c_void,
+        _current_0: *mut c_void,
+        _current_1: *mut c_void,
+        _current_2: *mut c_void,
+        _current_3: *mut c_void,
+        _dst_0: *mut c_void,
+        _dst_1: *mut c_void,
+        _dst_2: *mut c_void,
+        _dst_3: *mut c_void,
+        _current_log_size: u32,
+        _log_ratio: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

@@ -1,25 +1,17 @@
-use std::array;
-
 use ark_std::One;
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::prover::secure_column::SecureColumnByCoords;
 use stwo::prover::AccumulationOps;
+use stwo_metal_sys::metal::U32Buffer;
 
 use super::MetalBackend;
 use crate::stwo_metal::base_field_vec::BaseFieldVec;
 
-fn lifted_index(index: usize, log_ratio: u32) -> usize {
-    (index >> (log_ratio + 1) << 1) + (index & 1)
-}
-
 fn metal_secure_column_from_coordinate_columns(
-    columns: [Vec<BaseField>; 4],
+    columns: [BaseFieldVec; 4],
 ) -> SecureColumnByCoords<MetalBackend> {
     SecureColumnByCoords {
-        columns: columns.map(BaseFieldVec::from_vec),
+        columns,
     }
 }
 
@@ -27,7 +19,7 @@ pub(crate) fn metal_secure_column_from_values(
     values: Vec<SecureField>,
 ) -> SecureColumnByCoords<MetalBackend> {
     let len = values.len();
-    let mut columns = array::from_fn(|_| BaseFieldVec::new_uninitialized(len));
+    let mut columns = std::array::from_fn(|_| BaseFieldVec::new_uninitialized(len));
     for (index, value) in values.into_iter().enumerate() {
         for (column, coord) in columns.iter_mut().zip(value.to_m31_array()) {
             column.set_data(index, coord);
@@ -38,23 +30,22 @@ pub(crate) fn metal_secure_column_from_values(
 
 impl AccumulationOps for MetalBackend {
     fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>) {
-        let updated = array::from_fn(|coord| {
-            let lhs = column.columns[coord].host_slice();
-            let rhs = other.columns[coord].host_slice();
-            #[cfg(not(feature = "parallel"))]
-            let values = lhs
-                .iter()
-                .zip(rhs.iter())
-                .map(|(lhs, rhs)| *lhs + *rhs)
-                .collect();
-            #[cfg(feature = "parallel")]
-            let values = (0..lhs.len())
-                .into_par_iter()
-                .map(|index| lhs[index] + rhs[index])
-                .collect();
-            values
-        });
-        *column = metal_secure_column_from_coordinate_columns(updated);
+        let updated = U32Buffer::accumulate_secure_columns_coords(
+            [
+                &column.columns[0].buffer,
+                &column.columns[1].buffer,
+                &column.columns[2].buffer,
+                &column.columns[3].buffer,
+            ],
+            [
+                &other.columns[0].buffer,
+                &other.columns[1].buffer,
+                &other.columns[2].buffer,
+                &other.columns[3].buffer,
+            ],
+        )
+        .expect("Metal secure-column accumulation should succeed");
+        *column = metal_secure_column_from_coordinate_columns(updated.map(BaseFieldVec::from_buffer));
     }
 
     fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField> {
@@ -78,27 +69,25 @@ impl AccumulationOps for MetalBackend {
             "A column must be of length at least {INITIAL_SIZE}."
         );
 
-        let mut curr = SecureColumnByCoords::zeros(INITIAL_SIZE);
+        let mut curr: SecureColumnByCoords<MetalBackend> = SecureColumnByCoords::zeros(INITIAL_SIZE);
         for col in std::iter::once(first).chain(cols_iter) {
-            let log_ratio = col.len().ilog2() - curr.len().ilog2();
-            let updated = array::from_fn(|coord| {
-                let lifted_col: &BaseFieldVec = &curr.columns[coord];
-                let current_col: &BaseFieldVec = &col.columns[coord];
-                let lifted: &[BaseField] = lifted_col.host_slice();
-                let current: &[BaseField] = current_col.host_slice();
-                #[cfg(not(feature = "parallel"))]
-                let values = (0..col.len())
-                    .map(|index| current[index] + lifted[lifted_index(index, log_ratio)])
-                    .collect();
-                #[cfg(feature = "parallel")]
-                let values = (0..col.len())
-                    .into_par_iter()
-                    .map(|index| current[index] + lifted[lifted_index(index, log_ratio)])
-                    .collect();
-                values
-            });
+            let updated = U32Buffer::lift_accumulate_secure_columns_coords(
+                [
+                    &curr.columns[0].buffer,
+                    &curr.columns[1].buffer,
+                    &curr.columns[2].buffer,
+                    &curr.columns[3].buffer,
+                ],
+                [
+                    &col.columns[0].buffer,
+                    &col.columns[1].buffer,
+                    &col.columns[2].buffer,
+                    &col.columns[3].buffer,
+                ],
+            )
+            .expect("Metal lift-and-accumulate should succeed");
 
-            curr = metal_secure_column_from_coordinate_columns(updated);
+            curr = metal_secure_column_from_coordinate_columns(updated.map(BaseFieldVec::from_buffer));
         }
         Some(curr)
     }

@@ -98,6 +98,7 @@ Current containment:
 
 - `crates/stwo-metal/src/backend/metal/quotient.rs`
 - `crates/stwo-metal-sys/metal/quotients.metal`
+- `crates/stwo-metal/src/backend/metal/accumulation.rs`
 - `vendor/stwo-upstream-dev-62b228e/crates/stwo/src/prover/fri.rs`
 - `crates/stwo-metal/src/backend/metal/fri.rs`
 - `vendor/stwo-upstream-dev-62b228e/crates/stwo/src/prover/pcs/quotient_ops.rs`
@@ -108,7 +109,7 @@ Risk if left in place:
 The generated lane may stall near SIMD parity instead of reaching clear
 GPU-class speedups, even after quotient combination, numerator staging, and the
 generic first-layer fold plus generic Merkle layer residency are substantially
-more native.
+more native and `AccumulationOps` itself no longer has a CPU fallback.
 
 Exit condition:
 

@@ -28,6 +28,83 @@ Superseded by:
 
 ## Entries
 
+### DEC-0144: Metal accumulation stays on native coordinate buffers through lift-and-accumulate
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+`MetalBackend::accumulate` and `MetalBackend::lift_and_accumulate` now execute
+through native Metal coordinate-buffer kernels instead of host-slice
+materialization and CPU iteration.
+
+Context:
+
+After quotient combination, Merkle residency, and early FRI commitment slices
+became materially more native, the `wide_fibonacci` generated lane still hid a
+real CPU fallback in `AccumulationOps`: both plain accumulation and
+lift-and-accumulate were reading Metal-owned coordinate buffers back through
+`host_slice()` and performing the accumulation on the CPU. That path was not
+the top timing bar anymore, but it was still a correctness-relevant ownership
+violation directly inside the quotient pipeline.
+
+Alternatives rejected:
+
+- leave accumulation CPU-shaped because the timing bar had become smaller
+- add a benchmark-only native accumulation shortcut outside `AccumulationOps`
+- widen the public accumulation contract before removing the host fallback
+
+Impact:
+
+- `AccumulationOps` for `MetalBackend` is now natively GPU-owned
+- the quotient pipeline no longer depends on host-slice accumulation helpers
+- the remaining quotient wall is now the numerator kernel itself rather than a
+  hidden CPU accumulation stage
+
+Superseded by:
+
+- none
+
+### DEC-0145: Standard native Blake2s commitment should stay on Metal down to log-size 16
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+The standard native Blake2s commitment path for `MetalBackend` now remains
+enabled down to `lifting_log_size = 16` instead of falling back earlier.
+
+Context:
+
+Once generic Blake2s commitment layers stayed on Metal-backed packed hash
+columns, the remaining early FRI commitment cost was concentrated in the first
+few inner-layer commits. The previous native-threshold guard was still pushing
+those smaller but still material early inner layers back to the host path
+sooner than necessary.
+
+Alternatives rejected:
+
+- keep the higher threshold and treat the remaining early inner-layer commits as
+  entirely arithmetic-bound
+- add a benchmark-only threshold override instead of changing the generic
+  Metal commitment rule
+
+Impact:
+
+- more early inner FRI commitment rounds remain on Metal
+- the generated `wide_fibonacci` `log20` row moved to about `927 ms` mean /
+  `674 ms` median on the measured production slice
+- the remaining early-FRI wall is now concentrated in the first commitment
+  rounds themselves rather than in threshold-driven host fallback
+
+Superseded by:
+
+- none
+
 ### DEC-0143: Generic Blake2s commitment layers stay on Metal-backed packed hash columns until a caller explicitly asks for host hashes
 
 - Date: `2026-03-11`
