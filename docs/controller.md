@@ -141,6 +141,9 @@ Invariants:
   CPU line handoff to derive the last-layer polynomial, so that bridge now
   remains only for explicit bridge tests and transitional rows rather than the
   bounded proof-facing path itself
+- the explicit CPU line handoff now adapts onto a canonical native Metal line
+  evaluation/commitment path, so the next ownership/performance wall is the
+  shared PCS/FRI proving pipeline above that thinner bridge layer
 
 ## Next three deliverables
 

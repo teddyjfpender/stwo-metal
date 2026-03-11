@@ -282,7 +282,7 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
             "A CPU-owned quotient evaluation handoff is supported for the declared Metal hybrid workload boundary with explicit ownership."
         }
         MetalBackendSurface::FriFirstInnerLayerCommitmentCpuBridge => {
-            "The first inner FRI-layer line-evaluation and commitment handoff is available only through an explicit CPU bridge."
+            "An explicit CPU bridge compatibility adapter remains available for first inner FRI-layer line-evaluation and commitment handoff parity, but the bounded Metal proving path no longer depends on it."
         }
         MetalBackendSurface::QuotientAccumulate => {
             "Constraint quotient accumulation remains in the planned Metal migration set."

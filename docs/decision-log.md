@@ -200,6 +200,42 @@ Superseded by:
 
 - none
 
+### DEC-0137: The explicit CPU line handoff is compatibility-only over the native Metal line path
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+The explicit CPU line handoff remains only as a compatibility adapter over the
+canonical native Metal line-evaluation/commitment path.
+
+Context:
+
+After retiring the bounded FRI slice’s dependence on the CPU line bridge, the
+bridge itself still owned the line law in one direction. That did not change
+proof bytes, but it kept the remaining FRI/PCS path more CPU-shaped than
+necessary.
+
+Alternatives rejected:
+
+- leave the CPU line bridge as the canonical line-handoff law
+- hide the native line-handoff law in benchmark-local or proof-slice-local
+  code instead of the shared handoff surface
+- widen the public handoff surface instead of moving the canonical law down
+
+Impact:
+
+- the explicit CPU line handoff now proves parity by adapting over the native
+  Metal line path instead of defining the canonical line-handoff law
+- the next honest target remains the higher PCS/FRI grouping and decommit
+  pipeline above these thinner bridge layers
+
+Superseded by:
+
+- none
+
 ### DEC-0132: Build proof-facing sampled values alongside samples and reuse prepared query buffers before widening prove-values interfaces
 
 - Date: `2026-03-11`

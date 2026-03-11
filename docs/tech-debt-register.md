@@ -41,8 +41,9 @@ Why it exists now:
 `CpuBackend`, workload-side FRI-ready/quotient ingress is now canonically
 Metal-owned, and bounded FRI commitment/proof slices no longer re-enter the
 explicit CPU line bridge. The remaining debt is that the broader workload
-handoff, explicit line-commitment bridge, and higher PCS/FRI proving path
-still contain CPU-shaped ownership transitions above that native ingress.
+handoff and higher PCS/FRI proving path still contain CPU-shaped ownership and
+staging transitions above that native ingress; the explicit line bridge itself
+is now compatibility-only.
 
 Current containment:
 
