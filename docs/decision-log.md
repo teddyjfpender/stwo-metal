@@ -166,6 +166,55 @@ Superseded by:
 
 - none
 
+### DEC-0167: Selected V1 runtime now owns generated wide-fibonacci composition generation
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+Once the generated `wide_fibonacci` row has backend-owned prove core and a
+real overlay-aware selected `MetalEvaluationProgramV1` runtime, composition
+generation for that row must come from selected V1 execution on the eval-domain
+trace rather than being recomputed through the older component-prover path.
+
+Context:
+
+After `DEC-0162` through `DEC-0166`, the generated row already depended on
+selected V1 runtime as a fail-closed prove-core authority, and the benchmark
+binary no longer owned generated sample, iteration, or benchmark-run
+orchestration. But prove core still duplicated semantic work by executing
+selected V1 and then rebuilding composition through the older
+`ComponentProvers::compute_composition_polynomial(...)` path. That left the V1
+runtime as an expensive gate rather than the actual composition authority.
+
+Alternatives rejected:
+
+- keep selected V1 execution as a prove-core preflight while the old
+  component-prover path remains the real composition authority
+- move only more reporting or orchestration code into `stwo-metal` without
+  removing semantic duplication from prove core
+- claim broader G10 progress before selected V1 runtime owns one committed
+  prove-core artifact
+
+Impact:
+
+- backend-owned prove core now derives the generated `wide_fibonacci`
+  composition polynomial from selected V1 runtime output on the eval-domain
+  trace
+- selected V1 runtime is no longer only a migrated gate for the generated row;
+  it now owns a real prove-core artifact
+- the next honest G10 work is the remaining proof flow after composition
+  generation, because the generated row still does not prove end to end
+  through the selected V1 runtime contract
+
+Superseded by:
+
+- none
+
 ### DEC-0156: The first Metal device interpreter for MetalEvaluationProgramV1 must be a fail-closed subset lane over the same lowered contract as the Rust reference interpreter
 
 - Date: `2026-03-11`

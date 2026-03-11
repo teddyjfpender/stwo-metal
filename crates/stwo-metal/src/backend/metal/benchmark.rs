@@ -11,7 +11,7 @@ use stwo::core::proof::StarkProof;
 use stwo::core::utils::MaybeOwned;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::verifier::{verify, VerificationError, PREPROCESSED_TRACE_IDX};
-use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+use stwo::prover::poly::circle::{CircleEvaluation, PolyOps, SecureCirclePoly, SecureEvaluation};
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::vcs_lifted::ops::MerkleOpsLifted;
 use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
@@ -33,6 +33,7 @@ use super::eval_program_v1::{
 use super::execution_plan::{
     registered_execution_binding, registered_execution_seed, RegisteredMetalExecutionSeed,
 };
+use super::accumulation::metal_secure_column_from_values;
 use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::poly::evaluate_polys_on_domain_batch;
 use super::quotient::{
@@ -43,6 +44,7 @@ use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload::{declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary};
 use super::workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
 use super::MetalBackend;
+use crate::stwo_metal::base_field_vec::BaseFieldVec;
 
 const MAIN_TRACE_IDX: usize = 1;
 
@@ -220,24 +222,178 @@ pub enum MetalBenchmarkLaneError {
 }
 
 impl MetalWideFibonacciBenchmarkBoundary {
-    fn execute_selected_evaluation_program_v1_for_prove_core(
+    fn denominator_inverses_for_eval_domain(&self, eval_domain_log_size: u32) -> Vec<BaseField> {
+        let trace_domain = CanonicCoset::new(self.target.log_n_instances);
+        let eval_domain = CanonicCoset::new(eval_domain_log_size).circle_domain();
+        let log_expand = eval_domain.log_size() - trace_domain.log_size();
+        let mut denominator_inverses = (0..(1 << log_expand))
+            .map(|index| coset_vanishing(trace_domain.coset(), eval_domain.at(index)).inverse())
+            .collect::<Vec<_>>();
+        stwo::core::utils::bit_reverse(&mut denominator_inverses);
+        denominator_inverses
+    }
+
+    fn execute_selected_evaluation_program_v1_on_trace_interactions(
         &self,
-        trace: &MetalWideFibonacciTrace,
-        random_coeff: SecureField,
-    ) -> Result<(MetalEvaluationProgramDispatchKindV1, f64), MetalBenchmarkProgramExecutionError>
-    {
+        trace_interactions: &[&[&[BaseField]]],
+        random_coeff_powers: &[SecureField],
+    ) -> Result<
+        (Vec<SecureField>, MetalEvaluationProgramDispatchKindV1),
+        MetalBenchmarkProgramExecutionError,
+    > {
         let program = self
             .evaluation_program_v1()
             .map_err(|source| MetalBenchmarkProgramExecutionError::ProgramContract { source })?;
-        let random_coeff_powers = <super::MetalBackend as AccumulationOps>::generate_secure_powers(
+        let runtime = MetalEvaluationProgramRuntimeInputsV1 {
+            trace: MetalEvaluationProgramTraceViewV1 {
+                trace_interactions,
+                preprocessed_columns: &[],
+            },
+            base_params: &[],
+            ext_params: &[],
+            random_coeff_powers,
+        };
+
+        execute_selected_metal_evaluation_program_v1_on_metal(
+            &program,
+            runtime,
+            MetalEvaluationProgramCapabilityProfileV1::current(),
+        )
+        .map_err(|source| MetalBenchmarkProgramExecutionError::Execution { source })
+    }
+
+    fn interpret_evaluation_program_v1_on_trace_interactions(
+        &self,
+        trace_interactions: &[&[&[BaseField]]],
+        random_coeff_powers: &[SecureField],
+    ) -> Result<Vec<SecureField>, MetalBenchmarkProgramExecutionError> {
+        let program = self
+            .evaluation_program_v1()
+            .map_err(|source| MetalBenchmarkProgramExecutionError::ProgramContract { source })?;
+        let runtime = MetalEvaluationProgramRuntimeInputsV1 {
+            trace: MetalEvaluationProgramTraceViewV1 {
+                trace_interactions,
+                preprocessed_columns: &[],
+            },
+            base_params: &[],
+            ext_params: &[],
+            random_coeff_powers,
+        };
+
+        interpret_metal_evaluation_program_v1(&program, runtime)
+            .map_err(|source| MetalBenchmarkProgramExecutionError::ReferenceExecution { source })
+    }
+
+    fn compute_composition_polynomial_via_selected_evaluation_program_v1(
+        &self,
+        trace: &Trace<'_, MetalBackend>,
+        random_coeff: SecureField,
+    ) -> Result<
+        (
+            SecureCirclePoly<MetalBackend>,
+            MetalEvaluationProgramDispatchKindV1,
+            f64,
+        ),
+        MetalBenchmarkProgramExecutionError,
+    > {
+        let eval_domain = CanonicCoset::new(self.target.log_n_instances + 1).circle_domain();
+        let trace_columns = &trace.polys[MAIN_TRACE_IDX];
+        if trace_columns.len() != self.target.n_columns as usize {
+            return Err(MetalBenchmarkProgramExecutionError::CompositionShape {
+                message: format!(
+                    "wide-fibonacci selected V1 composition expected {} trace columns, got {}",
+                    self.target.n_columns,
+                    trace_columns.len()
+                ),
+            });
+        }
+
+        let mut random_coeff_powers = <super::MetalBackend as AccumulationOps>::generate_secure_powers(
             random_coeff,
-            program.header().n_constraints as usize,
+            self.target.n_columns.saturating_sub(2) as usize,
         );
+        random_coeff_powers.reverse();
+        let twiddles = MetalBackend::precompute_twiddles(eval_domain.half_coset);
+
+        let eval_domain_storage = if trace_columns.iter().all(|poly| poly.evals.domain == eval_domain)
+        {
+            None
+        } else {
+            let coeffs = trace_columns
+                .iter()
+                .map(|poly| {
+                    poly.coeffs.as_ref().ok_or_else(|| {
+                        MetalBenchmarkProgramExecutionError::CompositionShape {
+                            message: "wide-fibonacci selected V1 composition requires stored trace coefficients for eval-domain extension".to_string(),
+                        }
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let batch =
+                evaluate_polys_on_domain_batch(&coeffs, eval_domain, &twiddles).map_err(
+                    |source| MetalBenchmarkProgramExecutionError::CompositionShape {
+                        message: format!(
+                            "wide-fibonacci selected V1 eval-domain extension failed: {source}"
+                        ),
+                    },
+                )?;
+            Some(batch.to_columns())
+        };
+        let trace_column_refs: Vec<&[BaseField]> = if let Some(storage) = &eval_domain_storage {
+            storage.iter().map(BaseFieldVec::host_slice).collect()
+        } else {
+            trace_columns
+                .iter()
+                .map(|poly| poly.evals.values.host_slice())
+                .collect()
+        };
+        let trace_interactions = [&[][..], trace_column_refs.as_slice()];
+
         let runtime_start = std::time::Instant::now();
-        let (_, dispatch) =
-            self.execute_selected_evaluation_program_v1_on_trace(trace, &random_coeff_powers)?;
+        let (row_res, dispatch) = self.execute_selected_evaluation_program_v1_on_trace_interactions(
+            &trace_interactions,
+            &random_coeff_powers,
+        )?;
         let runtime_ms = runtime_start.elapsed().as_secs_f64() * 1000.0;
-        Ok((dispatch, runtime_ms))
+
+        if row_res.len() != eval_domain.size() {
+            return Err(MetalBenchmarkProgramExecutionError::CompositionShape {
+                message: format!(
+                    "wide-fibonacci selected V1 composition expected {} eval rows, got {}",
+                    eval_domain.size(),
+                    row_res.len()
+                ),
+            });
+        }
+
+        let denominator_inverses = self.denominator_inverses_for_eval_domain(eval_domain.log_size());
+        let quotient_values = row_res
+            .into_iter()
+            .enumerate()
+            .map(|(row_index, value)| value * denominator_inverses[row_index >> self.target.log_n_instances])
+            .collect();
+        let composition_eval = SecureEvaluation::new(
+            eval_domain,
+            metal_secure_column_from_values(quotient_values),
+        );
+        let composition_poly = composition_eval.interpolate_with_twiddles(&twiddles);
+        Ok((composition_poly, dispatch, runtime_ms))
+    }
+
+    fn execute_selected_evaluation_program_v1_for_prove_core(
+        &self,
+        trace: &Trace<'_, MetalBackend>,
+        random_coeff: SecureField,
+    ) -> Result<
+        (
+            SecureCirclePoly<MetalBackend>,
+            MetalEvaluationProgramDispatchKindV1,
+            f64,
+        ),
+        MetalBenchmarkProgramExecutionError,
+    >
+    {
+        self.compute_composition_polynomial_via_selected_evaluation_program_v1(trace, random_coeff)
     }
 
     pub fn workload_boundary(&self) -> &MetalWorkloadBoundary {
@@ -366,7 +522,6 @@ impl MetalWideFibonacciBenchmarkBoundary {
 
     pub fn execute_prove_core(
         &self,
-        generated_trace: &MetalWideFibonacciTrace,
         components: &[&dyn stwo::prover::ComponentProver<super::MetalBackend>],
         channel: &mut Blake2sChannel,
         mut commitment_scheme: CommitmentSchemeProver<
@@ -392,13 +547,10 @@ impl MetalWideFibonacciBenchmarkBoundary {
         let trace = commitment_scheme.trace();
 
         let random_coeff = channel.draw_secure_felt();
-        let (evaluation_program_v1_dispatch, evaluation_program_v1_ms) = self
-            .execute_selected_evaluation_program_v1_for_prove_core(generated_trace, random_coeff)
-            .map_err(|source| MetalBenchmarkProveCoreError::ProgramExecution { source })?;
-
         let composition_generation_start = std::time::Instant::now();
-        let composition_poly =
-            component_provers.compute_composition_polynomial(random_coeff, &trace);
+        let (composition_poly, evaluation_program_v1_dispatch, evaluation_program_v1_ms) = self
+            .execute_selected_evaluation_program_v1_for_prove_core(&trace, random_coeff)
+            .map_err(|source| MetalBenchmarkProveCoreError::ProgramExecution { source })?;
         let composition_generation_ms =
             composition_generation_start.elapsed().as_secs_f64() * 1000.0;
 
@@ -579,30 +731,15 @@ impl MetalWideFibonacciBenchmarkBoundary {
         (Vec<SecureField>, MetalEvaluationProgramDispatchKindV1),
         MetalBenchmarkProgramExecutionError,
     > {
-        let program = self
-            .evaluation_program_v1()
-            .map_err(|source| MetalBenchmarkProgramExecutionError::ProgramContract { source })?;
         let trace_columns = self
             .materialize_trace_columns(trace)
             .map_err(|source| MetalBenchmarkProgramExecutionError::TraceShape { source })?;
         let trace_column_refs = trace_columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
         let trace_interactions = [&[][..], trace_column_refs.as_slice()];
-        let runtime = MetalEvaluationProgramRuntimeInputsV1 {
-            trace: MetalEvaluationProgramTraceViewV1 {
-                trace_interactions: &trace_interactions,
-                preprocessed_columns: &[],
-            },
-            base_params: &[],
-            ext_params: &[],
+        self.execute_selected_evaluation_program_v1_on_trace_interactions(
+            &trace_interactions,
             random_coeff_powers,
-        };
-
-        execute_selected_metal_evaluation_program_v1_on_metal(
-            &program,
-            runtime,
-            MetalEvaluationProgramCapabilityProfileV1::current(),
         )
-        .map_err(|source| MetalBenchmarkProgramExecutionError::Execution { source })
     }
 
     pub fn interpret_evaluation_program_v1_on_trace(
@@ -610,26 +747,15 @@ impl MetalWideFibonacciBenchmarkBoundary {
         trace: &MetalWideFibonacciTrace,
         random_coeff_powers: &[SecureField],
     ) -> Result<Vec<SecureField>, MetalBenchmarkProgramExecutionError> {
-        let program = self
-            .evaluation_program_v1()
-            .map_err(|source| MetalBenchmarkProgramExecutionError::ProgramContract { source })?;
         let trace_columns = self
             .materialize_trace_columns(trace)
             .map_err(|source| MetalBenchmarkProgramExecutionError::TraceShape { source })?;
         let trace_column_refs = trace_columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
         let trace_interactions = [&[][..], trace_column_refs.as_slice()];
-        let runtime = MetalEvaluationProgramRuntimeInputsV1 {
-            trace: MetalEvaluationProgramTraceViewV1 {
-                trace_interactions: &trace_interactions,
-                preprocessed_columns: &[],
-            },
-            base_params: &[],
-            ext_params: &[],
+        self.interpret_evaluation_program_v1_on_trace_interactions(
+            &trace_interactions,
             random_coeff_powers,
-        };
-
-        interpret_metal_evaluation_program_v1(&program, runtime)
-            .map_err(|source| MetalBenchmarkProgramExecutionError::ReferenceExecution { source })
+        )
     }
 
     fn materialize_trace_columns(
@@ -709,7 +835,6 @@ impl MetalWideFibonacciBenchmarkBoundary {
         let prove_core_start = std::time::Instant::now();
         let (proof, prove_core_breakdown) = self
             .execute_prove_core(
-                &native_trace,
                 &[&component],
                 prover_channel,
                 commitment_scheme,
@@ -854,6 +979,9 @@ pub enum MetalBenchmarkProgramExecutionError {
     },
     Execution {
         source: MetalEvaluationProgramExecutionError,
+    },
+    CompositionShape {
+        message: String,
     },
 }
 

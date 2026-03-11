@@ -87,9 +87,11 @@ Target retirement point:
 Why it exists now:
 
 The generated `wide_fibonacci` row now treats selected
-`MetalEvaluationProgramV1` execution as a fail-closed prove-core preflight
-instead of a side API. That is the correct ownership move, but the migrated
-authority currently adds substantial cost to the live benchmark row.
+`MetalEvaluationProgramV1` execution as a prove-core authority rather than a
+side API. It now owns composition generation for the generated row, not just a
+fail-closed preflight. That is the correct ownership move, but the migrated
+authority currently still adds substantial cost to the live benchmark row and
+does not yet own the full proof path end to end.
 
 Current containment:
 

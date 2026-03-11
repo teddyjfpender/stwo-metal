@@ -147,10 +147,10 @@ The next active work is:
 - expand the live generated benchmark row from “selected V1 side execution plus
   backend-owned prove core and backend-owned generated sample orchestration”
   toward end-to-end selected V1 runtime ownership; prove core is now
-  selected-runtime-gated rather than selected-runtime-blind, the binary is no
-  longer the main generated-sample or generated-iteration authority, and the
-  generated lane's warmup/timed run orchestration now also enters through the
-  backend boundary
+  selected-runtime-owned for composition generation rather than merely
+  selected-runtime-gated, the binary is no longer the main generated-sample or
+  generated-iteration authority, and the generated lane's warmup/timed run
+  orchestration now also enters through the backend boundary
 - keep the migrated selected-runtime authority measurable and optimize it once
   it becomes part of the live prove path, instead of treating V1 as a free side
   check

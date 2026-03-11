@@ -254,6 +254,18 @@ The eighth G10 slice is now landed in code:
 - the next honest G10 work is the remaining selected-runtime prove-path
   ownership beyond that backend-owned benchmark-run boundary
 
+The ninth G10 slice is now landed in code:
+
+- backend-owned prove core now derives the generated `wide_fibonacci`
+  composition polynomial from selected `MetalEvaluationProgramV1` execution on
+  the eval-domain trace instead of recomputing composition through the older
+  component-prover path
+- selected V1 runtime is no longer only a fail-closed prove-core gate; it now
+  owns a live prove-core artifact that the generated row actually commits
+- the next honest G10 work is the remaining proof flow after
+  selected-runtime-derived composition generation, because the generated row
+  still does not prove end to end through the selected V1 runtime contract
+
 ## Current implementation obligations under G3
 
 - preserve the non-public bridge laws from
@@ -639,10 +651,13 @@ The current G10 prove-path migration state is:
   semantic-hash-based dispatch selector, and the benchmark boundary executes
   live generated traces through that selected V1 runtime contract
   with one real generated overlay registration
+- the generated `wide_fibonacci` prove core now uses selected V1 runtime
+  output as the authority for composition generation on the eval domain,
+  instead of treating selected V1 execution only as a migrated preflight gate
 - the next honest G10 work is the next live prove boundary after
-  selected-runtime-gated prove core, so the selected V1 runtime contract owns
-  more of the live generated proof than preflight authority plus side
-  execution of the lowered program
+  selected-runtime-derived composition generation, so the selected V1 runtime
+  contract owns more of the live generated proof than prove-core composition
+  alone
 
 The twenty-seventh G5 slice is now landed:
 

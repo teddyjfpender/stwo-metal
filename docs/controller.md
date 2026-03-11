@@ -59,11 +59,13 @@ Invariants:
   orchestration through `MetalWideFibonacciBenchmarkBoundary`, and the V1
   runtime now has an explicit overlay lookup and dispatch-selection law keyed
   by semantic hash and capability profile with a first real `wide_fibonacci`
-  generated overlay registration, but the benchmark row still does not prove
-  through the selected V1 runtime contract end to end; prove core now treats
-  selected V1 execution as a fail-closed authority rather than a side API, and
-  that migrated authority currently carries a measurable performance cost that
-  remains active G10 work
+  generated overlay registration; prove core now derives the generated
+  `wide_fibonacci` composition polynomial from selected V1 runtime output on
+  the eval domain instead of recomputing composition through the older
+  component-prover path, but the benchmark row still does not prove end to end
+  through the selected V1 runtime contract, and the remaining migrated
+  authority still carries measurable performance cost that remains active G10
+  work
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
   row still does not prove through that V1 runtime contract
@@ -81,13 +83,11 @@ Invariants:
 
 ## Next three deliverables
 
-1. Move the remaining prove-path ownership after backend-owned generated
-   benchmark execution into `stwo-metal`, so `wide_fibonacci_prove.rs` is only
-   a reporting harness for the generated row.
-2. Replace selected-runtime prove-core preflight authority with broader
-   selected-runtime prove-path ownership, so the generated row stops treating
-   V1 execution as an expensive gate and starts treating it as the real prove
-   contract.
+1. Move the remaining post-composition prove-path ownership onto the selected
+   V1 runtime contract, so the generated row stops re-entering older proof
+   law after selected-runtime-derived composition generation.
+2. Keep `wide_fibonacci_prove.rs` as a reporting harness only by moving any
+   remaining generated-lane orchestration edges into `stwo-metal`.
 3. Add layout/reflection verification for the V1 host/device boundary records
    once the first live Metal runtime consumer exists, so the ABI surface is
    checked both statically and against compiled Metal metadata.
