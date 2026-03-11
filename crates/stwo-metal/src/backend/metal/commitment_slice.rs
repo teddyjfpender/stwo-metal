@@ -5,9 +5,8 @@ use stwo::core::poly::circle::CircleDomain;
 use stwo::core::poly::line::LinePoly;
 use stwo::core::queries::Queries;
 use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use stwo::prover::line::LineEvaluation;
 
-use super::handoff::materialize_line_evaluation_via_cpu_bridge;
+use super::line::interpolate_line_polynomial;
 use super::sequence::MetalFriInnerLayerSequence;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
@@ -65,12 +64,7 @@ pub(super) fn interpolate_last_layer(
         "last-layer interpolation requires the configured last-layer domain size"
     );
 
-    let cpu_eval: LineEvaluation<stwo::prover::backend::CpuBackend> =
-        materialize_line_evaluation_via_cpu_bridge(
-            last_evaluation.domain(),
-            last_evaluation.values(),
-        );
-    let mut coeffs = cpu_eval.interpolate().into_ordered_coefficients();
+    let mut coeffs = interpolate_line_polynomial(last_evaluation).into_ordered_coefficients();
 
     let last_layer_degree_bound = 1 << config.log_last_layer_degree_bound;
     let zeros = coeffs.split_off(last_layer_degree_bound);

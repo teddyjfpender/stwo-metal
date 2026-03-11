@@ -157,6 +157,49 @@ Superseded by:
 
 - none
 
+### DEC-0136: Bounded FRI commitment slices must not re-enter the explicit CPU line bridge
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+The bounded FRI commitment/proof slice now derives its last-layer polynomial
+from the native Metal line-evaluation path directly. It must not materialize a
+`LineEvaluation<CpuBackend>` through the explicit CPU line handoff bridge just
+to obtain the bounded last-layer polynomial.
+
+Context:
+
+After retiring the final FRI last-layer `CpuBackend` interpolation bridge and
+making workload-side FRI/quotient ingress canonically Metal-owned, the bounded
+proof-facing commitment slice still re-entered the older explicit CPU line
+bridge when constructing the last-layer polynomial. That bridge remained
+correct, but it reintroduced CPU-shaped ownership inside a path that already
+had a native Metal line-evaluation contract.
+
+Alternatives rejected:
+
+- keep the bounded commitment slice on the CPU line bridge until the entire
+  handoff module is removed
+- hide the bridge behind another helper without changing the ownership law
+- widen the public handoff surface instead of deleting the unnecessary bridge
+  usage
+
+Impact:
+
+- bounded FRI commitment and proof slices now derive the last-layer
+  polynomial from the native Metal line-evaluation path directly
+- the explicit CPU line bridge remains available only for explicit bridge
+  tests and transitional compatibility rows
+- the next honest ownership target is now the broader PCS/FRI proving
+  pipeline and shared handoff surface above the bounded slice
+
+Superseded by:
+
+- none
+
 ### DEC-0132: Build proof-facing sampled values alongside samples and reuse prepared query buffers before widening prove-values interfaces
 
 - Date: `2026-03-11`

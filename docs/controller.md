@@ -137,14 +137,19 @@ Invariants:
   compatibility adapter onto the native path; the next remaining ownership
   wall is therefore the higher FRI/PCS bridge and prove-values pipeline above
   those workload contracts rather than the workload ingress surface itself
+- the bounded FRI commitment/proof slice no longer re-enters the explicit
+  CPU line handoff to derive the last-layer polynomial, so that bridge now
+  remains only for explicit bridge tests and transitional rows rather than the
+  bounded proof-facing path itself
 
 ## Next three deliverables
 
 1. Lower the broader FRI/PCS CPU-ownership boundary above the generated
-   wide-fibonacci lane now that workload ingress and the final FRI last-layer
-   interpolation no longer route through `CpuBackend`.
+   wide-fibonacci lane now that workload ingress, the final FRI last-layer
+   interpolation, and the bounded FRI commitment slice no longer route through
+   `CpuBackend`.
 2. Reduce the remaining prove-values grouping and quotient/decommit staging in
-   the PCS prover above the now-native workload and last-layer FRI path.
+   the PCS prover above the now-native workload and FRI path.
 3. Keep downstream `stark-v` hardening iced unless an external support signal
    appears.
 

@@ -188,7 +188,15 @@ fn metal_line_evaluation_from_base_coords(
 
 impl FriOps for MetalBackend {
     fn interpolate_line(evaluation: LineEvaluation<Self>) -> LinePoly {
-        interpolate_line_polynomial(evaluation)
+        interpolate_line_polynomial(&super::line::MetalLineEvaluation::new(
+            evaluation.domain(),
+            SecureFieldVec::from_base_coords([
+                &evaluation.values.columns[0],
+                &evaluation.values.columns[1],
+                &evaluation.values.columns[2],
+                &evaluation.values.columns[3],
+            ]),
+        ))
     }
 
     fn fold_line(

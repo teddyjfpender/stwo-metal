@@ -38,10 +38,11 @@ Target retirement point:
 Why it exists now:
 
 `MetalBackend` no longer routes the final FRI last-layer interpolation through
-`CpuBackend`, and workload-side FRI-ready/quotient ingress is now canonically
-Metal-owned. The remaining debt is that the broader workload handoff,
-line-commitment bridge, and higher PCS/FRI proving path still contain
-CPU-shaped ownership transitions above that native ingress.
+`CpuBackend`, workload-side FRI-ready/quotient ingress is now canonically
+Metal-owned, and bounded FRI commitment/proof slices no longer re-enter the
+explicit CPU line bridge. The remaining debt is that the broader workload
+handoff, explicit line-commitment bridge, and higher PCS/FRI proving path
+still contain CPU-shaped ownership transitions above that native ingress.
 
 Current containment:
 

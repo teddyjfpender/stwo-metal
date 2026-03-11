@@ -13,8 +13,6 @@ use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use stwo::core::vcs_lifted::verifier::{
     ExtendedMerkleDecommitmentLifted, MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux,
 };
-use stwo::prover::line::LineEvaluation;
-
 use super::fri;
 use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
@@ -63,13 +61,13 @@ fn cached_line_ifft_inverse_factors(domain: LineDomain) -> Arc<stwo_metal_sys::m
 }
 
 pub fn interpolate_line_polynomial(
-    evaluation: LineEvaluation<super::MetalBackend>,
+    evaluation: &MetalLineEvaluation,
 ) -> stwo::core::poly::line::LinePoly {
     let domain = evaluation.domain();
     let len = evaluation.len();
 
     if len == 1 {
-        return stwo::core::poly::line::LinePoly::new(vec![evaluation.values.at(0)]);
+        return stwo::core::poly::line::LinePoly::new(vec![evaluation.values().get_data(0)]);
     }
 
     let inverse_line_factors = cached_line_ifft_inverse_factors(domain);
@@ -80,7 +78,7 @@ pub fn interpolate_line_polynomial(
     .inverse()
     .0;
 
-    let mut coords: [BaseFieldVec; 4] = evaluation.values.columns;
+    let mut coords = evaluation.values().to_base_coords();
     for coord in &mut coords {
         coord.bit_reverse();
         coord
