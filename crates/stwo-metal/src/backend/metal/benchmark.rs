@@ -87,13 +87,53 @@ impl MetalWideFibonacciBenchmarkBoundary {
         input_a: &[BaseField],
         input_b: &[BaseField],
     ) -> Result<MetalWideFibonacciWitnessInputs, MetalBenchmarkInputError> {
-        if self
+        let log_n_instances = self
             .execution_seed
-            .allow_cpu_wide_fibonacci_witness()
-            .is_err()
-        {
-            return Err(MetalBenchmarkInputError::UnsupportedWitnessOwnership);
-        }
+            .validate_wide_fibonacci_witness_shape(
+                input_a.len(),
+                input_b.len(),
+                self.target.n_columns,
+            )
+            .map_err(|error| match error {
+                super::execution_plan::RegisteredMetalExecutionSeedError::UnsupportedCpuOwnership {
+                    ..
+                }
+                | super::execution_plan::RegisteredMetalExecutionSeedError::UnsupportedWitnessHook {
+                    ..
+                } => MetalBenchmarkInputError::UnsupportedWitnessOwnership,
+                super::execution_plan::RegisteredMetalExecutionSeedError::WitnessInputLengthMismatch {
+                    input_a_len,
+                    input_b_len,
+                    ..
+                } => {
+                    let expected_len = 1usize << self.target.log_n_instances;
+                    if input_a_len == expected_len && input_b_len == expected_len {
+                        unreachable!(
+                            "seed witness-shape validation only reports mismatched lengths when the benchmark expected-length precondition is not already satisfied"
+                        );
+                    }
+                    MetalBenchmarkInputError::InputLengthMismatch {
+                        expected_len,
+                        actual_a: input_a_len,
+                        actual_b: input_b_len,
+                    }
+                }
+                super::execution_plan::RegisteredMetalExecutionSeedError::WitnessInputLengthNotPowerOfTwo {
+                    input_len,
+                    ..
+                } => MetalBenchmarkInputError::InputLengthMismatch {
+                    expected_len: 1usize << self.target.log_n_instances,
+                    actual_a: input_len,
+                    actual_b: input_b.len(),
+                },
+                super::execution_plan::RegisteredMetalExecutionSeedError::InvalidWitnessColumnCount {
+                    n_columns,
+                    ..
+                } => MetalBenchmarkInputError::InvalidColumnCount { n_columns },
+                other => unreachable!(
+                    "benchmark witness staging should only delegate to witness-shape seed checks, got {other:?}"
+                ),
+            })?;
         if self.target.n_columns < 3 {
             return Err(MetalBenchmarkInputError::InvalidColumnCount {
                 n_columns: self.target.n_columns,
@@ -101,7 +141,10 @@ impl MetalWideFibonacciBenchmarkBoundary {
         }
 
         let expected_len = 1usize << self.target.log_n_instances;
-        if input_a.len() != expected_len || input_b.len() != expected_len {
+        if log_n_instances != self.target.log_n_instances
+            || input_a.len() != expected_len
+            || input_b.len() != expected_len
+        {
             return Err(MetalBenchmarkInputError::InputLengthMismatch {
                 expected_len,
                 actual_a: input_a.len(),
@@ -110,7 +153,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
         }
 
         Ok(MetalWideFibonacciWitnessInputs {
-            log_n_instances: self.target.log_n_instances,
+            log_n_instances,
             n_columns: self.target.n_columns,
             input_a: input_a.to_vec(),
             input_b: input_b.to_vec(),

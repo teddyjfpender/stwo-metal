@@ -80,7 +80,9 @@ Invariants:
   remaining direct callers now sit on `MetalWorkloadBoundary` and tests of that
   workload-law surface; `MetalExecutionAuthority` itself is now gone, leaving
   the workload law as `plan()` and `stage_ownership()`, while the richer stage-
-  assignment slice remains internal to the planning and execution-plan layers
+  assignment slice remains internal to the planning and execution-plan layers;
+  the generated execution seed now also owns the shared wide-fibonacci witness
+  shape law that workload and benchmark boundaries previously duplicated
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -101,9 +103,10 @@ Invariants:
 
 ## Next three deliverables
 
-1. Return G5 attention to the generated lowering seam now that the transitional
-   workload-law cleanup is complete, and pick the next runtime-planning helper
-   that should move from boundary-shaped code onto the lower generated contract.
+1. Keep G5 on generated lowering now that the transitional workload-law cleanup
+   is complete, and pick the next runtime-planning helper after
+   wide-fibonacci-witness shape validation that should move from boundary-shaped
+   code onto the lower generated contract.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate

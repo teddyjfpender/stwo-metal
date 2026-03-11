@@ -28,6 +28,48 @@ Superseded by:
 
 ## Entries
 
+### DEC-0108: Shared wide-fibonacci witness-shape law should live on the generated execution seed
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The shared wide-fibonacci witness-shape law should live on the generated
+execution seed rather than being duplicated across workload and benchmark
+boundaries.
+
+Context:
+
+After the public workload-law cleanup, the next honest G5 target was a real
+runtime-planning helper below the boundary surface. The workload and benchmark
+paths were still each checking the same witness-shape facts: matching lengths,
+power-of-two row count, and minimum column count. Those are generated-lane
+facts tied to the registered witness hook, so they belong on the execution seed.
+
+Alternatives rejected:
+
+- keep witness-shape validation duplicated on both boundaries
+- push benchmark-target-specific expected-length checks down into the generated
+  seed even though those remain benchmark-lane policy
+- add another boundary-local helper instead of using the generated execution
+  seam already present
+
+Impact:
+
+- workload and benchmark boundaries now share one seed-owned witness-shape law
+- the generated execution seed owns more of the runtime truth for the
+  wide-fibonacci lane
+- the next honest G5 task is to identify the next boundary-owned staging rule
+  that still duplicates lower generated logic
+
+Superseded by:
+
+- none
+
 ### DEC-0107: The full stage-assignment slice should stay internal once workload law has narrowed to per-stage ownership
 
 - Date: `2026-03-11`

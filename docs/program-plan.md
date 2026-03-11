@@ -348,6 +348,15 @@ The twenty-third G5 slice is now landed:
   next runtime helper that should depend on the lower generated contract rather
   than the boundary-shaped API
 
+The twenty-fourth G5 slice is now landed:
+
+- the generated execution seed now owns the shared wide-fibonacci witness-shape
+  law, including equal-length, power-of-two, and minimum-column validation
+- workload and benchmark boundaries now delegate that shared witness-shape law
+  to the lower generated contract instead of duplicating it locally
+- the next honest G5 work is to pick the next boundary-owned staging rule that
+  still duplicates lower generated logic after this witness-shape move
+
 ## G2 progress snapshot
 
 G2 is now complete:

@@ -22,26 +22,6 @@ pub struct MetalWorkloadBoundary {
     execution_seed: RegisteredMetalExecutionSeed,
 }
 
-fn require_cpu_owned_witness_main(
-    workload_name: &'static str,
-    execution_seed: RegisteredMetalExecutionSeed,
-) -> Result<(), MetalWorkloadHandoffError<'static>> {
-    execution_seed
-        .allow_cpu_wide_fibonacci_witness()
-        .map_err(|error| match error {
-            super::execution_plan::RegisteredMetalExecutionSeedError::UnsupportedCpuOwnership {
-                stage,
-                ..
-            } => MetalWorkloadHandoffError::UnsupportedCpuOwnership {
-                workload_name,
-                stage,
-            },
-            other => unreachable!(
-                "wide-fibonacci witness staging should only delegate to witness seed checks, got {other:?}"
-            ),
-        })
-}
-
 fn assert_hybrid_fri_execution_seed(
     workload_name: &'static str,
     execution_seed: RegisteredMetalExecutionSeed,
@@ -50,6 +30,50 @@ fn assert_hybrid_fri_execution_seed(
         execution_seed.supports_hybrid_fri_lane(),
         "hybrid FRI workload declaration for {workload_name} requires a Metal-capable generated execution seed with Metal-owned FRI"
     );
+}
+
+fn map_wide_fibonacci_witness_shape_error(
+    workload_name: &'static str,
+    error: super::execution_plan::RegisteredMetalExecutionSeedError,
+) -> MetalWorkloadHandoffError<'static> {
+    match error {
+        super::execution_plan::RegisteredMetalExecutionSeedError::UnsupportedCpuOwnership {
+            stage,
+            ..
+        } => MetalWorkloadHandoffError::UnsupportedCpuOwnership {
+            workload_name,
+            stage,
+        },
+        super::execution_plan::RegisteredMetalExecutionSeedError::UnsupportedWitnessHook { .. } => {
+            MetalWorkloadHandoffError::UnsupportedWitnessArtifact { workload_name }
+        }
+        super::execution_plan::RegisteredMetalExecutionSeedError::WitnessInputLengthMismatch {
+            input_a_len,
+            input_b_len,
+            ..
+        } => MetalWorkloadHandoffError::WitnessInputLengthMismatch {
+            workload_name,
+            input_a_len,
+            input_b_len,
+        },
+        super::execution_plan::RegisteredMetalExecutionSeedError::WitnessInputLengthNotPowerOfTwo {
+            input_len,
+            ..
+        } => MetalWorkloadHandoffError::WitnessInputLengthNotPowerOfTwo {
+            workload_name,
+            input_len,
+        },
+        super::execution_plan::RegisteredMetalExecutionSeedError::InvalidWitnessColumnCount {
+            n_columns,
+            ..
+        } => MetalWorkloadHandoffError::InvalidWitnessColumnCount {
+            workload_name,
+            n_columns,
+        },
+        other => unreachable!(
+            "wide-fibonacci witness staging should only delegate to witness-shape seed checks, got {other:?}"
+        ),
+    }
 }
 
 impl MetalWorkloadBoundary {
@@ -134,35 +158,14 @@ impl MetalWorkloadBoundary {
         input_b: &[BaseField],
         n_columns: u32,
     ) -> Result<MetalCpuWideFibonacciWitnessInput, MetalWorkloadHandoffError<'static>> {
-        if self.workload_name != "fibonacci_example" {
-            return Err(MetalWorkloadHandoffError::UnsupportedWitnessArtifact {
-                workload_name: self.workload_name,
-            });
-        }
-        require_cpu_owned_witness_main(self.workload_name, self.execution_seed)?;
-        if input_a.len() != input_b.len() {
-            return Err(MetalWorkloadHandoffError::WitnessInputLengthMismatch {
-                workload_name: self.workload_name,
-                input_a_len: input_a.len(),
-                input_b_len: input_b.len(),
-            });
-        }
-        if !input_a.len().is_power_of_two() {
-            return Err(MetalWorkloadHandoffError::WitnessInputLengthNotPowerOfTwo {
-                workload_name: self.workload_name,
-                input_len: input_a.len(),
-            });
-        }
-        if n_columns < 2 {
-            return Err(MetalWorkloadHandoffError::InvalidWitnessColumnCount {
-                workload_name: self.workload_name,
-                n_columns,
-            });
-        }
+        let log_n_instances = self
+            .execution_seed
+            .validate_wide_fibonacci_witness_shape(input_a.len(), input_b.len(), n_columns)
+            .map_err(|error| map_wide_fibonacci_witness_shape_error(self.workload_name, error))?;
 
         Ok(MetalCpuWideFibonacciWitnessInput {
             workload_name: self.workload_name,
-            log_n_instances: input_a.len().ilog2(),
+            log_n_instances,
             n_columns,
             input_a: input_a.to_vec(),
             input_b: input_b.to_vec(),

@@ -113,6 +113,19 @@ pub(crate) enum RegisteredMetalExecutionSeedError {
     NonCanonicDomain {
         component_name: &'static str,
     },
+    WitnessInputLengthMismatch {
+        component_name: &'static str,
+        input_a_len: usize,
+        input_b_len: usize,
+    },
+    WitnessInputLengthNotPowerOfTwo {
+        component_name: &'static str,
+        input_len: usize,
+    },
+    InvalidWitnessColumnCount {
+        component_name: &'static str,
+        n_columns: u32,
+    },
 }
 
 impl RegisteredMetalComponent {
@@ -310,13 +323,50 @@ impl RegisteredMetalExecutionSeed {
         Ok(())
     }
 
+    pub(crate) fn validate_wide_fibonacci_witness_shape(
+        self,
+        input_a_len: usize,
+        input_b_len: usize,
+        n_columns: u32,
+    ) -> Result<u32, RegisteredMetalExecutionSeedError> {
+        self.allow_cpu_wide_fibonacci_witness()?;
+
+        if input_a_len != input_b_len {
+            return Err(
+                RegisteredMetalExecutionSeedError::WitnessInputLengthMismatch {
+                    component_name: self.component_name,
+                    input_a_len,
+                    input_b_len,
+                },
+            );
+        }
+        if !input_a_len.is_power_of_two() {
+            return Err(
+                RegisteredMetalExecutionSeedError::WitnessInputLengthNotPowerOfTwo {
+                    component_name: self.component_name,
+                    input_len: input_a_len,
+                },
+            );
+        }
+        if n_columns < 2 {
+            return Err(
+                RegisteredMetalExecutionSeedError::InvalidWitnessColumnCount {
+                    component_name: self.component_name,
+                    n_columns,
+                },
+            );
+        }
+
+        Ok(input_a_len.ilog2())
+    }
+
     pub fn wide_fibonacci_trace_request<'a>(
         self,
         input_a: &'a [BaseField],
         input_b: &'a [BaseField],
         n_columns: u32,
     ) -> Result<MetalWideFibonacciTraceRequest<'a>, RegisteredMetalExecutionSeedError> {
-        self.allow_cpu_wide_fibonacci_witness()?;
+        self.validate_wide_fibonacci_witness_shape(input_a.len(), input_b.len(), n_columns)?;
         for missing_key in ["log_n_instances", "n_columns"] {
             if !self.specialization_keys.contains(&missing_key) {
                 return Err(
@@ -711,6 +761,45 @@ mod tests {
         assert_eq!(request.input_a, &input_a);
         assert_eq!(request.input_b, &input_b);
         assert_eq!(request.n_columns, 8);
+    }
+
+    #[test]
+    fn registered_execution_seed_validates_wide_fibonacci_witness_shape() {
+        let seed = registered_execution_seed(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+            MetalGeneratedRouteKind::BenchmarkTraceGeneration,
+        )
+        .unwrap();
+
+        let log_n_instances = seed
+            .validate_wide_fibonacci_witness_shape(1 << 6, 1 << 6, 8)
+            .unwrap();
+
+        assert_eq!(log_n_instances, 6);
+    }
+
+    #[test]
+    fn registered_execution_seed_rejects_wide_fibonacci_length_mismatch() {
+        let seed = registered_execution_seed(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+            MetalGeneratedRouteKind::BenchmarkTraceGeneration,
+        )
+        .unwrap();
+
+        let error = seed
+            .validate_wide_fibonacci_witness_shape(1 << 6, (1 << 6) - 1, 8)
+            .unwrap_err();
+
+        assert_eq!(
+            error,
+            RegisteredMetalExecutionSeedError::WitnessInputLengthMismatch {
+                component_name: "fibonacci_example",
+                input_a_len: 1 << 6,
+                input_b_len: (1 << 6) - 1,
+            }
+        );
     }
 
     #[test]

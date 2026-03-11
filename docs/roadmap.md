@@ -191,6 +191,9 @@ The next active work is:
   `stage_ownership()` is the stable semantic unit
 - once that public-law cleanup is complete, move G5 back to generated lowering
   and runtime planning rather than doing more surface-only shrink work
+- when a workload and benchmark boundary still duplicate the same runtime law,
+  move that shared law down onto the generated execution seed before widening
+  outward again
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs
