@@ -1079,7 +1079,12 @@ tree-query staging. A recent `log_n_instances = 20` production rerun with
 `warmups = 0`, `samples = 3`, and `threads = 14` came in at
 `prove_ms mean = 1162.3086803333333`, `prove_ms median = 956.267291`,
 `prove_core_prove_values_ms mean = 561.6742503333334`, and
-`trace_commit_merkle_ms mean = 78.27522233333333`. The dominant measured cost
+`trace_commit_merkle_ms mean = 78.27522233333333`. After reusing grouped
+point-eval coefficient vectors and canonical quotient accumulation order, a
+follow-up `log_n_instances = 20` production rerun came in at
+`prove_ms mean = 1153.4602223333334`, `prove_ms median = 925.868`,
+`prove_core_prove_values_ms mean = 570.164667`, and
+`trace_commit_merkle_ms mean = 73.39211100000001`. The dominant measured cost
 is still `prove_values`, not Merkle staging.
 
 Current containment:
@@ -1115,10 +1120,11 @@ composition-generation, and remaining upper commitment stages, with progress
 evaluated against the recorded phase breakdown rather than against
 file-presence heuristics. The native point-evaluation lane, grouped sampled
 value scheduler, direct wide-tree standard Blake2s leaf path, native
-parent-layer hashing, native trace-tree residency, and repeated
-tree-decommit/query-preparation staging reductions are now landed, so the next
-expected structural retirements are the remaining prove-values grouping work
-above that lane and the upper commitment/hash path.
+parent-layer hashing, native trace-tree residency, repeated
+tree-decommit/query-preparation staging reductions, and the first grouped
+point-eval/quotient-regroup reduction are now landed, so the next expected
+structural retirements are the remaining prove-values grouping work above that
+lane and the upper commitment/hash path.
 
 Target retirement point:
 

@@ -32,6 +32,22 @@ use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
 pub mod quotient_ops;
 
+struct BatchedEvalGroup<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
+    coeffs: Vec<&'a CircleCoefficients<B>>,
+    slots: Vec<(usize, usize, usize)>,
+    _marker: std::marker::PhantomData<MC>,
+}
+
+impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> BatchedEvalGroup<'a, B, MC> {
+    fn new() -> Self {
+        Self {
+            coeffs: Vec::new(),
+            slots: Vec::new(),
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
 /// The prover side of a FRI polynomial commitment scheme. See [super].
 pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
     pub trees: TreeVec<MaybeOwned<'a, CommitmentTreeProver<B, MC>>>,
@@ -249,7 +265,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             // evaluate same-size batches directly without an extra regroup/scatter pass.
             let mut groups: HashMap<
                 (CirclePoint<SecureField>, u32),
-                Vec<(usize, usize, usize, &CircleCoefficients<B>)>,
+                BatchedEvalGroup<'_, B, MC>,
             > = HashMap::new();
             for (tree_index, (tree_polys, tree_points)) in polynomials
                 .0
@@ -266,10 +282,11 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     let repeated_double = lifting_log_size - poly.evals.domain.log_size();
                     let coeffs_log_size = coeffs.log_size();
                     for (point_index, &point) in points.iter().enumerate() {
-                        groups
+                        let group = groups
                             .entry((point.repeated_double(repeated_double), coeffs_log_size))
-                            .or_default()
-                            .push((tree_index, column_index, point_index, coeffs));
+                            .or_insert_with(BatchedEvalGroup::new);
+                        group.coeffs.push(coeffs);
+                        group.slots.push((tree_index, column_index, point_index));
                     }
                 }
             }
@@ -277,10 +294,9 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 
             debug_phase("batched_eval_start");
             for ((folded_point, _), group) in groups {
-                let coeffs = group.iter().map(|(_, _, _, coeffs)| *coeffs).collect_vec();
-                let values = B::batch_eval_at_point(&coeffs, folded_point);
-                for ((tree_index, column_index, point_index, _), value) in
-                    group.into_iter().zip(values.into_iter())
+                let values = B::batch_eval_at_point(&group.coeffs, folded_point);
+                for ((tree_index, column_index, point_index), value) in
+                    group.slots.into_iter().zip(values.into_iter())
                 {
                     sample_trees[tree_index][column_index][point_index].value = value;
                 }

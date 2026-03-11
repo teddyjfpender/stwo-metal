@@ -28,6 +28,52 @@ Superseded by:
 
 ## Entries
 
+### DEC-0131: Reuse batched point-eval coefficient vectors and ordered quotient accumulations before changing prove-values contracts
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The next semantics-preserving prove-values reduction after tree-decommit query
+reuse should be to keep grouped point-eval coefficient vectors in their batched
+schedule and to accumulate quotient numerators directly in canonical
+sample-point order, rather than rebuilding coefficient lists per batch and
+sorting/regrouping accumulated numerators after the fact.
+
+Context:
+
+`prove_values` remained the dominant wall after native trace-tree residency and
+reduced decommit query staging. The next repeated CPU-shaped work lived in two
+places: batched point evaluation rebuilt a temporary coefficient vector for
+every grouped request, and quotient accumulation sorted and regrouped all
+accumulated numerators after collection even though a canonical sample-point
+order was already available.
+
+Alternatives rejected:
+
+- change the public prove-values contract before removing local repeated
+  grouping work
+- introduce a new public grouped-evaluation schedule type
+- treat the remaining wall as purely quotient arithmetic without first removing
+  obvious regrouping overhead
+
+Impact:
+
+- grouped batched evaluation now retains its coefficient vectors directly
+- quotient accumulation now groups by canonical sample-point order without a
+  post-sort regroup pass
+- the next prove-values optimization slice can focus on the remaining
+  high-level grouping and decommit staging instead of these lower repeated
+  traversals
+
+Superseded by:
+
+- none
+
 ### DEC-0130: Reuse lifted decommit query expansion and prepared tree queries before changing prove-values grouping laws
 
 - Date: `2026-03-11`

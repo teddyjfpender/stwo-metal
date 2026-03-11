@@ -139,13 +139,21 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     // lengths) get lifted and accumulated to a single vector. After this step, there is a single
     // accumulation per sample point.
     let lift_and_accumulate_start = Instant::now();
-    let accumulations_per_sample_point = accumulated_numerators_vec
-        .into_iter()
-        .sorted_by_key(|c| (c.sample_point.x, c.sample_point.y))
-        .group_by(|c| c.sample_point)
-        .into_iter()
+    let mut accumulations_by_sample_point: BTreeMap<
+        (SecureField, SecureField),
+        (CirclePoint<SecureField>, Vec<AccumulatedNumerators<B>>),
+    > = BTreeMap::new();
+    for accumulation in accumulated_numerators_vec {
+        let sample_point = accumulation.sample_point;
+        accumulations_by_sample_point
+            .entry((sample_point.x, sample_point.y))
+            .or_insert_with(|| (sample_point, Vec::new()))
+            .1
+            .push(accumulation);
+    }
+    let accumulations_per_sample_point = accumulations_by_sample_point
+        .into_values()
         .map(|(sample_point, accumulations_per_log_size)| {
-            let accumulations_per_log_size = accumulations_per_log_size.collect_vec();
             // Accumulate the `a` coefficients.
             let first_linear_term_acc: SecureField = accumulations_per_log_size
                 .iter()
