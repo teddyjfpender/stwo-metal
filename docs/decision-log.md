@@ -28,6 +28,49 @@ Superseded by:
 
 ## Entries
 
+### DEC-0114: G6 keeps the generic benchmark lane bounded until a full-range sweep is executable
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The first `generic-metal` wide-fibonacci benchmark lane should be kept live but
+bounded by default to the executable range, instead of pretending it can run
+the full `log_n_instances = 16..23` sweep that the generated lane already
+supports.
+
+Context:
+
+After `DEC-0113`, the next honest G6 step was a real generic row. That row now
+exists through the upstream example-backed backend path, but the first measured
+result at `log_size = 16` is roughly `63.6 s`, which makes an unconditional
+full-range sweep impractical and misleading. The benchmark contract should
+separate lanes honestly, not force both lanes into the same default sweep when
+their current execution envelopes are radically different.
+
+Alternatives rejected:
+
+- keep the generic lane off entirely until it can sweep `16..23`
+- keep the generic sweep default at `16..23` even though the first row already
+  shows that range is not practical
+- collapse the generic row back into the generated report instead of keeping
+  the two lanes explicit
+
+Impact:
+
+- the generic lane now exists in the benchmark surface as a real measured row
+- the generated lane remains the active optimization target
+- the next honest G6 work is a dual-lane report surface that records both the
+  generated full-range row and the bounded generic row together
+
+Superseded by:
+
+- none
+
 ### DEC-0113: The first G6 sweep must stabilize the lane-aware benchmark harness and record the generated-metal baseline before a generic row is added
 
 - Date: `2026-03-11`

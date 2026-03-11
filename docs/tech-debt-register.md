@@ -65,6 +65,42 @@ Target retirement point:
 
 - `G6`
 
+### TD-0028: The generic-metal wide-fibonacci benchmark lane is only practical in a bounded range
+
+- Status: `active`
+- Category: `generic lane benchmark envelope`
+- Introduced: `2026-03-11`
+- Owner area: `G6 lane-separated benchmarking`
+
+Why it exists now:
+
+The first real `generic-metal` wide-fibonacci row now exists, but the measured
+`log_size = 16` result is already roughly `63.6 s`, which makes the generated
+lane's full `16..23` sweep range impractical as a default generic-lane
+contract.
+
+Current containment:
+
+- `scripts/run_supported_wide_fibonacci_generic_sweep.sh`
+- `scripts/render_wide_fibonacci_comparison_table.rb`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
+- `logs/benchmarks/20260311T083107Z/wide_fibonacci_metal_generic/wide_fibonacci_comparison.md`
+
+Risk if left in place:
+
+The project could either hide the generic lane entirely or keep trying to run
+an unrealistic default sweep, making G6 reporting noisy and hard to trust.
+
+Exit condition:
+
+The generic lane either becomes fast enough to support a broader default sweep
+or the benchmark contract is explicitly narrowed and documented as a bounded
+generic coverage row with a stable published range.
+
+Target retirement point:
+
+- `G6`
+
 ### TD-0026: Generated ABI and specialization inventory is registered but not yet consumed broadly enough by declarations and lowering
 
 - Status: `retired`

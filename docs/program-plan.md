@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G6 second slice: add the first generic wide-fibonacci benchmark lane and keep
-generated and generic rows distinct in the same reporting surface`
+`G6 third slice: keep the generic lane bounded and add one dual-lane reporting
+surface that makes the optimization target explicit`
 
 The active formal basis is:
 
@@ -274,11 +274,23 @@ The first G6 slice is now landed and executed:
 
 The next honest G6 work is:
 
-- add the first `generic-metal` wide-fibonacci benchmark lane
-- keep generic and generated rows on the same schema while reporting them in
-  distinct tables
-- use the new lane-separated measurements to decide which row owns the next
-  optimization tranche
+The second G6 slice is now landed and measured:
+
+- `wide_fibonacci_prove` now supports a real `generic-metal` lane in addition
+  to `generated-metal`
+- the generic lane uses the upstream example-backed backend path rather than a
+  generated benchmark-specific fast path
+- the first measured generic row at `log_size = 16` is dramatically slower
+  than the generated lane, so the generic sweep is now intentionally bounded
+  while G6 keeps the dual-lane comparison honest and executable
+
+The next honest G6 work is:
+
+- add one dual-lane reporting surface that records the generated full-range and
+  bounded generic rows together
+- keep optimization work explicitly pointed at the generated lane
+- treat the generic lane as a correctness-and-coverage benchmark row rather
+  than the current optimization target
 
 The sixteenth G5 slice is now landed:
 

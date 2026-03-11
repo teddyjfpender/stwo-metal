@@ -3,7 +3,28 @@
 
 require "json"
 
-abort "usage: ruby scripts/render_wide_fibonacci_comparison_table.rb <benchmark.json> [<benchmark.json> ...]" if ARGV.empty?
+lane = "generated-metal"
+metal_label = "Metal generated"
+summary_label = "Wide Fibonacci, Blake2s channel (SIMD vs Metal generated lane)"
+paths = []
+
+until ARGV.empty?
+  case ARGV.first
+  when "--lane"
+    ARGV.shift
+    lane = ARGV.shift or abort "missing value for --lane"
+  when "--metal-label"
+    ARGV.shift
+    metal_label = ARGV.shift or abort "missing value for --metal-label"
+  when "--summary"
+    ARGV.shift
+    summary_label = ARGV.shift or abort "missing value for --summary"
+  else
+    paths << ARGV.shift
+  end
+end
+
+abort "usage: ruby scripts/render_wide_fibonacci_comparison_table.rb [--lane LANE] [--metal-label LABEL] [--summary TITLE] <benchmark.json> [<benchmark.json> ...]" if paths.empty?
 
 SIMD_BASELINE = {
   16 => { "prove_ms" => 199.0, "throughput" => 429.0 },
@@ -28,7 +49,7 @@ def format_speedup(numerator, denominator)
   format("%.2fx", numerator / denominator)
 end
 
-rows = ARGV.map do |path|
+rows = paths.map do |path|
   data = JSON.parse(File.read(path))
   workload = data.fetch("workload")
   next unless data.fetch("benchmark_id") == "wide_fibonacci_prove_verify_v1"
@@ -48,13 +69,13 @@ rows = ARGV.map do |path|
   }
 end.compact
 
-generated_rows = rows.select { |row| row["lane"] == "generated-metal" }
-grouped = generated_rows.group_by { |row| row["log_n_instances"] }
+lane_rows = rows.select { |row| row["lane"] == lane }
+grouped = lane_rows.group_by { |row| row["log_n_instances"] }
 
 puts "<details>"
-puts "<summary>Wide Fibonacci, Blake2s channel (SIMD vs Metal generated lane)</summary>"
+puts "<summary>#{summary_label}</summary>"
 puts
-puts "| Log(Size) | Prove SIMD ms | Prove Metal ms | Speedup | Thr SIMD (Kelem/s) | Thr Metal (Kelem/s) | Thr Speedup |"
+puts "| Log(Size) | Prove SIMD ms | Prove #{metal_label} ms | Speedup | Thr SIMD (Kelem/s) | Thr #{metal_label} (Kelem/s) | Thr Speedup |"
 puts "|-----------|----------------|----------------|---------|---------------------|---------------------|-------------|"
 
 SIMD_BASELINE.keys.sort.each do |log_size|

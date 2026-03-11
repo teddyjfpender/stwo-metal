@@ -833,9 +833,25 @@ dependencies = [
  "itertools 0.12.1",
  "num-traits",
  "rand",
+ "rayon",
  "stwo",
  "stwo-std-shims",
  "tracing",
+]
+
+[[package]]
+name = "stwo-examples"
+version = "2.1.0"
+dependencies = [
+ "educe",
+ "itertools 0.12.1",
+ "num-traits",
+ "rand",
+ "serde",
+ "stwo",
+ "stwo-constraint-framework",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -871,8 +887,10 @@ dependencies = [
  "serde_json",
  "stwo",
  "stwo-constraint-framework",
+ "stwo-examples",
  "stwo-metal",
  "stwo-metal-benchmark-bridge",
+ "stwo-metal-upstream-bridge",
 ]
 
 [[package]]
@@ -881,6 +899,15 @@ version = "0.1.1"
 dependencies = [
  "cc",
  "cmake",
+]
+
+[[package]]
+name = "stwo-metal-upstream-bridge"
+version = "0.1.0"
+dependencies = [
+ "stwo",
+ "stwo-constraint-framework",
+ "stwo-metal",
 ]
 
 [[package]]

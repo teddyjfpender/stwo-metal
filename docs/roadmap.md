@@ -136,10 +136,13 @@ The next active work is:
   rows cannot be conflated by convention alone
 - keep the deterministic sweep/report path for wide-fibonacci over
   `log_n_instances = 16..23`
-- add the first `generic-metal` wide-fibonacci row so lane separation exists in
-  live measurements rather than only in schema
+- keep the first `generic-metal` wide-fibonacci row live, but bound its default
+  sweep to the executable range while it remains far slower than the generated
+  lane
 - keep generated and generic rows in distinct comparison tables and JSON
   artifacts
+- add one dual-lane report surface that records both tables together so the
+  optimization target stays explicit
 - make optimization work name the lane it is improving before changing the
   benchmark harness
 - keep examples only as validation and benchmark inputs

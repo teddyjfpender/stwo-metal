@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G6 second slice: add the first generic wide-fibonacci benchmark lane and
-  keep generated and generic rows distinct in the same reporting surface`
+  `G6 third slice: keep the generic lane bounded and add one dual-lane
+  reporting surface that makes the optimization target explicit`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -88,8 +88,9 @@ Invariants:
   backend row
 - benchmark work remains important, but it must now follow the generic and
   generated contract instead of driving it; G5 is now complete, the first
-  generated-metal sweep and comparison table are landed, and the next work is
-  the missing generic lane under G6
+  generated-metal sweep and comparison table are landed, the first
+  `generic-metal` row is landed at `log_size = 16`, and the next work is one
+  dual-lane reporting surface plus generated-lane optimization under G6
 - superseded milestone history has to stay out of the active control surface so
   the new sequence remains legible
 - the current acceptance rows now all consume registered workload lanes and one
@@ -105,12 +106,12 @@ Invariants:
 
 ## Next three deliverables
 
-1. Add a real `generic-metal` wide-fibonacci benchmark row so G6 stops being a
-   generated-only comparison surface.
-2. Extend the deterministic wide-fibonacci sweep/report path so it can emit
-   generic and generated tables from the same schema and reporting toolchain.
-3. Keep the restored pinned-nightly and harness verification path explicit and
-   narrow while lane-separated benchmarking lands before G7.
+1. Add one dual-lane report surface that records the generated full-range table
+   and the bounded generic table together without conflating them.
+2. Keep the generic lane bounded to the executable range while its cost stays
+   far above the generated row.
+3. Use the lane-separated numbers to open the next generated-lane optimization
+   tranche before G7.
 
 ## Explicitly not doing now
 

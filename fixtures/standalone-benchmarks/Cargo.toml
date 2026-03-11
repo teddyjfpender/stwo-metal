@@ -10,7 +10,13 @@ members = []
 [features]
 default = []
 cuda-runtime = ["dep:stwo-metal"]
-metal-runtime = ["dep:stwo-metal", "dep:stwo-metal-benchmark-bridge", "stwo-metal/parallel"]
+metal-runtime = [
+  "dep:stwo-metal",
+  "dep:stwo-metal-benchmark-bridge",
+  "dep:stwo-metal-upstream-bridge",
+  "dep:stwo-examples",
+  "stwo-metal/parallel",
+]
 
 [dependencies]
 itertools = { version = "0.12", default-features = false, features = ["use_alloc"] }
@@ -18,9 +24,11 @@ num-traits = { version = "0.2.19", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo", package = "stwo", default-features = false, features = ["prover"] }
+stwo-examples = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/examples", default-features = false, optional = true }
 stwo-constraint-framework = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/constraint-framework", default-features = false, features = ["prover"] }
 stwo-metal = { path = "../../crates/stwo-metal", features = ["prover"], optional = true }
 stwo-metal-benchmark-bridge = { path = "../../support/stwo-metal-benchmark-bridge", optional = true }
+stwo-metal-upstream-bridge = { path = "../../support/stwo-metal-upstream-bridge", optional = true }
 
 [patch.crates-io]
 stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo" }
