@@ -24,7 +24,9 @@ use stwo_metal::{
     declare_exemplar_metal_workload_boundary, metal_runtime_support, MetalBackend,
     MetalExecutionIntent, MetalRuntimeSupport,
 };
-use stwo_metal_upstream_example_acceptance::{acceptance_bridge_catalog, simd_tree_to_metal};
+use stwo_metal_upstream_example_acceptance::{
+    acceptance_metal_lane, simd_tree_to_metal, AcceptanceMetalBridgeCatalog,
+};
 
 #[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -42,8 +44,9 @@ fn vendored_upstream_xor_mle_eval_example_proves_and_verifies_via_metal_backend(
     let boundary =
         declare_exemplar_metal_workload_boundary(MetalExecutionIntent::PreferMetal, "xor_example")
             .expect("xor workload boundary should be declared");
-    let catalog = acceptance_bridge_catalog(&boundary)
+    let lane = acceptance_metal_lane(boundary.workload_name(), boundary.execution_authority())
         .expect("xor acceptance lane should stay Metal-capable");
+    let catalog = AcceptanceMetalBridgeCatalog::new(lane);
 
     let log_size = N_VARIABLES as u32;
     let size = 1 << log_size;

@@ -28,6 +28,47 @@ Superseded by:
 
 ## Entries
 
+### DEC-0101: The upstream acceptance lane should be the next support-bridge path lowered below direct authority use
+
+- Date: `2026-03-10`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+After lowering the benchmark prove-values bridge, the upstream acceptance lane
+should be the next support-bridge path to move below direct
+`MetalExecutionAuthority` use.
+
+Context:
+
+Once the benchmark prove-values bridge used a workspace-private validated lane
+contract, the upstream acceptance lane became the clearest remaining
+support-bridge consumer still building its live path directly from the public
+authority surface. Lowering it next keeps the G5 progression linear: first
+in-crate helper below the public surface, then benchmark support bridge, then
+acceptance support bridge.
+
+Alternatives rejected:
+
+- leave the acceptance bridge directly on `MetalExecutionAuthority`
+- switch immediately to a different benchmark-local helper
+- treat the acceptance fixture edge as the final place where direct authority
+  use is acceptable
+
+Impact:
+
+- both major private support-bridge paths now validate their own lower lane
+  contracts
+- the next honest G5 task is identifying the remaining direct public-authority
+  consumers and deciding whether the transitional public surface can shrink
+
+Superseded by:
+
+- none
+
 ### DEC-0100: The first support-bridge path lowered below `MetalExecutionAuthority` should be the benchmark prove-values bridge
 
 - Date: `2026-03-10`

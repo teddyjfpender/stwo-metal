@@ -169,6 +169,9 @@ The next active work is:
   boundary
 - once the first support-bridge path is lowered, identify the next remaining
   direct consumer of `MetalExecutionAuthority` and continue shrinking that set
+- once benchmark and acceptance support-bridge paths both stage from lower
+  private contracts, re-evaluate whether `MetalExecutionAuthority` can shrink
+  or disappear from some public paths entirely
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

@@ -10,8 +10,8 @@ use stwo_metal::{
     MetalRuntimeSupport,
 };
 use stwo_metal_upstream_example_acceptance::{
-    acceptance_bridge_catalog, prove_and_verify_single_trace_component_via_backend_blake2s,
-    prove_and_verify_single_trace_component_via_cpu_blake2s,
+    acceptance_metal_lane, prove_and_verify_single_trace_component_via_backend_blake2s,
+    prove_and_verify_single_trace_component_via_cpu_blake2s, AcceptanceMetalBridgeCatalog,
 };
 
 const WIDE_FIBONACCI_COLUMNS: usize = 100;
@@ -44,8 +44,9 @@ fn vendored_upstream_wide_fibonacci_example_proves_and_verifies_via_metal_backen
         "fibonacci_example",
     )
     .expect("fibonacci example workload boundary should be declared");
-    let catalog = acceptance_bridge_catalog(&boundary)
+    let lane = acceptance_metal_lane(boundary.workload_name(), boundary.execution_authority())
         .expect("registered fibonacci workload boundary should stay Metal-capable");
+    let catalog = AcceptanceMetalBridgeCatalog::new(lane);
     let witness = boundary
         .ingest_cpu_wide_fibonacci_witness(&input_a, &input_b, WIDE_FIBONACCI_COLUMNS as u32)
         .expect("upstream example inputs should feed the native Metal witness handoff");

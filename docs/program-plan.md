@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 seventeenth slice: choose whether the upstream acceptance lane or the
-remaining benchmark lane is the next path to move below the public authority`
+`G5 eighteenth slice: identify the remaining direct public-authority consumers
+and decide whether the transitional surface can now shrink`
 
 The active formal basis is:
 
@@ -268,6 +268,17 @@ The sixteenth G5 slice is now landed:
   actually needs
 - the next honest G5 work is deciding whether the upstream acceptance lane is
   the next public-authority consumer to lower
+
+The seventeenth G5 slice is now landed:
+
+- the upstream acceptance bridge now validates one workspace-private
+  `AcceptanceMetalLane` contract, and the acceptance fixtures construct that
+  lane at the edge instead of handing the bridge a richer workload boundary
+- the acceptance matrix stayed green on that narrower lane contract for
+  `wide_fibonacci`, `state_machine`, `blake`, and `xor`
+- the next honest G5 work is identifying the remaining direct
+  `MetalExecutionAuthority` consumers and deciding whether the transitional
+  public surface can now shrink
 
 ## G2 progress snapshot
 

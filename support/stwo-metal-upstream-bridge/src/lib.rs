@@ -49,46 +49,41 @@ impl core::fmt::Display for AcceptanceMetalLaneError {
 impl std::error::Error for AcceptanceMetalLaneError {}
 
 #[derive(Clone, Copy, Debug)]
-pub struct AcceptanceMetalLane<'a> {
+pub struct AcceptanceMetalLane {
     workload_name: &'static str,
-    execution_authority: MetalExecutionAuthority,
-    _boundary: &'a MetalWorkloadBoundary,
 }
 
-impl AcceptanceMetalLane<'_> {
+impl AcceptanceMetalLane {
     pub fn workload_name(&self) -> &'static str {
         self.workload_name
     }
-
-    pub fn execution_authority(&self) -> MetalExecutionAuthority {
-        self.execution_authority
-    }
 }
 
-pub fn acceptance_registered_metal_lane(
-    boundary: &MetalWorkloadBoundary,
-) -> Result<AcceptanceMetalLane<'_>, AcceptanceMetalLaneError> {
-    let execution_authority = boundary.execution_authority();
-
+pub fn acceptance_metal_lane(
+    workload_name: &'static str,
+    execution_authority: MetalExecutionAuthority,
+) -> Result<AcceptanceMetalLane, AcceptanceMetalLaneError> {
     match execution_authority.plan() {
         MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull => {
-            Ok(AcceptanceMetalLane {
-                workload_name: boundary.workload_name(),
-                execution_authority,
-                _boundary: boundary,
-            })
+            Ok(AcceptanceMetalLane { workload_name })
         }
         plan => Err(AcceptanceMetalLaneError::PlanNotMetalCapable {
-            workload_name: boundary.workload_name(),
+            workload_name,
             plan,
         }),
     }
 }
 
+pub fn acceptance_registered_metal_lane(
+    boundary: &MetalWorkloadBoundary,
+) -> Result<AcceptanceMetalLane, AcceptanceMetalLaneError> {
+    acceptance_metal_lane(boundary.workload_name(), boundary.execution_authority())
+}
+
 /// Registered acceptance-bridge catalog.
 ///
 /// Inputs:
-/// - one `AcceptanceMetalLane` obtained from a registered workload boundary
+/// - one validated `AcceptanceMetalLane`
 ///
 /// Outputs:
 /// - framework and SIMD bridge constructors bound to that checked lane
@@ -101,12 +96,12 @@ pub fn acceptance_registered_metal_lane(
 /// - construction fails through `acceptance_registered_metal_lane` when the workload declaration is
 ///   not Metal-capable
 #[derive(Clone, Copy, Debug)]
-pub struct AcceptanceMetalBridgeCatalog<'a> {
-    lane: AcceptanceMetalLane<'a>,
+pub struct AcceptanceMetalBridgeCatalog {
+    lane: AcceptanceMetalLane,
 }
 
-impl<'a> AcceptanceMetalBridgeCatalog<'a> {
-    pub fn new(lane: AcceptanceMetalLane<'a>) -> Self {
+impl AcceptanceMetalBridgeCatalog {
+    pub fn new(lane: AcceptanceMetalLane) -> Self {
         Self { lane }
     }
 
@@ -114,7 +109,7 @@ impl<'a> AcceptanceMetalBridgeCatalog<'a> {
         self.lane.workload_name()
     }
 
-    pub fn framework<E: FrameworkEval>(
+    pub fn framework<'a, E: FrameworkEval>(
         self,
         component: &'a FrameworkComponent<E>,
     ) -> AcceptanceMetalFrameworkComponent<'a, E> {
@@ -122,7 +117,7 @@ impl<'a> AcceptanceMetalBridgeCatalog<'a> {
         AcceptanceMetalFrameworkComponent { inner: component }
     }
 
-    pub fn simd(
+    pub fn simd<'a>(
         self,
         component: &'a dyn ComponentProver<SimdBackend>,
     ) -> AcceptanceMetalSimdComponent<'a> {
@@ -133,7 +128,7 @@ impl<'a> AcceptanceMetalBridgeCatalog<'a> {
 
 pub fn acceptance_bridge_catalog(
     boundary: &MetalWorkloadBoundary,
-) -> Result<AcceptanceMetalBridgeCatalog<'_>, AcceptanceMetalLaneError> {
+) -> Result<AcceptanceMetalBridgeCatalog, AcceptanceMetalLaneError> {
     acceptance_registered_metal_lane(boundary).map(AcceptanceMetalBridgeCatalog::new)
 }
 
@@ -433,7 +428,9 @@ mod tests {
         declare_exemplar_metal_workload_boundary, MetalExecutionIntent, MetalExecutionPlan,
     };
 
-    use super::{acceptance_registered_metal_lane, AcceptanceMetalLaneError};
+    use super::{
+        acceptance_metal_lane, acceptance_registered_metal_lane, AcceptanceMetalLaneError,
+    };
 
     #[test]
     fn registered_lane_accepts_metal_capable_boundary() {
@@ -446,9 +443,39 @@ mod tests {
         let lane = acceptance_registered_metal_lane(&boundary).unwrap();
 
         assert_eq!(lane.workload_name(), "fibonacci_example");
+    }
+
+    #[test]
+    fn validated_lane_accepts_metal_capable_authority() {
+        let boundary = declare_exemplar_metal_workload_boundary(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+        )
+        .unwrap();
+
+        let lane = acceptance_metal_lane(boundary.workload_name(), boundary.execution_authority())
+            .unwrap();
+
+        assert_eq!(lane.workload_name(), "fibonacci_example");
+    }
+
+    #[test]
+    fn validated_lane_rejects_cpu_only_authority() {
+        let boundary = declare_exemplar_metal_workload_boundary(
+            MetalExecutionIntent::ForceCpu,
+            "fibonacci_example",
+        )
+        .unwrap();
+
+        let error = acceptance_metal_lane(boundary.workload_name(), boundary.execution_authority())
+            .unwrap_err();
+
         assert_eq!(
-            lane.execution_authority().plan(),
-            MetalExecutionPlan::MetalFriHybrid
+            error,
+            AcceptanceMetalLaneError::PlanNotMetalCapable {
+                workload_name: "fibonacci_example",
+                plan: MetalExecutionPlan::CpuOnly,
+            }
         );
     }
 

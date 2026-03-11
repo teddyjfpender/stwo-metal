@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 seventeenth slice: choose whether the upstream acceptance lane or the
-  remaining benchmark lane is the next path to move below the public authority`
+  `G5 eighteenth slice: identify the remaining direct public-authority
+  consumers and decide whether the transitional surface can now shrink`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -65,10 +65,9 @@ Invariants:
   themselves on a transitional public `MetalExecutionAuthority` surface instead
   of directly on a lower private generated execution contract; the first
   workload-side live helpers have now moved below that public surface onto the
-  private execution seed, and the benchmark prove-values bridge now depends on
-  its own workspace-private validated lane contract instead of consuming
-  `MetalExecutionAuthority` directly; the upstream acceptance lane remains the
-  clearest public-authority consumer still standing
+  private execution seed, and both the benchmark prove-values bridge and the
+  upstream acceptance lane now depend on workspace-private validated lane
+  contracts instead of consuming `MetalExecutionAuthority` directly
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -89,14 +88,14 @@ Invariants:
 
 ## Next three deliverables
 
-1. Decide whether the upstream acceptance lane should be the next path to move
-   below `MetalExecutionAuthority`, or whether another benchmark-local helper
-   deserves the next lowering step first.
+1. Enumerate the remaining direct `MetalExecutionAuthority` consumers and pick
+   the next one that can either move lower or disappear behind an existing
+   private seam.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate
-   ownership while deciding how far the transitional public execution-law
-   surface should survive before G7.
+   ownership while deciding whether the transitional public execution-law
+   surface can now shrink before G7.
 
 ## Explicitly not doing now
 

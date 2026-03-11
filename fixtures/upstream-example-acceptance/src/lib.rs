@@ -16,9 +16,9 @@ use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver, ProvingError};
 use stwo_metal::{MetalBackend, MetalBaseFieldVec};
 pub use stwo_metal_upstream_bridge::{
-    acceptance_bridge_catalog, acceptance_registered_metal_lane, AcceptanceMetalBridgeCatalog,
-    AcceptanceMetalFrameworkComponent, AcceptanceMetalLane, AcceptanceMetalLaneError,
-    AcceptanceMetalSimdComponent,
+    acceptance_bridge_catalog, acceptance_metal_lane, acceptance_registered_metal_lane,
+    AcceptanceMetalBridgeCatalog, AcceptanceMetalFrameworkComponent, AcceptanceMetalLane,
+    AcceptanceMetalLaneError, AcceptanceMetalSimdComponent,
 };
 
 #[derive(Debug)]
