@@ -28,6 +28,47 @@ Superseded by:
 
 ## Entries
 
+### DEC-0103: `MetalExecutionAuthority` should live on the workload-facing companion surface, not the root companion export
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+After fixture edges and private support bridges stopped consuming
+`MetalExecutionAuthority` directly from the root companion surface, the
+root-level reexport should be removed. The type remains available through the
+workload-facing module and through workload and benchmark boundary methods.
+
+Context:
+
+By the end of the prior G5 slice, `MetalExecutionAuthority` no longer carried
+live fixture traffic and no longer needed to sit in the root companion export
+set just to support private bridge construction. Keeping it at the root would
+leave a redundant public path for a type whose semantics are workload-stage law.
+The safest shrink was therefore to keep the type reachable where it is
+semantically owned, but remove the duplicate root export.
+
+Alternatives rejected:
+
+- keep the redundant root-level export indefinitely
+- remove the type from the workload-facing module as well
+- shrink the workload boundary methods before removing the duplicate root path
+
+Impact:
+
+- `MetalExecutionAuthority` is now workload-scoped on the companion surface
+- private support crates compile against that scoped path instead of the root
+- the next honest G5 work is enumerating the remaining direct authority
+  consumers and deciding which one can move lower or disappear next
+
+Superseded by:
+
+- none
+
 ### DEC-0102: Fixture edges should stop carrying `MetalExecutionAuthority` before the public authority surface shrinks
 
 - Date: `2026-03-11`

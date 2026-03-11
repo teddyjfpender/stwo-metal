@@ -4,9 +4,10 @@ use stwo::core::pcs::utils::get_lifting_log_size;
 use stwo::core::pcs::TreeVec;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::{CommitmentSchemeProver, ComponentProver, ComponentProvers};
+use stwo_metal::workload::MetalExecutionAuthority;
 use stwo_metal::{
-    MetalBackend, MetalExecutionAuthority, MetalExecutionPlan, MetalWideFibonacciBenchmarkBoundary,
-    MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalBackend, MetalExecutionPlan, MetalWideFibonacciBenchmarkBoundary, MetalWorkloadOwnership,
+    MetalWorkloadStage,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

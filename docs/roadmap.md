@@ -178,6 +178,8 @@ The next active work is:
 - after that dead-surface cleanup, enumerate the remaining direct
   `MetalExecutionAuthority` consumers and pick the next public or workspace-
   private contract that can shrink safely
+- once that consumer set is smaller, remove any redundant companion-surface
+  export path that duplicates the workload-facing home of execution-law types
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

@@ -70,7 +70,9 @@ Invariants:
   contracts instead of consuming `MetalExecutionAuthority` directly; fixture
   edges now enter those bridges through boundary-based constructors only, and
   the dead transitional planning helpers that lost all live callers have been
-  removed instead of left as dormant API
+  removed instead of left as dormant API; the redundant root-level companion
+  export for `MetalExecutionAuthority` is now gone, so the type is available
+  through the workload-facing module where its semantics actually live
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -92,8 +94,9 @@ Invariants:
 ## Next three deliverables
 
 1. Enumerate the remaining direct `MetalExecutionAuthority` consumers now that
-   fixture edges no longer carry it, and pick the next public or workspace-
-   private consumer that can either move lower or disappear.
+   fixture edges no longer carry it and the root companion export is gone, and
+   pick the next public or workspace-private consumer that can either move
+   lower or disappear.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate

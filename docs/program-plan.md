@@ -292,6 +292,18 @@ The eighteenth G5 slice is now landed:
   `MetalExecutionAuthority` consumers and deciding whether any part of the
   transitional public compatibility surface can now shrink
 
+The nineteenth G5 slice is now landed:
+
+- the redundant root-level companion export for `MetalExecutionAuthority` is
+  now removed; callers that truly need the type must take it from the
+  workload-facing module where the boundary methods already live
+- the private support crates now compile against that workload-scoped path, so
+  the workload surface remains the single semantic home for execution-law
+  visibility
+- the next honest G5 work is enumerating the remaining direct
+  `MetalExecutionAuthority` consumers after this root-surface shrink and
+  deciding which one can move lower or disappear next
+
 ## G2 progress snapshot
 
 G2 is now complete:

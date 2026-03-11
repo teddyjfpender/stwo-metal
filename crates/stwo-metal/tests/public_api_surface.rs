@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleHasher};
 use stwo::prover::backend::{Backend, BackendForChannel};
+use stwo_metal::workload::MetalExecutionAuthority;
 use stwo_metal::{
     accumulate_wide_fibonacci_quotients, cuda_backend_surface_status,
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
@@ -9,15 +10,14 @@ use stwo_metal::{
     plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend, CudaBackendSurface,
     CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan, MetalBackend,
     MetalBaseFieldVec, MetalBenchmarkInputError, MetalBenchmarkTarget,
-    MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput, MetalExecutionAuthority,
-    MetalExecutionIntent, MetalExecutionPlan, MetalFriBlake2sSubpath, MetalFriFirstLayer,
-    MetalFriInnerLayerRow, MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice,
-    MetalFriProver, MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment,
-    MetalLineEvaluation, MetalSecureFieldVec, MetalWideFibonacciBenchmarkBoundary,
-    MetalWideFibonacciQuotientError, MetalWideFibonacciQuotientRequest,
-    MetalWideFibonacciQuotients, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
-    MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs, MetalWorkloadBoundary,
-    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput, MetalExecutionIntent,
+    MetalExecutionPlan, MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow,
+    MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver,
+    MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation,
+    MetalSecureFieldVec, MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientError,
+    MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients, MetalWideFibonacciTrace,
+    MetalWideFibonacciTraceError, MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs,
+    MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
     STWO_CUDA_BACKEND_SURFACES_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
 };

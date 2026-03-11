@@ -19,10 +19,8 @@ use stwo::prover::{AccumulationOps, ComponentProver, DomainEvaluationAccumulator
 use stwo_constraint_framework::{
     CpuDomainEvaluator, FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX,
 };
-use stwo_metal::{
-    MetalBackend, MetalBaseFieldVec, MetalExecutionAuthority, MetalExecutionPlan,
-    MetalWorkloadBoundary,
-};
+use stwo_metal::workload::MetalExecutionAuthority;
+use stwo_metal::{MetalBackend, MetalBaseFieldVec, MetalExecutionPlan, MetalWorkloadBoundary};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum AcceptanceMetalLaneError {
