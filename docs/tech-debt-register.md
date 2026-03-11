@@ -1085,7 +1085,14 @@ follow-up `log_n_instances = 20` production rerun came in at
 `prove_ms mean = 1153.4602223333334`, `prove_ms median = 925.868`,
 `prove_core_prove_values_ms mean = 570.164667`, and
 `trace_commit_merkle_ms mean = 73.39211100000001`. The dominant measured cost
-is still `prove_values`, not Merkle staging.
+is still `prove_values`, not Merkle staging. After building proof-facing
+`sampled_values` alongside `samples` and reusing prepared query buffers
+without per-tree cloning, the next `log_n_instances = 20` production rerun
+came in at `prove_ms mean = 1152.4745003333335`,
+`prove_ms median = 942.208834`, `prove_core_prove_values_ms mean = 563.6594163333333`,
+and `trace_commit_merkle_ms mean = 77.41322233333334`. That is a
+semantics-preserving staging cleanup, but not a material movement of the
+dominant wall.
 
 Current containment:
 
@@ -1123,8 +1130,8 @@ value scheduler, direct wide-tree standard Blake2s leaf path, native
 parent-layer hashing, native trace-tree residency, repeated
 tree-decommit/query-preparation staging reductions, and the first grouped
 point-eval/quotient-regroup reduction are now landed, so the next expected
-structural retirements are the remaining prove-values grouping work above that
-lane and the upper commitment/hash path.
+structural retirements are the remaining higher-level prove-values grouping
+work above that lane and the upper commitment/hash path.
 
 Target retirement point:
 

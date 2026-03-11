@@ -116,9 +116,12 @@ Invariants:
   host decode, and the next prove-values slice now caches lifted Merkle query
   expansion by shift plus prepared tree-query vectors by tree log-size, and
   the next grouped scheduling slice now reuses batched point-eval coefficient
-  vectors and ordered quotient accumulations without post-sort regrouping, but
-  the Merkle contract still materializes host `Vec<Blake2sHash>` layers for
-  the committed tree and `prove_values` still dominates the benchmark row
+  vectors and ordered quotient accumulations without post-sort regrouping, and
+  the next materialization slice now builds proof-facing `sampled_values`
+  alongside `samples` while reusing prepared tree-query buffers without
+  per-tree cloning, but the Merkle contract still materializes host
+  `Vec<Blake2sHash>` layers for the committed tree and `prove_values` still
+  dominates the benchmark row
 - the current wide-fibonacci generated benchmark still trails SIMD from
   `log_size = 19` onward, so remaining prove-values and commitment staging
   costs must stay explicit and measured
@@ -126,10 +129,12 @@ Invariants:
 ## Next three deliverables
 
 1. Lower the remaining prove-values grouping overhead above the generated
-   wide-fibonacci lane now that repeated tree-decommit staging and one quotient
-   regrouping pass have been reduced.
-2. Measure whether the next benchmark-critical host-owned cost is higher-level
-   sample grouping or quotient/decommit staging in the PCS prover.
+   wide-fibonacci lane now that repeated tree-decommit staging, one quotient
+   regrouping pass, and one proof-facing sample materialization pass have been
+   reduced.
+2. Measure whether the next benchmark-critical host-owned cost is the
+   remaining higher-level sample grouping or quotient/decommit staging in the
+   PCS prover.
 3. Keep downstream `stark-v` hardening iced unless an external support signal
    appears.
 

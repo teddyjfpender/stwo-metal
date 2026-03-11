@@ -28,6 +28,51 @@ Superseded by:
 
 ## Entries
 
+### DEC-0132: Build proof-facing sampled values alongside samples and reuse prepared query buffers before widening prove-values interfaces
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The next semantics-preserving prove-values reduction after grouped point-eval
+and quotient regroup cleanup should be to build proof-facing `sampled_values`
+at the same time as `samples`, and to reuse cached prepared tree-query buffers
+by reference instead of cloning them per tree.
+
+Context:
+
+`prove_values` still dominated the generated wide-fibonacci benchmark after the
+earlier decommit and grouping slices. Inspection showed two remaining
+structure-level costs in `pcs/mod.rs`: proof-facing sampled values were still
+rebuilt from the fully materialized `samples` tree in a second nested pass,
+and prepared tree queries were still cloned into a fresh tree-shaped structure
+even after query preparation had already been cached by tree log-size.
+
+Alternatives rejected:
+
+- introduce a new public proof-facing sample container
+- widen the quotient/decommit interfaces before removing local materialization
+  overhead
+- claim the remaining wall is purely arithmetic before removing this repeated
+  staging work
+
+Impact:
+
+- proof-facing sampled values are now produced during sample evaluation rather
+  than reconstructed from `samples` afterward
+- prepared query buffers are reused directly during tree decommit instead of
+  being cloned into a temporary tree-owned structure
+- the next optimization slice can focus on the remaining higher-level
+  grouping and decommit scheduling rather than this materialization overhead
+
+Superseded by:
+
+- none
+
 ### DEC-0131: Reuse batched point-eval coefficient vectors and ordered quotient accumulations before changing prove-values contracts
 
 - Date: `2026-03-11`

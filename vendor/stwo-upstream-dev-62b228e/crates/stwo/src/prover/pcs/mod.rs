@@ -240,7 +240,10 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         };
 
         let samples_start = Instant::now();
-        let samples: TreeVec<Vec<Vec<PointSample>>> = if self.store_polynomials_coefficients {
+        let (samples, sampled_values): (
+            TreeVec<Vec<Vec<PointSample>>>,
+            TreeVec<Vec<Vec<SecureField>>>,
+        ) = if self.store_polynomials_coefficients {
             let polynomials = self.polynomials();
             let mut sample_trees = sampled_points
                 .0
@@ -257,6 +260,16 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                                 })
                                 .collect_vec()
                         })
+                        .collect_vec()
+                })
+                .collect_vec();
+            let mut sampled_value_trees = sampled_points
+                .0
+                .iter()
+                .map(|tree_points| {
+                    tree_points
+                        .iter()
+                        .map(|points| vec![SecureField::default(); points.len()])
                         .collect_vec()
                 })
                 .collect_vec();
@@ -299,69 +312,64 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     group.slots.into_iter().zip(values.into_iter())
                 {
                     sample_trees[tree_index][column_index][point_index].value = value;
+                    sampled_value_trees[tree_index][column_index][point_index] = value;
                 }
             }
             debug_phase("batched_eval_done");
 
-            TreeVec(sample_trees)
+            (TreeVec(sample_trees), TreeVec(sampled_value_trees))
         } else {
             // Lambda that evaluates a polynomial on a collection of circle points and returns a
-            // vector of point samples.
+            // vector of point samples together with the proof-facing sampled values.
             let eval_at_points = |(poly, points): (&Poly<B>, &Vec<CirclePoint<SecureField>>)| {
-                points
+                let mut sampled_values = Vec::with_capacity(points.len());
+                let samples = points
                     .iter()
-                    .map(|&point| PointSample {
-                        point,
-                        value: poly.eval_at_point(
+                    .map(|&point| {
+                        let value = poly.eval_at_point(
                             point.repeated_double(lifting_log_size - poly.evals.domain.log_size()),
                             weights_hash_map.as_ref(),
-                        ),
+                        );
+                        sampled_values.push(value);
+                        PointSample { point, value }
                     })
-                    .collect_vec()
+                    .collect_vec();
+                (samples, sampled_values)
             };
 
             #[cfg(not(feature = "parallel"))]
-            let samples: TreeVec<Vec<Vec<PointSample>>> = self
+            let sample_pairs = self
                 .polynomials()
                 .zip_cols(&sampled_points)
                 .map_cols(eval_at_points);
             #[cfg(feature = "parallel")]
-            let samples: TreeVec<Vec<Vec<PointSample>>> = self
+            let sample_pairs = self
                 .polynomials()
                 .zip_cols(&sampled_points)
                 .par_map_cols(eval_at_points);
-            samples
+            let (sample_trees, sampled_value_trees): (Vec<_>, Vec<_>) = sample_pairs
+                .0
+                .into_iter()
+                .map(|tree| tree.into_iter().unzip())
+                .unzip();
+            (TreeVec(sample_trees), TreeVec(sampled_value_trees))
         };
         emit_timing("samples", samples_start.elapsed().as_secs_f64() * 1000.0);
 
         span.exit();
         debug_phase("samples_ready");
         let sampled_values_start = Instant::now();
-        let total_sample_count = samples
+        let total_sample_count = sampled_values
             .0
             .iter()
             .map(|tree| tree.iter().map(|column| column.len()).sum::<usize>())
             .sum();
         let mut flattened_sampled_values = Vec::with_capacity(total_sample_count);
-        let sampled_values = TreeVec(
-            samples
-                .0
-                .iter()
-                .map(|tree| {
-                    tree.iter()
-                        .map(|column| {
-                            column
-                                .iter()
-                                .map(|sample| {
-                                    flattened_sampled_values.push(sample.value);
-                                    sample.value
-                                })
-                                .collect_vec()
-                        })
-                        .collect_vec()
-                })
-                .collect_vec(),
-        );
+        for tree in &sampled_values.0 {
+            for column in tree {
+                flattened_sampled_values.extend(column.iter().copied());
+            }
+        }
         channel.mix_felts(&flattened_sampled_values);
         emit_timing(
             "sampled_values_mix",
@@ -419,25 +427,23 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         debug_phase("fri_decommit_ready");
         // Build the query position tree.
         let query_tree_start = Instant::now();
+        let tree_log_sizes = self
+            .trees
+            .iter()
+            .map(|tree| tree.commitment.layers.len() as u32 - 1)
+            .collect_vec();
         let mut prepared_tree_queries_by_log_size = HashMap::<u32, Vec<usize>>::new();
-        let query_positions_tree = TreeVec::new(
-            self.trees
-                .iter()
-                .map(|tree| {
-                    let tree_log_size = tree.commitment.layers.len() as u32 - 1;
-                    prepared_tree_queries_by_log_size
-                        .entry(tree_log_size)
-                        .or_insert_with(|| {
-                            prepare_query_positions_for_tree(
-                                &query_positions,
-                                lifting_log_size,
-                                tree_log_size,
-                            )
-                        })
-                        .clone()
-                })
-                .collect::<Vec<_>>(),
-        );
+        for &tree_log_size in &tree_log_sizes {
+            prepared_tree_queries_by_log_size
+                .entry(tree_log_size)
+                .or_insert_with(|| {
+                    prepare_query_positions_for_tree(
+                        &query_positions,
+                        lifting_log_size,
+                        tree_log_size,
+                    )
+                });
+        }
         emit_timing(
             "query_position_tree",
             query_tree_start.elapsed().as_secs_f64() * 1000.0,
@@ -447,17 +453,20 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         let mut decommitments = Vec::with_capacity(self.trees.len());
         let mut aux = Vec::with_capacity(self.trees.len());
         let tree_decommit_start = Instant::now();
-        for (tree_index, (tree, query_positions)) in self
+        for (tree_index, (tree, tree_log_size)) in self
             .trees
             .as_ref()
-            .zip_eq(query_positions_tree.as_ref())
             .0
             .into_iter()
+            .zip_eq(tree_log_sizes.into_iter())
             .enumerate()
         {
             if debug_prove_values {
                 eprintln!("prove_values_phase=tree_decommit_start:{tree_index}");
             }
+            let query_positions = prepared_tree_queries_by_log_size
+                .get(&tree_log_size)
+                .expect("prepared tree queries should exist for every tree log size");
             let (values, decommit_result) = tree.decommit(query_positions);
             queried_values.push(values);
             decommitments.push(decommit_result.decommitment);
