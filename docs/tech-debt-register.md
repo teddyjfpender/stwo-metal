@@ -42,7 +42,8 @@ and runtime contract for generic and generated Metal execution, but the live
 generated `wide_fibonacci` benchmark row still uses older benchmark-specialized
 runtime glue rather than executing through the validated
 `MetalEvaluationProgramV1` artifact and first attached interpreter lanes it can
-now lower, validate, and execute for the currently supported subset.
+now lower, validate, and execute on the live generated trace for the currently
+supported subset.
 
 Current containment:
 
@@ -60,8 +61,8 @@ downstream work tied to benchmark-local behavior.
 Exit condition:
 
 The active generated lane consumes a validated `MetalEvaluationProgramV1`
-artifact, and the generic interpreter lane and generated overlay lane share
-that same contract.
+artifact for at least one live prove-phase boundary, and the generic
+interpreter lane and generated overlay lane share that same contract.
 
 Target retirement point:
 

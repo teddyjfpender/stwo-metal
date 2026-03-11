@@ -139,6 +139,10 @@ program contract is still unimplemented.
 
 The next active work is:
 
+- move one live generated prove-phase boundary in `wide_fibonacci_prove` from
+  benchmark-specialized staging onto the already validated
+  `MetalEvaluationProgramV1` runtime contract
+
 - migrate the active generated benchmark row onto the first live
   `MetalEvaluationProgramV1` runtime contract instead of benchmark-specialized
   lowering

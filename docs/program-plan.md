@@ -69,8 +69,7 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G9 fourth slice: attach first Metal device interpreter lane to the V1
-lowered-program contract`
+`G10 first slice: execute MetalEvaluationProgramV1 on the live generated trace`
 
 The active formal basis is:
 
@@ -162,6 +161,19 @@ The fifth G9 slice is now landed in code:
   that V1 runtime contract, which opens G10 in practice even though G9 remains
   in progress until generic and generated execution both consume the same
   lowered contract
+
+The first G10 slice is now landed in code:
+
+- the wide-fibonacci benchmark boundary can now execute a validated
+  `MetalEvaluationProgramV1` directly on a live generated
+  `MetalWideFibonacciTrace`
+- the same boundary also exposes the matching reference-interpreter execution
+  path, so benchmark-facing tests can pin parity between the reference and
+  Metal device lanes on the live generated trace instead of only on synthetic
+  unit-test inputs
+- the generated prove benchmark still uses the pre-V1 prove pipeline, so G10
+  remains in progress until one live prove-phase boundary is driven by the V1
+  runtime contract rather than benchmark-specialized staging
 
 ## Current implementation obligations under G3
 

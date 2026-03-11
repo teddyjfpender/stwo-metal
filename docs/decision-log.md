@@ -74,6 +74,50 @@ Superseded by:
 
 - none
 
+### DEC-0157: The first G10 migration step is live-trace V1 execution, not a fake full prove-path claim
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+The first benchmark migration step under `G10` is to require the
+`wide_fibonacci` benchmark boundary to lower, validate, and execute
+`MetalEvaluationProgramV1` on the live generated trace through both the
+reference and Metal device lanes. We do not claim the benchmark prove path is
+already V1-native until one real prove-phase boundary uses that contract.
+
+Context:
+
+After `G9` landed the V1 ABI, validator, lowering, reference interpreter, and
+first `.metal` device interpreter lane, the live generated benchmark row still
+proved through benchmark-specialized staging. The honest next step was not to
+pretend the whole prove path had migrated; it was to make the benchmark depend
+on the V1 runtime contract in real code on the same generated trace it already
+uses.
+
+Alternatives rejected:
+
+- declare `G10` complete after lowering plus synthetic interpreter tests only
+- wire the V1 execution check directly into the timed prove benchmark and
+  distort the published performance contract
+
+Impact:
+
+- `benchmark.rs` is now a real V1 runtime consumer for the generated
+  `wide_fibonacci` row
+- benchmark-facing tests can pin reference/device parity on a live generated
+  trace
+- the next honest migration target is a real prove-phase boundary, not more
+  side-by-side contract checks
+
+Superseded by:
+
+- none
+
 ### DEC-0155: The first execution semantics for MetalEvaluationProgramV1 must be a deterministic reference interpreter before any Metal device interpreter widens the runtime
 
 - Date: `2026-03-11`

@@ -1,9 +1,13 @@
 use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
 use super::eval_program_v1::{
+    execute_metal_evaluation_program_v1_on_metal, interpret_metal_evaluation_program_v1,
     lower_registered_metal_evaluation_program_v1, MetalEvaluationProgramBudgetV1,
-    MetalEvaluationProgramLoweringError, MetalEvaluationProgramSpecializationV1,
+    MetalEvaluationProgramExecutionError, MetalEvaluationProgramInterpreterError,
+    MetalEvaluationProgramLoweringError, MetalEvaluationProgramRuntimeInputsV1,
+    MetalEvaluationProgramSpecializationV1, MetalEvaluationProgramTraceViewV1,
     OwnedMetalEvaluationProgramV1,
 };
 use super::execution_plan::{
@@ -234,12 +238,12 @@ impl MetalWideFibonacciBenchmarkBoundary {
             MetalEvaluationProgramLoweringError::UnsupportedComponent { .. } => {
                 MetalBenchmarkProgramError::UnsupportedComponent { workload_name }
             }
-            MetalEvaluationProgramLoweringError::InvalidWideFibonacciColumnCount {
-                n_columns,
-            } => MetalBenchmarkProgramError::InvalidSpecialization {
-                workload_name,
-                n_columns,
-            },
+            MetalEvaluationProgramLoweringError::InvalidWideFibonacciColumnCount { n_columns } => {
+                MetalBenchmarkProgramError::InvalidSpecialization {
+                    workload_name,
+                    n_columns,
+                }
+            }
             MetalEvaluationProgramLoweringError::RegisterBudgetOverflow => {
                 MetalBenchmarkProgramError::RegisterBudgetOverflow { workload_name }
             }
@@ -250,6 +254,83 @@ impl MetalWideFibonacciBenchmarkBoundary {
             .map_err(|_| MetalBenchmarkProgramError::InvalidProgramContract { workload_name })?;
 
         Ok(program)
+    }
+
+    pub fn execute_evaluation_program_v1_on_trace(
+        &self,
+        trace: &MetalWideFibonacciTrace,
+        random_coeff_powers: &[SecureField],
+    ) -> Result<Vec<SecureField>, MetalBenchmarkProgramExecutionError> {
+        let program = self
+            .evaluation_program_v1()
+            .map_err(|source| MetalBenchmarkProgramExecutionError::ProgramContract { source })?;
+        let trace_columns = self
+            .materialize_trace_columns(trace)
+            .map_err(|source| MetalBenchmarkProgramExecutionError::TraceShape { source })?;
+        let trace_column_refs = trace_columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let trace_interactions = [&[][..], trace_column_refs.as_slice()];
+        let runtime = MetalEvaluationProgramRuntimeInputsV1 {
+            trace: MetalEvaluationProgramTraceViewV1 {
+                trace_interactions: &trace_interactions,
+                preprocessed_columns: &[],
+            },
+            base_params: &[],
+            ext_params: &[],
+            random_coeff_powers,
+        };
+
+        execute_metal_evaluation_program_v1_on_metal(&program, runtime)
+            .map_err(|source| MetalBenchmarkProgramExecutionError::Execution { source })
+    }
+
+    pub fn interpret_evaluation_program_v1_on_trace(
+        &self,
+        trace: &MetalWideFibonacciTrace,
+        random_coeff_powers: &[SecureField],
+    ) -> Result<Vec<SecureField>, MetalBenchmarkProgramExecutionError> {
+        let program = self
+            .evaluation_program_v1()
+            .map_err(|source| MetalBenchmarkProgramExecutionError::ProgramContract { source })?;
+        let trace_columns = self
+            .materialize_trace_columns(trace)
+            .map_err(|source| MetalBenchmarkProgramExecutionError::TraceShape { source })?;
+        let trace_column_refs = trace_columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let trace_interactions = [&[][..], trace_column_refs.as_slice()];
+        let runtime = MetalEvaluationProgramRuntimeInputsV1 {
+            trace: MetalEvaluationProgramTraceViewV1 {
+                trace_interactions: &trace_interactions,
+                preprocessed_columns: &[],
+            },
+            base_params: &[],
+            ext_params: &[],
+            random_coeff_powers,
+        };
+
+        interpret_metal_evaluation_program_v1(&program, runtime)
+            .map_err(|source| MetalBenchmarkProgramExecutionError::ReferenceExecution { source })
+    }
+
+    fn materialize_trace_columns(
+        &self,
+        trace: &MetalWideFibonacciTrace,
+    ) -> Result<Vec<Vec<BaseField>>, MetalBenchmarkTraceShapeError> {
+        let expected_len = 1usize << self.target.log_n_instances;
+        if trace.input_len() != expected_len {
+            return Err(MetalBenchmarkTraceShapeError::LengthMismatch {
+                expected_len,
+                actual_len: trace.input_len(),
+            });
+        }
+        if trace.n_columns() != self.target.n_columns {
+            return Err(MetalBenchmarkTraceShapeError::ColumnCountMismatch {
+                expected_columns: self.target.n_columns,
+                actual_columns: trace.n_columns(),
+            });
+        }
+
+        Ok((0..trace.n_columns() as usize)
+            .map(|column_index| trace.column_values(column_index))
+            .collect())
     }
 }
 
@@ -280,6 +361,34 @@ pub enum MetalBenchmarkProgramError {
     },
     InvalidProgramContract {
         workload_name: &'static str,
+    },
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalBenchmarkTraceShapeError {
+    LengthMismatch {
+        expected_len: usize,
+        actual_len: usize,
+    },
+    ColumnCountMismatch {
+        expected_columns: u32,
+        actual_columns: u32,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum MetalBenchmarkProgramExecutionError {
+    ProgramContract {
+        source: MetalBenchmarkProgramError,
+    },
+    TraceShape {
+        source: MetalBenchmarkTraceShapeError,
+    },
+    ReferenceExecution {
+        source: MetalEvaluationProgramInterpreterError,
+    },
+    Execution {
+        source: MetalEvaluationProgramExecutionError,
     },
 }
 
@@ -370,16 +479,18 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
 #[cfg(test)]
 mod tests {
     use stwo::core::fields::m31::BaseField;
+    use stwo::core::fields::qm31::SecureField;
 
     use super::{
         declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError,
-        MetalBenchmarkLaneError, MetalBenchmarkOperation, MetalBenchmarkReferencePlatform,
-        MetalExecutionIntent, WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
+        MetalBenchmarkLaneError, MetalBenchmarkOperation, MetalBenchmarkProgramExecutionError,
+        MetalBenchmarkReferencePlatform, MetalExecutionIntent, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+        WIDE_FIBONACCI_TRACE_LOG20_TARGET,
     };
     use crate::backend::metal::artifact::MetalGeneratedRouteKind;
     use crate::backend::metal::{
-        MetalExecutionPlan, MetalPlannerError, MetalWorkloadOwnership, MetalWorkloadStage,
-        UnsupportedGeneratedMetalRoute,
+        metal_runtime_support, MetalExecutionPlan, MetalPlannerError, MetalRuntimeSupport,
+        MetalWorkloadOwnership, MetalWorkloadStage, UnsupportedGeneratedMetalRoute,
     };
 
     #[test]
@@ -489,6 +600,87 @@ mod tests {
             boundary.workload_boundary().plan()
         );
         assert_eq!(request.n_columns, target.n_columns);
+    }
+
+    #[test]
+    fn benchmark_boundary_executes_v1_program_on_generated_trace() {
+        if !matches!(metal_runtime_support(), MetalRuntimeSupport::Available) {
+            return;
+        }
+
+        let target = super::MetalBenchmarkTarget {
+            log_n_instances: 3,
+            n_columns: 6,
+            ..WIDE_FIBONACCI_PROVE_LOG20_TARGET
+        };
+        let boundary =
+            declare_wide_fibonacci_benchmark_boundary(MetalExecutionIntent::PreferMetal, target)
+                .unwrap();
+        let input_a = vec![BaseField::from_u32_unchecked(1); 1 << target.log_n_instances];
+        let input_b = vec![BaseField::from_u32_unchecked(2); 1 << target.log_n_instances];
+        let random_coeff_powers = vec![
+            SecureField::from_u32_unchecked(3, 5, 7, 11),
+            SecureField::from_u32_unchecked(13, 17, 19, 23),
+            SecureField::from_u32_unchecked(29, 31, 37, 41),
+            SecureField::from_u32_unchecked(43, 47, 53, 59),
+        ];
+        let trace = boundary
+            .ingest_cpu_witness_inputs(&input_a, &input_b)
+            .unwrap()
+            .generate_trace()
+            .unwrap();
+
+        let reference = boundary
+            .interpret_evaluation_program_v1_on_trace(&trace, &random_coeff_powers)
+            .unwrap();
+        let device = boundary
+            .execute_evaluation_program_v1_on_trace(&trace, &random_coeff_powers)
+            .unwrap();
+
+        assert_eq!(device, reference);
+    }
+
+    #[test]
+    fn benchmark_boundary_rejects_trace_shape_drift_for_v1_execution() {
+        let boundary = declare_wide_fibonacci_benchmark_boundary(
+            MetalExecutionIntent::PreferMetal,
+            WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+        )
+        .unwrap();
+        let short_target = super::MetalBenchmarkTarget {
+            log_n_instances: 3,
+            n_columns: 6,
+            ..WIDE_FIBONACCI_PROVE_LOG20_TARGET
+        };
+        let short_boundary = declare_wide_fibonacci_benchmark_boundary(
+            MetalExecutionIntent::PreferMetal,
+            short_target,
+        )
+        .unwrap();
+        let input_a = vec![BaseField::from_u32_unchecked(1); 1 << short_target.log_n_instances];
+        let input_b = vec![BaseField::from_u32_unchecked(2); 1 << short_target.log_n_instances];
+        let trace = short_boundary
+            .ingest_cpu_witness_inputs(&input_a, &input_b)
+            .unwrap()
+            .generate_trace()
+            .unwrap();
+
+        let error = boundary
+            .interpret_evaluation_program_v1_on_trace(
+                &trace,
+                &[SecureField::from_u32_unchecked(1, 0, 0, 0); 98],
+            )
+            .unwrap_err();
+
+        assert_eq!(
+            error,
+            MetalBenchmarkProgramExecutionError::TraceShape {
+                source: super::MetalBenchmarkTraceShapeError::LengthMismatch {
+                    expected_len: 1 << 20,
+                    actual_len: 1 << short_target.log_n_instances,
+                },
+            }
+        );
     }
 
     #[test]

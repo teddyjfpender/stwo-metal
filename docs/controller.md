@@ -30,7 +30,7 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G9 fourth slice: attach first Metal device interpreter lane to MetalEvaluationProgramV1`
+  `G10 first slice: execute MetalEvaluationProgramV1 on the live generated trace`
 - Objective:
   move `stwo-metal` from a benchmark-specialized generated path to one stable
   lowered-program contract that both the generic interpreter lane and the
@@ -51,11 +51,13 @@ Invariants:
   reference interpreter, and a fail-closed first Metal `.metal` interpreter
   lane for the currently lowered `fibonacci_example` subset
 - the active generated `wide_fibonacci` row can now lower its benchmark target
-  into a validated V1 program, but it is still driven at runtime by pre-V1
-  benchmark-specialized lowering rather than a stable lowered-program contract
+  into a validated V1 program and execute that program on the live generated
+  trace through both the reference and Metal device lanes, but the actual prove
+  path is still driven by pre-V1 benchmark-specialized lowering rather than
+  the V1 runtime contract
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
-  row still does not execute through that V1 runtime contract
+  row still does not prove through that V1 runtime contract
 - the current acceptance matrix still proves backend viability, but it does not
   yet validate one shared lowered-program contract across generic and generated
   execution modes
@@ -71,7 +73,8 @@ Invariants:
 ## Next three deliverables
 
 1. Migrate the active generated `wide_fibonacci` benchmark row onto the
-   validated V1 runtime contract instead of benchmark-specialized lowering.
+   validated V1 runtime contract for one prove-phase boundary instead of only
+   executing V1 alongside the benchmark-specialized path.
 2. Define the overlay lookup law keyed by semantic hash and capability profile,
    then migrate the active generated benchmark row onto that same contract
    instead of benchmark-local lowering.
