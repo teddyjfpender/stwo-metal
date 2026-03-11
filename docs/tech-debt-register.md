@@ -132,10 +132,12 @@ The generated `wide_fibonacci` row now uses selected
 `MetalEvaluationProgramV1` output as the authority for composition generation,
 and the repository now has an explicit `OwnedMetalSampledValuesV1` ABI plus
 both a correctness-first reference lane and a first Metal runtime lane for the
-live post-composition sampled-values shape. The remaining debt is that
-`prove_values` and the following decommit flow still retain legacy ownership
-above that ABI, so the generated prove path cannot yet stay on the
-V1/overlay contract end to end.
+live post-composition sampled-values shape. `stwo-metal` now also owns the
+post-composition prove-values result boundary itself, carrying the proof,
+sampled-values ABI object, post-composition evaluation, and dispatch kind. The
+remaining debt is that legacy `commitment_scheme.prove_values` and the
+following decommit flow still retain ownership above that ABI, so the generated
+prove path cannot yet stay on the V1/overlay contract end to end.
 
 Current containment:
 
@@ -157,8 +159,8 @@ Exit condition:
 
 The selected V1 runtime contract consumes the live post-composition
 sampled-values ABI directly through the Metal lane, and the generated
-`wide_fibonacci` row no longer needs legacy prove-values/decommit ownership
-beyond V1-owned composition generation.
+`wide_fibonacci` row no longer needs legacy `commitment_scheme.prove_values`
+or decommit ownership beyond V1-owned composition generation.
 
 Target retirement point:
 

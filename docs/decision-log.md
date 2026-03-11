@@ -28,6 +28,49 @@ Superseded by:
 
 ## Entries
 
+### DEC-0171: Post-composition prove-values results now belong to the sampled-values ABI family
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
+
+Decision:
+
+The backend-owned generated benchmark row must carry post-composition
+prove-values output as one `stwo-metal` result object containing the proof,
+the lowered sampled-values ABI object, the post-composition evaluation, and
+the dispatch kind used for sampled-values execution.
+
+Context:
+
+After `DEC-0170`, post-composition sanity already belonged solely to the
+sampled-values ABI family. The next semantics-preserving step was to move the
+result boundary itself into `stwo-metal`, so the generated row stopped
+returning a raw proof while separately reconstructing post-composition ABI
+state outside the backend contract.
+
+Alternatives rejected:
+
+- keep returning only a raw proof and rebuild sampled-values ABI state
+  separately in the benchmark row
+- defer the result-boundary move until the full legacy
+  `commitment_scheme.prove_values` and decommit flow is migrated
+
+Impact:
+
+- `stwo-metal` now owns the post-composition prove-values result boundary
+- the remaining G10 blocker is narrower: legacy
+  `commitment_scheme.prove_values` and decommit ownership above that result
+  boundary
+- future migration work can consume one backend-owned result contract instead
+  of stitching proof and sampled-values state back together
+
+Superseded by:
+
+- none
+
 ### DEC-0170: Post-composition sanity now belongs solely to the sampled-values ABI family
 
 - Date: `2026-03-11`

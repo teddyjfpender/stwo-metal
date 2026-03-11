@@ -709,7 +709,7 @@ fn run_one_generated_sample(
         .run_generated_blake2s_iteration(input_a_host, input_b_host, config)
         .expect("wide fibonacci prove should succeed");
 
-    let proof_metadata = proof_metadata(&iteration.sample.proof);
+    let proof_metadata = proof_metadata(iteration.sample.proof());
 
     SampleResult {
         total_elapsed_ms: iteration.prove_elapsed_ms + iteration.verify_elapsed_ms,
@@ -871,7 +871,7 @@ fn prove_breakdown_from_generated_iteration(
 fn sample_result_from_generated_iteration(
     iteration: &MetalGeneratedWideFibonacciBenchmarkIteration,
 ) -> SampleResult {
-    let proof_metadata = proof_metadata(&iteration.sample.proof);
+    let proof_metadata = proof_metadata(iteration.sample.proof());
 
     SampleResult {
         total_elapsed_ms: iteration.prove_elapsed_ms + iteration.verify_elapsed_ms,

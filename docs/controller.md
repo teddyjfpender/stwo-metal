@@ -72,10 +72,11 @@ Invariants:
   both a correctness-first reference lane and a first Metal runtime lane for
   the live generated post-composition sampled-values shape, so the blocker is
   no longer “missing ABI” or “missing device execution”; the active blocker is
-  that the generated row still retains legacy `prove_values`/decommit
-  ownership on top of that ABI, although post-composition sanity checking now
-  belongs entirely to the sampled-values ABI family rather than legacy proof
-  extraction
+  that the generated row still retains legacy `commitment_scheme.prove_values`
+  and decommit ownership on top of that ABI, even though `stwo-metal` now owns
+  the post-composition sampled-values result contract and post-composition
+  sanity checking belongs entirely to the sampled-values ABI family rather than
+  legacy proof extraction
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
   row still does not prove through that V1 runtime contract
@@ -93,15 +94,16 @@ Invariants:
 
 ## Next three deliverables
 
-1. Remove the remaining legacy prove-values/decommit ownership from the
-   generated row by routing that flow through the sampled-values ABI/runtime
-   contract instead of legacy component-level interpretation.
+1. Remove the remaining legacy `commitment_scheme.prove_values` and decommit
+   ownership from the generated row by routing that flow through the
+   sampled-values ABI/runtime contract instead of legacy component-level
+   interpretation.
 2. Add layout/reflection verification for the V1 host/device boundary records
    once the first live Metal runtime consumer exists, so the ABI surface is
    checked both statically and against compiled Metal metadata.
-3. Move the next post-composition proof boundary after sampled-values
-   execution onto the selected V1/overlay contract so the generated row keeps
-   converging on one prove-path authority.
+3. Keep collapsing the post-composition proof path onto the selected
+   V1/overlay contract so the generated row converges on one prove-path
+   authority end to end.
 
 ## Explicitly not doing now
 

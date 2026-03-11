@@ -145,9 +145,19 @@ pub struct MetalWideFibonacciSentinel {
 
 #[derive(Clone, Debug)]
 pub struct MetalGeneratedWideFibonacciBenchmarkSample {
-    pub proof: StarkProof<Blake2sMerkleHasher>,
+    prove_values_result: MetalBenchmarkProveValuesResult,
     pub sentinel: MetalWideFibonacciSentinel,
     pub breakdown: MetalGeneratedWideFibonacciBenchmarkBreakdown,
+}
+
+impl MetalGeneratedWideFibonacciBenchmarkSample {
+    pub fn prove_values_result(&self) -> &MetalBenchmarkProveValuesResult {
+        &self.prove_values_result
+    }
+
+    pub fn proof(&self) -> &StarkProof<Blake2sMerkleHasher> {
+        self.prove_values_result.proof()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -211,6 +221,32 @@ pub struct MetalBenchmarkProveValuesBreakdown {
     pub sampled_values_v1_ms: f64,
     pub sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
     pub sanity_check_ms: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct MetalBenchmarkProveValuesResult {
+    proof: StarkProof<Blake2sMerkleHasher>,
+    sampled_values: MetalBenchmarkPostCompositionSampledValuesV1,
+    post_composition_eval: SecureField,
+    sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
+}
+
+impl MetalBenchmarkProveValuesResult {
+    pub fn proof(&self) -> &StarkProof<Blake2sMerkleHasher> {
+        &self.proof
+    }
+
+    pub fn sampled_values(&self) -> &MetalBenchmarkPostCompositionSampledValuesV1 {
+        &self.sampled_values
+    }
+
+    pub fn post_composition_eval(&self) -> SecureField {
+        self.post_composition_eval
+    }
+
+    pub fn sampled_values_dispatch(&self) -> MetalSampledValuesDispatchKindV1 {
+        self.sampled_values_dispatch
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -501,7 +537,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
         staging: MetalBenchmarkProveValuesStaging,
     ) -> Result<
         (
-            StarkProof<Blake2sMerkleHasher>,
+            MetalBenchmarkProveValuesResult,
             MetalBenchmarkProveValuesBreakdown,
         ),
         ProvingError,
@@ -540,7 +576,12 @@ impl MetalWideFibonacciBenchmarkBoundary {
         let sanity_check_ms = sanity_check_start.elapsed().as_secs_f64() * 1000.0;
 
         Ok((
-            proof,
+            MetalBenchmarkProveValuesResult {
+                proof,
+                sampled_values,
+                post_composition_eval,
+                sampled_values_dispatch,
+            },
             MetalBenchmarkProveValuesBreakdown {
                 prove_values_ms,
                 sampled_values_v1_ms,
@@ -615,7 +656,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
         >,
     ) -> Result<
         (
-            StarkProof<Blake2sMerkleHasher>,
+            MetalBenchmarkProveValuesResult,
             MetalBenchmarkProveCoreBreakdown,
         ),
         MetalBenchmarkProveCoreError,
@@ -649,7 +690,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
         let prove_values_stage = self
             .stage_prove_values(&component_provers, channel, &commitment_scheme)
             .expect("registered benchmark boundary must satisfy the prove-values lane contract");
-        let (proof, prove_values_breakdown) = self
+        let (prove_values_result, prove_values_breakdown) = self
             .execute_prove_values(
                 channel,
                 commitment_scheme,
@@ -658,7 +699,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
             .map_err(MetalBenchmarkProveCoreError::from)?;
 
         Ok((
-            proof,
+            prove_values_result,
             MetalBenchmarkProveCoreBreakdown {
                 evaluation_program_v1_ms,
                 evaluation_program_v1_dispatch,
@@ -915,7 +956,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
             self.target.n_columns as usize,
         );
         let prove_core_start = std::time::Instant::now();
-        let (proof, prove_core_breakdown) = self
+        let (prove_values_result, prove_core_breakdown) = self
             .execute_prove_core(
                 &[&component],
                 prover_channel,
@@ -925,7 +966,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
         let prove_core_ms = prove_core_start.elapsed().as_secs_f64() * 1000.0;
 
         Ok(MetalGeneratedWideFibonacciBenchmarkSample {
-            proof,
+            prove_values_result,
             sentinel,
             breakdown: MetalGeneratedWideFibonacciBenchmarkBreakdown {
                 setup_and_preprocessed_commit_ms,
@@ -953,7 +994,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
             self.target.log_n_instances,
             self.target.n_columns as usize,
         );
-        verify_wide_fibonacci_blake(&component, &sample.proof)
+        verify_wide_fibonacci_blake(&component, sample.proof())
     }
 
     pub fn run_generated_blake2s_iteration(
@@ -1808,25 +1849,34 @@ mod tests {
     fn generated_benchmark_run_exposes_cold_and_steady_state_views() {
         let iteration = super::MetalGeneratedWideFibonacciBenchmarkIteration {
             sample: super::MetalGeneratedWideFibonacciBenchmarkSample {
-                proof: StarkProof(CommitmentSchemeProof {
-                    config: PcsConfig::default(),
-                    commitments: TreeVec::default(),
-                    sampled_values: TreeVec::default(),
-                    decommitments: TreeVec::default(),
-                    queried_values: TreeVec::default(),
-                    proof_of_work: 0,
-                    fri_proof: stwo::core::fri::FriProof {
-                        first_layer: stwo::core::fri::FriLayerProof {
-                            fri_witness: Vec::new(),
-                            decommitment: Default::default(),
-                            commitment: Default::default(),
+                prove_values_result: super::MetalBenchmarkProveValuesResult {
+                    proof: StarkProof(CommitmentSchemeProof {
+                        config: PcsConfig::default(),
+                        commitments: TreeVec::default(),
+                        sampled_values: TreeVec::default(),
+                        decommitments: TreeVec::default(),
+                        queried_values: TreeVec::default(),
+                        proof_of_work: 0,
+                        fri_proof: stwo::core::fri::FriProof {
+                            first_layer: stwo::core::fri::FriLayerProof {
+                                fri_witness: Vec::new(),
+                                decommitment: Default::default(),
+                                commitment: Default::default(),
+                            },
+                            inner_layers: Vec::new(),
+                            last_layer_poly: stwo::core::poly::line::LinePoly::new(vec![
+                                SecureField::from_u32_unchecked(0, 0, 0, 0),
+                            ]),
                         },
-                        inner_layers: Vec::new(),
-                        last_layer_poly: stwo::core::poly::line::LinePoly::new(vec![
-                            SecureField::from_u32_unchecked(0, 0, 0, 0),
-                        ]),
+                    }),
+                    sampled_values: super::MetalBenchmarkPostCompositionSampledValuesV1 {
+                        sampled_values: super::lower_metal_sampled_values_v1(&TreeVec::default())
+                            .unwrap(),
                     },
-                }),
+                    post_composition_eval: SecureField::from_u32_unchecked(0, 0, 0, 0),
+                    sampled_values_dispatch:
+                        super::MetalSampledValuesDispatchKindV1::ReferenceInterpreter,
+                },
                 sentinel: super::MetalWideFibonacciSentinel {
                     first_column_first_value: 1,
                     second_column_first_value: 2,
