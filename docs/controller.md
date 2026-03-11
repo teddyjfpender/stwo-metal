@@ -66,6 +66,13 @@ Invariants:
   through the selected V1 runtime contract, and the remaining migrated
   authority still carries measurable performance cost that remains active G10
   work
+- the attempted next G10 migration step after selected-runtime-derived
+  composition generation is currently blocked by a sampled-values ABI mismatch:
+  the live post-composition proof flow still exposes secure-field-valued trace
+  masks, while the current V1 trace-interaction contract only accepts explicit
+  base-field trace interactions; that means the remaining post-composition
+  prove-path ownership cannot honestly move onto V1 by another local benchmark
+  patch alone
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
   row still does not prove through that V1 runtime contract
@@ -83,9 +90,9 @@ Invariants:
 
 ## Next three deliverables
 
-1. Move the remaining post-composition prove-path ownership onto the selected
-   V1 runtime contract, so the generated row stops re-entering older proof
-   law after selected-runtime-derived composition generation.
+1. Define the next V1 post-composition ABI step for generated proof flow, so
+   secure-field sampled-value masks can be consumed through the same selected
+   V1 contract instead of re-entering legacy proof law.
 2. Keep `wide_fibonacci_prove.rs` as a reporting harness only by moving any
    remaining generated-lane orchestration edges into `stwo-metal`.
 3. Add layout/reflection verification for the V1 host/device boundary records

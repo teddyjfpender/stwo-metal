@@ -115,6 +115,47 @@ Target retirement point:
 
 - `G10`
 
+### TD-0037: The current V1 contract stops at composition generation and cannot yet consume the live post-composition sampled-values ABI
+
+- Status: `active`
+- Category: `generated-lane ABI gap`
+- Introduced: `2026-03-11`
+- Owner area: `G10 post-composition migration`
+
+Why it exists now:
+
+The generated `wide_fibonacci` row now uses selected
+`MetalEvaluationProgramV1` output as the authority for composition generation,
+but the next attempted migration step failed honestly. The live
+post-composition proof flow still exposes secure-field-valued sampled trace
+masks, while the current V1 runtime contract only accepts explicit base-field
+trace-interaction inputs. That means the remaining proof flow after
+composition generation cannot yet move onto V1 without a new shared ABI step.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/benchmark.rs`
+- `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
+- `vendor/stwo-upstream-dev-62b228e/crates/stwo/src/prover/pcs/mod.rs`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
+
+Risk if left in place:
+
+The repository can keep widening G10 with benchmark-local patches that do not
+converge on one stable post-composition runtime contract, or claim broader V1
+ownership while the live proof still re-enters legacy sample interpretation.
+
+Exit condition:
+
+The selected V1 runtime contract or a V1-adjacent shared ABI can consume the
+live post-composition sampled-values shape directly, and the generated
+`wide_fibonacci` row no longer needs legacy component-level sample
+interpretation beyond V1-owned composition generation.
+
+Target retirement point:
+
+- `G10`
+
 ### TD-0033: FRI and workload handoff surfaces still own CPU-shaped evaluation transitions above the native last-layer path
 
 - Status: `active`

@@ -654,10 +654,14 @@ The current G10 prove-path migration state is:
 - the generated `wide_fibonacci` prove core now uses selected V1 runtime
   output as the authority for composition generation on the eval domain,
   instead of treating selected V1 execution only as a migrated preflight gate
-- the next honest G10 work is the next live prove boundary after
-  selected-runtime-derived composition generation, so the selected V1 runtime
-  contract owns more of the live generated proof than prove-core composition
-  alone
+- the attempted next live prove boundary after selected-runtime-derived
+  composition generation is currently blocked by an ABI mismatch: the
+  post-composition proof flow still exposes secure-field sampled-value masks,
+  while the current V1 runtime contract only accepts explicit base-field trace
+  interactions
+- the next honest G10 work is therefore to define that post-composition V1 ABI
+  step before claiming any broader prove-path migration beyond composition
+  generation
 
 The twenty-seventh G5 slice is now landed:
 
