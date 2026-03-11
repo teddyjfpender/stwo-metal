@@ -114,6 +114,49 @@ Superseded by:
 
 - none
 
+### DEC-0135: Workload FRI and quotient ingress must be canonically Metal-owned
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+The canonical workload-side ingress for FRI-ready evaluations and quotient
+evaluations is now Metal-owned: `CircleDomain` plus `SecureFieldVec`. CPU
+evaluation ingress remains available only as a compatibility adapter that
+converts into the same Metal-owned input contract before proving.
+
+Context:
+
+After retiring the final FRI last-layer `CpuBackend` interpolation bridge, the
+next remaining ownership wall was still visible in the workload API itself:
+the live workload surface still advertised `ingest_cpu_fri_ready_evaluation`,
+`ingest_cpu_quotient_evaluation`, and `prove_from_cpu_*` even though the
+generated lane internally wants Metal-owned columns. That made the API
+semantics more CPU-shaped than the underlying proving path.
+
+Alternatives rejected:
+
+- leave the workload ingress CPU-shaped until the entire PCS/FRI bridge is
+  rewritten
+- remove CPU ingress immediately and break compatibility rows that still need
+  it
+- add a benchmark-only native path without fixing the shared workload contract
+
+Impact:
+
+- workload-side FRI-ready and quotient inputs now have a truthful
+  Metal-owned canonical form
+- CPU evaluation ingress still works, but only by adapting onto the native
+  path
+- the next honest ownership target is now above the workload contract, in the
+  broader FRI/PCS handoff and prove-values pipeline
+
+Superseded by:
+
+- none
+
 ### DEC-0132: Build proof-facing sampled values alongside samples and reuse prepared query buffers before widening prove-values interfaces
 
 - Date: `2026-03-11`

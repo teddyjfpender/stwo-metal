@@ -13,10 +13,11 @@ use stwo_metal::{
     MetalExecutionPlan, MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow,
     MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver,
     MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation,
-    MetalSecureFieldVec, MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientError,
-    MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients, MetalWideFibonacciTrace,
-    MetalWideFibonacciTraceError, MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs,
-    MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+    MetalQuotientEvaluationInput, MetalSecureFieldVec, MetalWideFibonacciBenchmarkBoundary,
+    MetalWideFibonacciQuotientError, MetalWideFibonacciQuotientRequest,
+    MetalWideFibonacciQuotients, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
+    MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs, MetalWorkloadBoundary,
+    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
     STWO_CUDA_BACKEND_SURFACES_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
 };
@@ -58,6 +59,7 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<MetalCpuQuotientEvaluationInput>();
     let _ = std::mem::size_of::<MetalCpuWideFibonacciWitnessInput>();
     let _ = std::mem::size_of::<MetalFriReadyEvaluationInput>();
+    let _ = std::mem::size_of::<MetalQuotientEvaluationInput>();
     let _ = std::mem::size_of::<MetalWorkloadBoundary>();
     let _ = std::mem::size_of::<MetalWorkloadHandoffError<'static>>();
     let _ = std::mem::size_of::<MetalHybridFriWorkload>();

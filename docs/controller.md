@@ -132,14 +132,19 @@ Invariants:
   plus final host coefficient decode, so the next CPU-shaped ownership wall is
   the broader FRI/PCS workload and handoff boundary rather than
   `commit_last_layer`
+- the workload-side FRI-ready and quotient-evaluation ingress paths are now
+  canonically Metal-owned, with CPU evaluation ingress retained only as a
+  compatibility adapter onto the native path; the next remaining ownership
+  wall is therefore the higher FRI/PCS bridge and prove-values pipeline above
+  those workload contracts rather than the workload ingress surface itself
 
 ## Next three deliverables
 
 1. Lower the broader FRI/PCS CPU-ownership boundary above the generated
-   wide-fibonacci lane now that the final FRI last-layer interpolation no
-   longer routes through `CpuBackend`.
+   wide-fibonacci lane now that workload ingress and the final FRI last-layer
+   interpolation no longer route through `CpuBackend`.
 2. Reduce the remaining prove-values grouping and quotient/decommit staging in
-   the PCS prover above the now-native last-layer FRI path.
+   the PCS prover above the now-native workload and last-layer FRI path.
 3. Keep downstream `stark-v` hardening iced unless an external support signal
    appears.
 

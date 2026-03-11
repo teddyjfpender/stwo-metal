@@ -101,9 +101,7 @@ impl MetalWorkloadBoundary {
         self.execution_seed.plan
     }
 
-    pub fn validate_acceptance_lane(
-        &self,
-    ) -> Result<&'static str, MetalAcceptanceLaneError> {
+    pub fn validate_acceptance_lane(&self) -> Result<&'static str, MetalAcceptanceLaneError> {
         match self.execution_seed.plan {
             MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull => {
                 Ok(self.workload_name)
@@ -123,33 +121,56 @@ impl MetalWorkloadBoundary {
         stage_ownership(self.execution_seed.stage_assignments, stage)
     }
 
-    pub fn ingest_cpu_fri_ready_evaluation(
+    pub fn ingest_metal_fri_ready_evaluation(
         &self,
-        evaluation: &SecureEvaluation<CpuBackend, BitReversedOrder>,
+        domain: CircleDomain,
+        column: &SecureFieldVec,
     ) -> Result<MetalFriReadyEvaluationInput, MetalWorkloadHandoffError<'static>> {
         self.execution_seed
-            .allow_cpu_fri_ready_evaluation(evaluation.domain)
+            .allow_cpu_fri_ready_evaluation(domain)
             .map_err(|error| map_execution_seed_handoff_error(self.workload_name, error))?;
 
         Ok(MetalFriReadyEvaluationInput {
             workload_name: self.workload_name,
-            domain: evaluation.domain,
-            column: SecureFieldVec::from_vec(evaluation.values.to_vec()),
+            domain,
+            column: column.clone(),
+        })
+    }
+
+    pub fn ingest_cpu_fri_ready_evaluation(
+        &self,
+        evaluation: &SecureEvaluation<CpuBackend, BitReversedOrder>,
+    ) -> Result<MetalFriReadyEvaluationInput, MetalWorkloadHandoffError<'static>> {
+        self.ingest_metal_fri_ready_evaluation(
+            evaluation.domain,
+            &SecureFieldVec::from_vec(evaluation.values.to_vec()),
+        )
+    }
+
+    pub fn ingest_metal_quotient_evaluation(
+        &self,
+        domain: CircleDomain,
+        column: &SecureFieldVec,
+    ) -> Result<MetalQuotientEvaluationInput, MetalWorkloadHandoffError<'static>> {
+        self.execution_seed
+            .allow_cpu_quotient_evaluation(domain)
+            .map_err(|error| map_execution_seed_handoff_error(self.workload_name, error))?;
+
+        Ok(MetalQuotientEvaluationInput {
+            workload_name: self.workload_name,
+            domain,
+            column: column.clone(),
         })
     }
 
     pub fn ingest_cpu_quotient_evaluation(
         &self,
         quotient_evaluation: &SecureEvaluation<CpuBackend, BitReversedOrder>,
-    ) -> Result<MetalCpuQuotientEvaluationInput, MetalWorkloadHandoffError<'static>> {
-        self.execution_seed
-            .allow_cpu_quotient_evaluation(quotient_evaluation.domain)
-            .map_err(|error| map_execution_seed_handoff_error(self.workload_name, error))?;
-
-        Ok(MetalCpuQuotientEvaluationInput {
-            workload_name: self.workload_name,
-            quotient_evaluation: quotient_evaluation.clone(),
-        })
+    ) -> Result<MetalQuotientEvaluationInput, MetalWorkloadHandoffError<'static>> {
+        self.ingest_metal_quotient_evaluation(
+            quotient_evaluation.domain,
+            &SecureFieldVec::from_vec(quotient_evaluation.values.to_vec()),
+        )
     }
 
     pub fn ingest_cpu_wide_fibonacci_witness(
@@ -230,25 +251,28 @@ impl MetalFriReadyEvaluationInput {
     }
 }
 
-#[derive(Clone)]
-pub struct MetalCpuQuotientEvaluationInput {
+#[derive(Clone, Debug)]
+pub struct MetalQuotientEvaluationInput {
     workload_name: &'static str,
-    quotient_evaluation: SecureEvaluation<CpuBackend, BitReversedOrder>,
+    domain: CircleDomain,
+    column: SecureFieldVec,
 }
 
-impl MetalCpuQuotientEvaluationInput {
+impl MetalQuotientEvaluationInput {
     pub fn workload_name(&self) -> &'static str {
         self.workload_name
     }
 
-    pub fn quotient_evaluation(&self) -> &SecureEvaluation<CpuBackend, BitReversedOrder> {
-        &self.quotient_evaluation
+    pub fn domain(&self) -> CircleDomain {
+        self.domain
     }
 
-    pub fn domain(&self) -> CircleDomain {
-        self.quotient_evaluation.domain
+    pub fn column(&self) -> &SecureFieldVec {
+        &self.column
     }
 }
+
+pub type MetalCpuQuotientEvaluationInput = MetalQuotientEvaluationInput;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MetalCpuWideFibonacciWitnessInput {
@@ -327,22 +351,60 @@ impl MetalHybridFriWorkload {
         Ok(self.prove(input.column(), input.domain()))
     }
 
+    pub fn prove_from_metal_evaluation(
+        &self,
+        domain: CircleDomain,
+        column: &SecureFieldVec,
+    ) -> Result<FriDecommitResult<Blake2sMerkleHasher>, MetalWorkloadHandoffError<'static>> {
+        let input = self
+            .boundary
+            .ingest_metal_fri_ready_evaluation(domain, column)?;
+        self.prove_input(&input)
+    }
+
     pub fn prove_from_cpu_evaluation(
         &self,
         evaluation: &SecureEvaluation<CpuBackend, BitReversedOrder>,
     ) -> Result<FriDecommitResult<Blake2sMerkleHasher>, MetalWorkloadHandoffError<'static>> {
-        let input = self.boundary.ingest_cpu_fri_ready_evaluation(evaluation)?;
-        self.prove_input(&input)
+        self.prove_from_metal_evaluation(
+            evaluation.domain,
+            &SecureFieldVec::from_vec(evaluation.values.to_vec()),
+        )
+    }
+
+    pub fn prove_from_quotient_input(
+        &self,
+        quotient_input: &MetalQuotientEvaluationInput,
+    ) -> Result<FriDecommitResult<Blake2sMerkleHasher>, MetalWorkloadHandoffError<'static>> {
+        if quotient_input.workload_name() != self.boundary.workload_name() {
+            return Err(MetalWorkloadHandoffError::WorkloadMismatch {
+                expected_workload: self.boundary.workload_name(),
+                actual_workload: quotient_input.workload_name(),
+            });
+        }
+
+        self.prove_from_metal_evaluation(quotient_input.domain(), quotient_input.column())
+    }
+
+    pub fn prove_from_metal_quotient_evaluation(
+        &self,
+        domain: CircleDomain,
+        column: &SecureFieldVec,
+    ) -> Result<FriDecommitResult<Blake2sMerkleHasher>, MetalWorkloadHandoffError<'static>> {
+        let input = self
+            .boundary
+            .ingest_metal_quotient_evaluation(domain, column)?;
+        self.prove_from_quotient_input(&input)
     }
 
     pub fn prove_from_cpu_quotient_evaluation(
         &self,
         quotient_evaluation: &SecureEvaluation<CpuBackend, BitReversedOrder>,
     ) -> Result<FriDecommitResult<Blake2sMerkleHasher>, MetalWorkloadHandoffError<'static>> {
-        let input = self
-            .boundary
-            .ingest_cpu_quotient_evaluation(quotient_evaluation)?;
-        self.prove_from_cpu_evaluation(input.quotient_evaluation())
+        self.prove_from_metal_quotient_evaluation(
+            quotient_evaluation.domain,
+            &SecureFieldVec::from_vec(quotient_evaluation.values.to_vec()),
+        )
     }
 }
 
@@ -389,9 +451,8 @@ mod tests {
     use stwo::prover::poly::BitReversedOrder;
 
     use super::{
-        declare_exemplar_metal_workload_boundary, MetalAcceptanceLaneError,
-        MetalExecutionIntent, MetalExecutionPlan, MetalWorkloadHandoffError,
-        MetalWorkloadOwnership, MetalWorkloadStage,
+        declare_exemplar_metal_workload_boundary, MetalAcceptanceLaneError, MetalExecutionIntent,
+        MetalExecutionPlan, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     };
 
     #[test]

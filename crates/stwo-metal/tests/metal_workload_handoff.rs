@@ -14,6 +14,7 @@ use stwo::prover::poly::BitReversedOrder;
 use stwo_metal::{
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
     metal_runtime_support, MetalExecutionIntent, MetalExecutionPlan, MetalRuntimeSupport,
+    MetalSecureFieldVec,
 };
 
 fn exemplar_cpu_evaluation(log_size: u32) -> SecureEvaluation<CpuBackend, BitReversedOrder> {
@@ -69,6 +70,26 @@ fn cpu_owned_fri_ready_handoff_preserves_domain_and_plan() {
 }
 
 #[test]
+fn metal_owned_fri_ready_handoff_preserves_domain_and_plan() {
+    let evaluation = exemplar_cpu_evaluation(8);
+    let column = MetalSecureFieldVec::from_vec(evaluation.values.to_vec());
+    let boundary = declare_exemplar_metal_workload_boundary(
+        MetalExecutionIntent::PreferMetal,
+        "fibonacci_example",
+    )
+    .unwrap();
+
+    let input = boundary
+        .ingest_metal_fri_ready_evaluation(evaluation.domain, &column)
+        .unwrap();
+
+    assert_eq!(boundary.plan(), MetalExecutionPlan::MetalFriHybrid);
+    assert_eq!(input.workload_name(), "fibonacci_example");
+    assert_eq!(input.domain(), evaluation.domain);
+    assert_eq!(input.column().to_vec(), evaluation.values.to_vec());
+}
+
+#[test]
 fn cpu_owned_quotient_handoff_preserves_domain_and_plan() {
     let quotient_evaluation = exemplar_cpu_quotient_evaluation();
     let boundary = declare_exemplar_metal_workload_boundary(
@@ -84,10 +105,27 @@ fn cpu_owned_quotient_handoff_preserves_domain_and_plan() {
     assert_eq!(boundary.plan(), MetalExecutionPlan::MetalFriHybrid);
     assert_eq!(input.workload_name(), "fibonacci_example");
     assert_eq!(input.domain(), quotient_evaluation.domain);
-    assert_eq!(
-        input.quotient_evaluation().values.to_vec(),
-        quotient_evaluation.values.to_vec()
-    );
+    assert_eq!(input.column().to_vec(), quotient_evaluation.values.to_vec());
+}
+
+#[test]
+fn metal_owned_quotient_handoff_preserves_domain_and_plan() {
+    let quotient_evaluation = exemplar_cpu_quotient_evaluation();
+    let column = MetalSecureFieldVec::from_vec(quotient_evaluation.values.to_vec());
+    let boundary = declare_exemplar_metal_workload_boundary(
+        MetalExecutionIntent::PreferMetal,
+        "fibonacci_example",
+    )
+    .unwrap();
+
+    let input = boundary
+        .ingest_metal_quotient_evaluation(quotient_evaluation.domain, &column)
+        .unwrap();
+
+    assert_eq!(boundary.plan(), MetalExecutionPlan::MetalFriHybrid);
+    assert_eq!(input.workload_name(), "fibonacci_example");
+    assert_eq!(input.domain(), quotient_evaluation.domain);
+    assert_eq!(input.column().to_vec(), quotient_evaluation.values.to_vec());
 }
 
 #[test]
@@ -175,6 +213,59 @@ fn cpu_owned_fri_ready_handoff_matches_cpu_reference() {
 
 #[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn metal_owned_fri_ready_handoff_matches_cpu_reference() {
+    assert_eq!(
+        metal_runtime_support(),
+        MetalRuntimeSupport::Available,
+        "Metal runtime must be available for the native Apple Silicon parity test"
+    );
+
+    let config = FriConfig::new(3, 2, 3, 2);
+    let evaluation = exemplar_cpu_evaluation(10);
+    let column = MetalSecureFieldVec::from_vec(evaluation.values.to_vec());
+    let twiddles = CpuBackend::precompute_twiddles(evaluation.domain.half_coset);
+    let workload = declare_exemplar_hybrid_fri_workload(
+        MetalExecutionIntent::PreferMetal,
+        "fibonacci_example",
+        config,
+    )
+    .unwrap();
+
+    let mut cpu_channel = Blake2sChannel::default();
+    let cpu_result = FriProver::<CpuBackend, Blake2sMerkleChannel>::commit(
+        &mut cpu_channel,
+        config,
+        &evaluation,
+        &twiddles,
+    )
+    .decommit(&mut cpu_channel);
+    let metal_result = workload
+        .prove_from_metal_evaluation(evaluation.domain, &column)
+        .unwrap();
+
+    assert_eq!(
+        metal_result.unsorted_query_locations,
+        cpu_result.unsorted_query_locations
+    );
+    assert_eq!(metal_result.query_positions, cpu_result.query_positions);
+    assert_eq!(
+        metal_result
+            .fri_proof
+            .proof
+            .last_layer_poly
+            .clone()
+            .into_ordered_coefficients(),
+        cpu_result
+            .fri_proof
+            .proof
+            .last_layer_poly
+            .clone()
+            .into_ordered_coefficients()
+    );
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn cpu_owned_quotient_handoff_matches_cpu_reference() {
     assert_eq!(
         metal_runtime_support(),
@@ -230,6 +321,59 @@ fn cpu_owned_quotient_handoff_matches_cpu_reference() {
     assert_eq!(
         metal_result.fri_proof.proof.inner_layers.len(),
         cpu_result.fri_proof.proof.inner_layers.len()
+    );
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn metal_owned_quotient_handoff_matches_cpu_reference() {
+    assert_eq!(
+        metal_runtime_support(),
+        MetalRuntimeSupport::Available,
+        "Metal runtime must be available for the native Apple Silicon parity test"
+    );
+
+    let config = FriConfig::new(3, 2, 3, 2);
+    let quotient_evaluation = exemplar_cpu_quotient_evaluation();
+    let column = MetalSecureFieldVec::from_vec(quotient_evaluation.values.to_vec());
+    let twiddles = CpuBackend::precompute_twiddles(quotient_evaluation.domain.half_coset);
+    let workload = declare_exemplar_hybrid_fri_workload(
+        MetalExecutionIntent::PreferMetal,
+        "fibonacci_example",
+        config,
+    )
+    .unwrap();
+
+    let mut cpu_channel = Blake2sChannel::default();
+    let cpu_result = FriProver::<CpuBackend, Blake2sMerkleChannel>::commit(
+        &mut cpu_channel,
+        config,
+        &quotient_evaluation,
+        &twiddles,
+    )
+    .decommit(&mut cpu_channel);
+    let metal_result = workload
+        .prove_from_metal_quotient_evaluation(quotient_evaluation.domain, &column)
+        .unwrap();
+
+    assert_eq!(
+        metal_result.unsorted_query_locations,
+        cpu_result.unsorted_query_locations
+    );
+    assert_eq!(metal_result.query_positions, cpu_result.query_positions);
+    assert_eq!(
+        metal_result
+            .fri_proof
+            .proof
+            .last_layer_poly
+            .clone()
+            .into_ordered_coefficients(),
+        cpu_result
+            .fri_proof
+            .proof
+            .last_layer_poly
+            .clone()
+            .into_ordered_coefficients()
     );
 }
 
