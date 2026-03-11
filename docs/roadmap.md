@@ -144,6 +144,7 @@ The next active work is:
   `stark-v` row
 - keep one deterministic generated-readiness check for the pinned downstream
   checkout
+- keep one deterministic generated-gap check against the frozen minimum subset
 - keep the dual-lane benchmark contract stable while downstream hardening
   proceeds
 

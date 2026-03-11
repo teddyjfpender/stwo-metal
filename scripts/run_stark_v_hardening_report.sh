@@ -14,6 +14,7 @@ root_dir=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 contract_checker="$root_dir/scripts/check_stark_v_contract.sh"
 attachment_checker="$root_dir/scripts/check_stark_v_attachment.sh"
 generated_checker="$root_dir/scripts/check_stark_v_generated_readiness.sh"
+generated_gap_checker="$root_dir/scripts/check_stark_v_generated_gap.sh"
 
 if [ ! -d "$repo/.git" ] && [ ! -f "$repo/Cargo.toml" ]; then
   echo "invalid stark-v checkout: $repo" >&2
@@ -30,6 +31,7 @@ mkdir -p "$output_dir"
 contract_output=$(sh "$contract_checker" "$repo")
 attachment_output=$(sh "$attachment_checker" "$repo")
 generated_output=$(sh "$generated_checker" "$repo")
+generated_gap_output=$(sh "$generated_gap_checker" "$repo")
 repo_head=$(git -C "$repo" rev-parse HEAD 2>/dev/null || echo "unknown")
 
 report_md="$output_dir/stark_v_hardening_report.md"
@@ -60,6 +62,12 @@ $attachment_output
 $generated_output
 \`\`\`
 
+## Generated gap
+
+\`\`\`
+$generated_gap_output
+\`\`\`
+
 ## Current result
 
 - generic lane: unsupported
@@ -75,6 +83,7 @@ $generated_output
 - workspace \`Cargo.toml\` points at vendored \`external/stwo\`
 - no machine-readable generated artifact contract is detectable in the pinned
   checkout
+- the full minimum generated subset from \`DN-0006\` is still absent
 
 ## Required next supported row
 

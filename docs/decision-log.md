@@ -28,6 +28,43 @@ Superseded by:
 
 ## Entries
 
+### DEC-0123: G8 should enumerate the downstream generated gap explicitly
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0006-stark-v-generated-minimum-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0006-stark-v-generated-minimum-contract.md)
+
+Decision:
+
+After checking generated readiness, G8 should enumerate the missing generated
+subset explicitly so the first supported downstream row has a bounded gap list
+rather than a generic "artifact absent" label.
+
+Context:
+
+The current downstream report now distinguishes generic unsupported,
+generated-required, and generated-artifact-absent. The next honest tightening
+is to say which required generated fields are still missing against the frozen
+minimum contract.
+
+Alternatives rejected:
+
+- stop at a binary generated-readiness result
+- leave the generated gap implicit in `DN-0006` only
+- wait for a future downstream producer before stating the missing set
+
+Impact:
+
+- G8 now records the downstream blockage as a concrete generated gap list
+- future downstream producer work can target one checked missing-field set
+- the fail-closed current row remains explicit and bounded
+
+Superseded by:
+
+- none
+
 ### DEC-0122: G8 should check generated readiness explicitly, not infer it from attachment class alone
 
 - Date: `2026-03-11`

@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G8 fourth slice: add one deterministic generated-readiness check for the
-  pinned stark-v input and keep the current downstream row fail-closed`
+  `G8 fifth slice: enumerate the pinned stark-v generated-contract gap against
+  the frozen minimum generated subset`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -120,7 +120,7 @@ Invariants:
 ## Next three deliverables
 
 1. Keep one deterministic local report for the pinned `stark-v` contract,
-   attachment classification, and generated readiness.
+   attachment classification, generated readiness, and generated gap.
 2. Keep one frozen minimum generated subset for the first supported `stark-v`
    row without weakening the fail-closed generic-lane policy.
 3. Decide how that generated subset will be produced or mapped in the first

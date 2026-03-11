@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G8 fourth slice: add a deterministic generated-readiness check for the pinned
-stark-v input`
+`G8 fifth slice: enumerate the generated-contract gap for the pinned stark-v
+input`
 
 The active formal basis is:
 
