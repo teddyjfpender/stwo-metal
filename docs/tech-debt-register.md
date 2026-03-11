@@ -28,6 +28,43 @@ Target retirement point:
 
 ## Active debt
 
+### TD-0027: The generated-metal wide-fibonacci row still falls behind SIMD from `log_size = 19` onward
+
+- Status: `active`
+- Category: `benchmark scaling regression`
+- Introduced: `2026-03-11`
+- Owner area: `G6 lane-separated benchmarking`
+
+Why it exists now:
+
+The first live generated-metal wide-fibonacci comparison table is now landed,
+and it shows that the generated row crosses over ahead of SIMD at
+`log_size = 16` and `18`, sits near parity at `17`, but loses throughput and
+elapsed-time scaling from `19` onward.
+
+Current containment:
+
+- `logs/benchmarks/20260311T081850Z/wide_fibonacci_metal_generated/wide_fibonacci_comparison.md`
+- `scripts/run_supported_wide_fibonacci_metal_sweep.sh`
+- `scripts/render_wide_fibonacci_comparison_table.rb`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
+
+Risk if left in place:
+
+The project could optimize the generated lane without a crisp statement of
+where it already wins and where it still loses, making later G6 optimization
+claims hard to compare honestly.
+
+Exit condition:
+
+Lane-separated measurement either shows the generated-metal row scaling at or
+above SIMD across the supported wide-fibonacci sweep, or a narrower
+benchmark-contract note explicitly limits the supported generated target range.
+
+Target retirement point:
+
+- `G6`
+
 ### TD-0026: Generated ABI and specialization inventory is registered but not yet consumed broadly enough by declarations and lowering
 
 - Status: `retired`

@@ -52,6 +52,11 @@ if ! rg -F -q '"status": "planned"' "$tmp_dir/wide_fibonacci_prove.json"; then
     exit 1
 fi
 
+if ! rg -F -q '"benchmark_lane": "generated-metal"' "$tmp_dir/wide_fibonacci_prove.json"; then
+    echo "prove benchmark harness plan-only output is missing the generated-metal lane." >&2
+    exit 1
+fi
+
 if ! rg -F -q '"benchmark_id": "poseidon_prove_verify_v1"' "$tmp_dir/poseidon_prove.json"; then
     echo "poseidon prove benchmark harness output is missing the expected benchmark id." >&2
     exit 1
@@ -62,14 +67,21 @@ if ! rg -F -q '"status": "planned"' "$tmp_dir/poseidon_prove.json"; then
     exit 1
 fi
 
-ruby scripts/check_benchmark_class_acceptance.rb \
-  primary \
-  docs/artifacts/benchmarks/m30-supported-row-wide-fibonacci-prove-20260308T190332Z.json >/dev/null
+if ! rg -F -q '"benchmark_lane": "legacy-cuda-compatible"' "$tmp_dir/poseidon_prove.json"; then
+    echo "poseidon prove benchmark harness plan-only output is missing the legacy-cuda-compatible lane." >&2
+    exit 1
+fi
 
-ruby scripts/check_benchmark_class_acceptance.rb \
-  supporting \
-  docs/artifacts/benchmarks/m30-supported-row-wide-fibonacci-prove-jitter-20260308T190352Z.json >/dev/null
+if [ "${STWO_BENCH_REQUIRE_HISTORICAL_ARTIFACTS:-0}" = "1" ]; then
+    ruby scripts/check_benchmark_class_acceptance.rb \
+      primary \
+      docs/artifacts/benchmarks/m30-supported-row-wide-fibonacci-prove-20260308T190332Z.json >/dev/null
 
-ruby scripts/check_benchmark_class_acceptance.rb \
-  supporting \
-  docs/artifacts/benchmarks/m30-supported-row-wide-fibonacci-prove-jitter-20260308T190419Z.json >/dev/null
+    ruby scripts/check_benchmark_class_acceptance.rb \
+      supporting \
+      docs/artifacts/benchmarks/m30-supported-row-wide-fibonacci-prove-jitter-20260308T190352Z.json >/dev/null
+
+    ruby scripts/check_benchmark_class_acceptance.rb \
+      supporting \
+      docs/artifacts/benchmarks/m30-supported-row-wide-fibonacci-prove-jitter-20260308T190419Z.json >/dev/null
+fi

@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G6 first slice: declare benchmark lanes explicitly and land the first
-wide-fibonacci sweep/report path`
+`G6 second slice: add the first generic wide-fibonacci benchmark lane and keep
+generated and generic rows distinct in the same reporting surface`
 
 The active formal basis is:
 
@@ -257,6 +257,28 @@ The fifteenth G5 slice is now landed:
 - the next honest G5 work is choosing the first support-bridge path that can
   move below that public surface without breaking the private support-crate
   ownership model
+
+## G6 progress snapshot
+
+The first G6 slice is now landed and executed:
+
+- benchmark JSON now names the benchmark lane explicitly
+- the wide-fibonacci sweep/report path now runs deterministically over
+  `log_n_instances = 16..23`
+- the benchmark harness once again validates the current lane-aware outputs and
+  no longer hard-fails on missing historical artifact JSON unless explicitly
+  asked to do so
+- the first real generated-metal comparison table now exists from live
+  artifacts, with crossover ahead of SIMD at `log_size = 16` and `18`, near
+  parity at `17`, and a scaling deficit from `19` onward
+
+The next honest G6 work is:
+
+- add the first `generic-metal` wide-fibonacci benchmark lane
+- keep generic and generated rows on the same schema while reporting them in
+  distinct tables
+- use the new lane-separated measurements to decide which row owns the next
+  optimization tranche
 
 The sixteenth G5 slice is now landed:
 

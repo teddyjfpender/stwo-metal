@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G6 first slice: declare benchmark lanes explicitly and land the first
-  wide-fibonacci sweep/report path`
+  `G6 second slice: add the first generic wide-fibonacci benchmark lane and
+  keep generated and generic rows distinct in the same reporting surface`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -87,8 +87,9 @@ Invariants:
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
 - benchmark work remains important, but it must now follow the generic and
-  generated contract instead of driving it; G5 is now complete and the next
-  work is lane-separated measurement under G6
+  generated contract instead of driving it; G5 is now complete, the first
+  generated-metal sweep and comparison table are landed, and the next work is
+  the missing generic lane under G6
 - superseded milestone history has to stay out of the active control surface so
   the new sequence remains legible
 - the current acceptance rows now all consume registered workload lanes and one
@@ -104,13 +105,12 @@ Invariants:
 
 ## Next three deliverables
 
-1. Open G6 with explicit benchmark-lane identity in machine-readable benchmark
-   output so generic and generated rows cannot be conflated.
-2. Run and stabilize the new deterministic wide-fibonacci sweep/report path
-   over `log_n_instances = 16..23` so it can emit the first Metal comparison
-   table from real artifacts.
-3. Keep the restored pinned-nightly verification path explicit and narrow while
-   lane-separated benchmarking lands before G7.
+1. Add a real `generic-metal` wide-fibonacci benchmark row so G6 stops being a
+   generated-only comparison surface.
+2. Extend the deterministic wide-fibonacci sweep/report path so it can emit
+   generic and generated tables from the same schema and reporting toolchain.
+3. Keep the restored pinned-nightly and harness verification path explicit and
+   narrow while lane-separated benchmarking lands before G7.
 
 ## Explicitly not doing now
 

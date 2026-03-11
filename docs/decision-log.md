@@ -28,6 +28,54 @@ Superseded by:
 
 ## Entries
 
+### DEC-0113: The first G6 sweep must stabilize the lane-aware benchmark harness and record the generated-metal baseline before a generic row is added
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The first executed G6 sweep should stabilize the lane-aware benchmark harness,
+record the first generated-metal wide-fibonacci comparison table from live
+artifacts, and then treat the missing generic row as the next milestone-owned
+gap.
+
+Context:
+
+`DEC-0112` opened G6 by adding explicit benchmark-lane identity and a
+deterministic wide-fibonacci sweep/report path. Running that path exposed two
+practical issues that had to be fixed before the result was trustworthy:
+`fixtures/standalone-pinned/Cargo.lock` had drifted enough to break the pinned
+preflight, and `scripts/check_supported_benchmark_harness.sh` still assumed
+older plan-only output and mandatory historical artifact JSONs. With those
+repairs in place, the first generated-metal sweep now exists from live
+artifacts and shows crossover ahead of SIMD at `log_size = 16` and `18`, near
+parity at `17`, and a scaling deficit from `19` onward.
+
+Alternatives rejected:
+
+- treat the first generated-metal sweep as trustworthy without restoring the
+  pinned and harness verification path
+- begin the generic-lane tranche before recording the generated-metal baseline
+- keep historical artifact JSON as a mandatory harness dependency even though
+  the current lane-aware outputs are already sufficient to validate the active
+  benchmark contract
+
+Impact:
+
+- the lane-aware benchmark harness is stable again
+- the first generated-metal comparison table is recorded as the current G6
+  baseline
+- the next honest G6 work is to add a real `generic-metal` wide-fibonacci row
+  through the same schema and reporting path
+
+Superseded by:
+
+- none
+
 ### DEC-0112: G6 benchmark separation starts with explicit lane identity and a deterministic wide-fibonacci comparison path
 
 - Date: `2026-03-11`

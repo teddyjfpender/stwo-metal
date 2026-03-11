@@ -132,12 +132,14 @@ not “more benchmark-local seams.”
 
 The next active work is:
 
-- declare benchmark lanes explicitly in benchmark output so generic and
-  generated rows cannot be conflated by convention alone
-- add one deterministic sweep/report path for wide-fibonacci over
+- keep benchmark lanes explicit in benchmark output so generic and generated
+  rows cannot be conflated by convention alone
+- keep the deterministic sweep/report path for wide-fibonacci over
   `log_n_instances = 16..23`
-- keep the current generated Metal row and any future generic row in distinct
-  comparison tables and JSON artifacts
+- add the first `generic-metal` wide-fibonacci row so lane separation exists in
+  live measurements rather than only in schema
+- keep generated and generic rows in distinct comparison tables and JSON
+  artifacts
 - make optimization work name the lane it is improving before changing the
   benchmark harness
 - keep examples only as validation and benchmark inputs
