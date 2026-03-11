@@ -38,11 +38,11 @@ Target retirement point:
 Why it exists now:
 
 `stwo-metal` now supports native Metal Blake2s leaf hashing and native
-standard Blake2s parent-layer hashing, but the `MerkleOpsLifted` contract
-still materializes `Vec<Blake2sHash>` between layers. That means the generated
-wide-fibonacci benchmark still uploads and downloads packed hash layers around
-the new native parent kernel instead of keeping the whole Merkle tree
-GPU-resident.
+standard Blake2s parent-layer hashing, and the generated wide-fibonacci trace
+tree now keeps parent layers native until the final decode. The remaining debt
+is that the committed tree still materializes host `Vec<Blake2sHash>` layers
+at the contract boundary, so full-tree GPU residency still stops at final tree
+construction.
 
 Current containment:
 
@@ -54,13 +54,14 @@ Current containment:
 Risk if left in place:
 
 The benchmark may continue to trail SIMD even after more arithmetic kernels are
-native, because Merkle commitment still pays host staging costs between layers.
+native, because Merkle commitment still pays a final host materialization cost
+before the committed tree enters the broader prover contract.
 
 Exit condition:
 
-The benchmark-critical Merkle path keeps hash layers GPU-resident across the
-large standard Blake2s tree, or measured evidence shows that further staging
-elimination is no longer material.
+The benchmark-critical Merkle path keeps the committed tree GPU-resident
+through the next consumer boundary, or measured evidence shows that further
+Merkle staging elimination is no longer material.
 
 Target retirement point:
 

@@ -321,17 +321,31 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         span.exit();
         debug_phase("samples_ready");
         let sampled_values_start = Instant::now();
-        let sampled_values = samples
-            .as_cols_ref()
-            .map_cols(|x| x.iter().map(|o| o.value).collect());
-        let flattened_sampled_values = sampled_values
-            .as_cols_ref()
-            .flatten()
-            .into_iter()
-            .flatten()
-            .into_iter()
-            .copied()
-            .collect_vec();
+        let total_sample_count = samples
+            .0
+            .iter()
+            .map(|tree| tree.iter().map(|column| column.len()).sum::<usize>())
+            .sum();
+        let mut flattened_sampled_values = Vec::with_capacity(total_sample_count);
+        let sampled_values = TreeVec(
+            samples
+                .0
+                .iter()
+                .map(|tree| {
+                    tree.iter()
+                        .map(|column| {
+                            column
+                                .iter()
+                                .map(|sample| {
+                                    flattened_sampled_values.push(sample.value);
+                                    sample.value
+                                })
+                                .collect_vec()
+                        })
+                        .collect_vec()
+                })
+                .collect_vec(),
+        );
         channel.mix_felts(&flattened_sampled_values);
         emit_timing(
             "sampled_values_mix",

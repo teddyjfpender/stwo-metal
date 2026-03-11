@@ -28,6 +28,87 @@ Superseded by:
 
 ## Entries
 
+### DEC-0128: The generated wide-fibonacci trace tree should keep standard Blake2s parent layers native until final decode
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The generated wide-fibonacci benchmark row should build the standard Blake2s
+trace tree natively layer-by-layer after leaves and only decode the committed
+layers once at the end, instead of repeatedly bouncing each native parent
+layer through a host `Vec<Blake2sHash>` before hashing the next layer.
+
+Context:
+
+After native parent-layer hashing landed, the benchmark still re-encoded and
+re-uploaded each host materialized Merkle layer before the next native layer.
+That kept the hot trace tree on a host-shaped path even though the hash
+computation itself had moved onto Metal.
+
+Alternatives rejected:
+
+- introduce a public GPU-resident Blake2s Merkle tree API
+- hide the residency optimization behind a global hash-layer cache
+- leave the benchmark path on repeated host round-trips until a larger prover
+  rewrite exists
+
+Impact:
+
+- the benchmark trace tree now keeps native standard Blake2s parent layers on
+  Metal until the final committed-tree decode
+- the public backend contract remains unchanged
+- the next dominant benchmark wall stays prove-values, not Merkle parent
+  residency
+
+Superseded by:
+
+- none
+
+### DEC-0129: The next prove-values cleanup should remove duplicate staging and one extra sampled-values flattening pass before changing grouping laws
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+After the native trace-tree residency step, the next semantics-preserving
+prove-values reduction should be to remove duplicate benchmark-local staging
+construction and collapse one extra sampled-values flattening pass in the PCS
+prover, rather than changing grouping semantics immediately.
+
+Context:
+
+The measured generated lane still spends most of its time in `prove_values`.
+The clearest low-risk next step was to remove benchmark-local duplicate
+`ComponentProvers` staging and one extra nested flatten traversal before
+mixing sampled values into the channel.
+
+Alternatives rejected:
+
+- change the prove-values grouping law first
+- widen the bridge API before removing duplicate staging work
+- claim the remaining wall is purely arithmetic without checking host-side
+  traversal costs
+
+Impact:
+
+- the benchmark-local prove-values entry point is leaner
+- the generic prover contract stays unchanged
+- the next benchmark-critical investigation can focus on grouping and tree
+  decommit costs with less staging noise
+
+Superseded by:
+
+- none
+
 ### DEC-0127: Standard Blake2s Merkle parent hashing should move onto Metal before broader prove-values rewrites
 
 - Date: `2026-03-11`

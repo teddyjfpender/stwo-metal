@@ -30,7 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `benchmark CPU-dependence retirement: native Blake2s parent-layer hashing`
+  `benchmark CPU-dependence retirement: native standard Blake2s tree residency
+  plus prove-values staging cleanup`
 - Objective:
   reduce benchmark-critical CPU ownership on the generated Metal lane without
   widening public contracts or changing proving semantics
@@ -110,19 +111,20 @@ Invariants:
   inventory belongs in the stable internal artifact registry before lowering
   starts in earnest
 - the wide-fibonacci generated lane now uses native Metal Blake2s leaf hashing
-  and native parent-layer hashing for standard Blake2s Merkle trees, but the
-  Merkle hash-column representation still round-trips through host
-  `Vec<Blake2sHash>` values between layers
+  and native parent-layer hashing for standard Blake2s Merkle trees, and the
+  benchmark trace-tree builder now keeps parent layers native until the final
+  host decode, but the Merkle contract still materializes host
+  `Vec<Blake2sHash>` layers for the committed tree
 - the current wide-fibonacci generated benchmark still trails SIMD from
   `log_size = 19` onward, so remaining prove-values and commitment staging
   costs must stay explicit and measured
 
 ## Next three deliverables
 
-1. Verify the native Metal Blake2s parent-layer path against the vendored CPU
-   oracle and on the generated wide-fibonacci benchmark row.
-2. Identify the next benchmark-critical host-owned staging step above the
-   native Merkle path and lower it by one semantics-preserving step.
+1. Lower the remaining prove-values staging and grouping overhead above the
+   generated wide-fibonacci lane.
+2. Identify whether the next benchmark-critical host-owned cost is tree
+   decommit staging or sample grouping in the PCS prover.
 3. Keep downstream `stark-v` hardening iced unless an external support signal
    appears.
 

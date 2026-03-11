@@ -37,6 +37,8 @@ use stwo::prover::poly::circle::PolyOps;
 #[cfg(feature = "metal-runtime")]
 use stwo::prover::poly::BitReversedOrder;
 #[cfg(feature = "metal-runtime")]
+use stwo::prover::vcs_lifted::ops::MerkleOpsLifted;
+#[cfg(feature = "metal-runtime")]
 use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
 #[cfg(feature = "metal-runtime")]
 use stwo::prover::{
@@ -53,9 +55,8 @@ use stwo_examples::wide_fibonacci::{
 use stwo_metal::{
     accumulate_wide_fibonacci_quotients, declare_exemplar_metal_workload_boundary,
     declare_wide_fibonacci_benchmark_boundary, MetalBackend, MetalBenchmarkOperation,
-    MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalExecutionIntent,
-    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientRequest,
-    MetalWideFibonacciTrace,
+    MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalExecutionIntent, MetalBaseFieldVec,
+    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientRequest, MetalWideFibonacciTrace,
 };
 #[cfg(feature = "metal-runtime")]
 use stwo_metal_fixture_shims::acceptance_bridge_catalog;
@@ -63,6 +64,8 @@ use stwo_metal_fixture_shims::acceptance_bridge_catalog;
 use stwo_metal_fixture_shims::{
     registered_wide_fibonacci_prove_values_lane, stage_wide_fibonacci_prove_values,
 };
+#[cfg(feature = "metal-runtime")]
+use stwo_metal_sys::metal::U32Buffer;
 #[cfg(feature = "metal-runtime")]
 use stwo_metal_standalone_benchmarks::support::summarize;
 use stwo_metal_standalone_benchmarks::support::{
@@ -990,7 +993,7 @@ fn prove_with_breakdown(
         .expect("registered benchmark boundary must satisfy the prove-values lane contract");
     let prove_values_stage = stage_wide_fibonacci_prove_values(
         &prove_values_lane,
-        components,
+        &component_provers,
         channel,
         &commitment_scheme,
     );
@@ -1069,6 +1072,61 @@ struct TraceCommitBreakdown {
 }
 
 #[cfg(feature = "metal-runtime")]
+fn encode_packed_blake2s_hashes(hashes: &[stwo::core::vcs::blake2_hash::Blake2sHash]) -> Vec<u32> {
+    let mut words = Vec::with_capacity(hashes.len() * 8);
+    for hash in hashes {
+        for chunk in hash.0.chunks_exact(4) {
+            words.push(u32::from_le_bytes(
+                chunk.try_into().expect("Blake2s hash words are 4 bytes"),
+            ));
+        }
+    }
+    words
+}
+
+#[cfg(feature = "metal-runtime")]
+fn decode_packed_blake2s_hashes(words: Vec<u32>) -> Vec<stwo::core::vcs::blake2_hash::Blake2sHash> {
+    words.chunks_exact(8)
+        .map(|chunk| {
+            let mut bytes = [0u8; 32];
+            for (word_index, word) in chunk.iter().enumerate() {
+                bytes[word_index * 4..(word_index + 1) * 4].copy_from_slice(&word.to_le_bytes());
+            }
+            stwo::core::vcs::blake2_hash::Blake2sHash(bytes)
+        })
+        .collect()
+}
+
+#[cfg(feature = "metal-runtime")]
+fn build_native_standard_blake2s_merkle_prover(
+    columns: Vec<&MetalBaseFieldVec>,
+    lifting_log_size: u32,
+) -> Option<MerkleProverLifted<MetalBackend, Blake2sMerkleHasher>> {
+    if columns.is_empty() {
+        return Some(MerkleProverLifted::<MetalBackend, Blake2sMerkleHasher>::commit(
+            Vec::new(),
+            lifting_log_size,
+        ));
+    }
+
+    let leaves = <MetalBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(
+        &columns.iter().copied().collect::<Vec<_>>(),
+        lifting_log_size,
+    );
+    let mut layers = vec![leaves.clone()];
+    let mut current_layer =
+        U32Buffer::from_slice(&encode_packed_blake2s_hashes(&leaves)).ok()?;
+
+    while current_layer.len() > 8 {
+        current_layer = U32Buffer::blake2s_build_next_layer(&current_layer).ok()?;
+        layers.push(decode_packed_blake2s_hashes(current_layer.to_vec().ok()?));
+    }
+
+    layers.reverse();
+    Some(MerkleProverLifted { layers })
+}
+
+#[cfg(feature = "metal-runtime")]
 fn commit_trace_with_breakdown(
     commitment_scheme: &mut CommitmentSchemeProver<'_, MetalBackend, Blake2sMerkleChannel>,
     prover_channel: &mut Blake2sChannel,
@@ -1099,13 +1157,23 @@ fn commit_trace_with_breakdown(
         .config
         .lifting_log_size
         .unwrap_or(max_log_domain_size);
-    let commitment = MerkleProverLifted::<MetalBackend, Blake2sMerkleHasher>::commit(
-        trace_polynomials
-            .iter()
-            .map(|poly| &poly.evals.values)
-            .collect(),
-        lifting_log_size,
-    );
+    let commitment =
+        build_native_standard_blake2s_merkle_prover(
+            trace_polynomials
+                .iter()
+                .map(|poly| &poly.evals.values)
+                .collect(),
+            lifting_log_size,
+        )
+        .unwrap_or_else(|| {
+            MerkleProverLifted::<MetalBackend, Blake2sMerkleHasher>::commit(
+                trace_polynomials
+                    .iter()
+                    .map(|poly| &poly.evals.values)
+                    .collect(),
+                lifting_log_size,
+            )
+        });
     let merkle_ms = merkle_start.elapsed().as_secs_f64() * 1000.0;
 
     let tree = CommitmentTreeProver {
@@ -1118,6 +1186,47 @@ fn commit_trace_with_breakdown(
         interpolation_ms,
         extension_ms,
         merkle_ms,
+    }
+}
+
+#[cfg(all(test, feature = "metal-runtime", target_os = "macos", target_arch = "aarch64"))]
+mod native_merkle_tests {
+    use super::build_native_standard_blake2s_merkle_prover;
+    use stwo::core::fields::m31::BaseField;
+    use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
+    use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
+    use stwo_metal::{metal_runtime_support, MetalBackend, MetalBaseFieldVec, MetalRuntimeSupport};
+
+    fn require_metal_runtime() {
+        assert_eq!(metal_runtime_support(), MetalRuntimeSupport::Available);
+    }
+
+    fn base_column(len: usize, seed: u32) -> Vec<BaseField> {
+        (0..len)
+            .map(|i| BaseField::from_u32_unchecked(seed + i as u32))
+            .collect()
+    }
+
+    #[test]
+    fn native_standard_blake2s_tree_matches_existing_metal_merkle_shape() {
+        require_metal_runtime();
+
+        let columns = vec![
+            MetalBaseFieldVec::from_vec(base_column(1 << 8, 3)),
+            MetalBaseFieldVec::from_vec(base_column(1 << 8, 101)),
+            MetalBaseFieldVec::from_vec(base_column(1 << 8, 211)),
+            MetalBaseFieldVec::from_vec(base_column(1 << 8, 307)),
+        ];
+        let refs = columns.iter().collect::<Vec<_>>();
+
+        let expected = MerkleProverLifted::<MetalBackend, Blake2sMerkleHasher>::commit(
+            refs.iter().copied().collect(),
+            8,
+        );
+        let actual = build_native_standard_blake2s_merkle_prover(refs.iter().copied().collect(), 8)
+            .expect("native standard Blake2s tree should build");
+
+        assert_eq!(actual.layers, expected.layers);
     }
 }
 

@@ -12,6 +12,7 @@ default = []
 cuda-runtime = ["dep:stwo-metal"]
 metal-runtime = [
   "dep:stwo-metal",
+  "dep:stwo-metal-sys",
   "dep:stwo-metal-fixture-shims",
   "dep:stwo-examples",
   "stwo-metal/parallel",
@@ -26,6 +27,7 @@ stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo", package = 
 stwo-examples = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/examples", default-features = false, optional = true }
 stwo-constraint-framework = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/constraint-framework", default-features = false, features = ["prover"] }
 stwo-metal = { path = "../../crates/stwo-metal", features = ["prover"], optional = true }
+stwo-metal-sys = { path = "../../crates/stwo-metal-sys", default-features = false, optional = true }
 stwo-metal-fixture-shims = { path = "../stwo-metal-fixture-shims", optional = true }
 
 [patch.crates-io]

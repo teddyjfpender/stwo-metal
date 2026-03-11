@@ -3,7 +3,7 @@ use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo::core::pcs::utils::get_lifting_log_size;
 use stwo::core::pcs::TreeVec;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
-use stwo::prover::{CommitmentSchemeProver, ComponentProver, ComponentProvers};
+use stwo::prover::{CommitmentSchemeProver, ComponentProvers};
 use stwo_metal::{
     MetalBackend, MetalBenchmarkLaneError, MetalExecutionPlan, MetalWideFibonacciBenchmarkBoundary,
     MetalWorkloadStage,
@@ -75,19 +75,11 @@ pub fn registered_wide_fibonacci_prove_values_lane(
 
 pub fn stage_wide_fibonacci_prove_values(
     lane: &WideFibonacciProveValuesLane,
-    components: &[&dyn ComponentProver<MetalBackend>],
+    component_provers: &ComponentProvers<'_, MetalBackend>,
     channel: &mut Blake2sChannel,
     commitment_scheme: &CommitmentSchemeProver<'_, MetalBackend, Blake2sMerkleChannel>,
 ) -> WideFibonacciProveValuesStaging {
     let _ = lane.workload_name();
-
-    let component_provers = ComponentProvers {
-        components: components.to_vec(),
-        n_preprocessed_columns: commitment_scheme.trees
-            [stwo::core::verifier::PREPROCESSED_TRACE_IDX]
-            .polynomials
-            .len(),
-    };
     let oods_point = stwo::core::circle::CirclePoint::<SecureField>::get_random_point(channel);
     let split_composition_log_size = commitment_scheme
         .trees
