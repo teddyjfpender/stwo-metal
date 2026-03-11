@@ -1,6 +1,11 @@
 use stwo::core::fields::m31::BaseField;
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
+use super::eval_program_v1::{
+    lower_registered_metal_evaluation_program_v1, MetalEvaluationProgramBudgetV1,
+    MetalEvaluationProgramLoweringError, MetalEvaluationProgramSpecializationV1,
+    OwnedMetalEvaluationProgramV1,
+};
 use super::execution_plan::{
     registered_execution_binding, registered_execution_seed, RegisteredMetalExecutionSeed,
 };
@@ -213,6 +218,39 @@ impl MetalWideFibonacciBenchmarkBoundary {
             execution_seed: self.execution_seed,
         })
     }
+
+    pub fn evaluation_program_v1(
+        &self,
+    ) -> Result<OwnedMetalEvaluationProgramV1, MetalBenchmarkProgramError> {
+        let workload_name = self.workload_boundary.workload_name();
+        let program = lower_registered_metal_evaluation_program_v1(
+            workload_name,
+            MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: self.target.log_n_instances,
+                n_columns: self.target.n_columns,
+            },
+        )
+        .map_err(|error| match error {
+            MetalEvaluationProgramLoweringError::UnsupportedComponent { .. } => {
+                MetalBenchmarkProgramError::UnsupportedComponent { workload_name }
+            }
+            MetalEvaluationProgramLoweringError::InvalidWideFibonacciColumnCount {
+                n_columns,
+            } => MetalBenchmarkProgramError::InvalidSpecialization {
+                workload_name,
+                n_columns,
+            },
+            MetalEvaluationProgramLoweringError::RegisterBudgetOverflow => {
+                MetalBenchmarkProgramError::RegisterBudgetOverflow { workload_name }
+            }
+        })?;
+
+        program
+            .validate(MetalEvaluationProgramBudgetV1::new(2048, 512))
+            .map_err(|_| MetalBenchmarkProgramError::InvalidProgramContract { workload_name })?;
+
+        Ok(program)
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -225,6 +263,23 @@ pub enum MetalBenchmarkInputError {
         expected_len: usize,
         actual_a: usize,
         actual_b: usize,
+    },
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalBenchmarkProgramError {
+    UnsupportedComponent {
+        workload_name: &'static str,
+    },
+    InvalidSpecialization {
+        workload_name: &'static str,
+        n_columns: u32,
+    },
+    RegisterBudgetOverflow {
+        workload_name: &'static str,
+    },
+    InvalidProgramContract {
+        workload_name: &'static str,
     },
 }
 

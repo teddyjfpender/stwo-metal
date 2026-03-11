@@ -30,7 +30,7 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G9 first slice: freeze and operationalize MetalEvaluationProgramV1`
+  `G9 second slice: lower the first generated component onto MetalEvaluationProgramV1`
 - Objective:
   move `stwo-metal` from a benchmark-specialized generated path to one stable
   lowered-program contract that both the generic interpreter lane and the
@@ -46,10 +46,11 @@ Invariants:
 
 ## Current blockers
 
-- the repository now has a minimal `MetalEvaluationProgramV1` ABI module and
-  validator, but no live generated or generic proving row consumes that
-  contract yet
-- the active generated `wide_fibonacci` row is still driven by pre-V1
+- the repository now has a minimal `MetalEvaluationProgramV1` ABI module,
+  validator, and first generated `fibonacci_example` lowering, but no live
+  generated or generic proving row consumes that contract yet
+- the active generated `wide_fibonacci` row can now lower its benchmark target
+  into a validated V1 program, but it is still driven at runtime by pre-V1
   benchmark-specialized lowering rather than a stable lowered-program contract
 - the generic interpreter lane for the V1 program does not exist yet, so the
   generated overlay lane has no program-level semantic baseline inside the new
@@ -68,9 +69,9 @@ Invariants:
 
 ## Next three deliverables
 
-1. Lower one existing generated component path onto `MetalEvaluationProgramV1`
-   and prove it can drive a generic interpreter lane on Metal without changing
-   proof semantics.
+1. Lower the first live generated benchmark row onto
+   `MetalEvaluationProgramV1` and prove the V1 contract can drive one generic
+   interpreter lane on Metal without changing proof semantics.
 2. Define the overlay lookup law keyed by semantic hash and capability profile,
    then migrate the active generated benchmark row onto that same contract
    instead of benchmark-local lowering.

@@ -1,3 +1,5 @@
+use std::vec::Vec;
+
 pub const STWO_METAL_EVAL_PROGRAM_MAGIC_V1: u32 = u32::from_le_bytes(*b"STP1");
 pub const STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1: u16 = 1;
 pub const STWO_METAL_EVAL_PROGRAM_ABI_MINOR_V1: u16 = 0;
@@ -10,6 +12,93 @@ pub const STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1: u64 = 1 << 1;
 pub const STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1: u64 = 1 << 2;
 
 pub const STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1: u32 = 4;
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum MetalEvaluationProgramBaseOpcodeV1 {
+    TraceCol = 0,
+    PreprocessedCol = 1,
+    Param = 2,
+    Const = 3,
+    Add = 4,
+    Sub = 5,
+    Mul = 6,
+    Neg = 7,
+    Inv = 8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct MetalEvaluationProgramBaseInstV1 {
+    pub op: u8,
+    pub interaction: u8,
+    pub dst: u16,
+    pub a: u32,
+    pub b: u32,
+    pub imm: i32,
+}
+
+impl MetalEvaluationProgramBaseInstV1 {
+    pub const fn trace_col(dst: u16, interaction: u8, column: u32, offset: i32) -> Self {
+        Self {
+            op: MetalEvaluationProgramBaseOpcodeV1::TraceCol as u8,
+            interaction,
+            dst,
+            a: column,
+            b: 0,
+            imm: offset,
+        }
+    }
+
+    pub const fn binary(op: MetalEvaluationProgramBaseOpcodeV1, dst: u16, a: u32, b: u32) -> Self {
+        Self {
+            op: op as u8,
+            interaction: 0,
+            dst,
+            a,
+            b,
+            imm: 0,
+        }
+    }
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum MetalEvaluationProgramExtOpcodeV1 {
+    SecureCol = 0,
+    Param = 1,
+    Const = 2,
+    Add = 3,
+    Sub = 4,
+    Mul = 5,
+    Neg = 6,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct MetalEvaluationProgramExtInstV1 {
+    pub op: u8,
+    pub reserved0: u8,
+    pub dst: u16,
+    pub a: u32,
+    pub b: u32,
+    pub c: u32,
+    pub d: u32,
+}
+
+impl MetalEvaluationProgramExtInstV1 {
+    pub const fn secure_col(dst: u16, a: u32, b: u32, c: u32, d: u32) -> Self {
+        Self {
+            op: MetalEvaluationProgramExtOpcodeV1::SecureCol as u8,
+            reserved0: 0,
+            dst,
+            a,
+            b,
+            c,
+            d,
+        }
+    }
+}
 
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -133,6 +222,84 @@ impl MetalEvaluationProgramSectionDescV1 {
 pub struct MetalEvaluationProgramBudgetV1 {
     pub max_base_regs: u32,
     pub max_ext_regs: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OwnedMetalEvaluationProgramV1 {
+    header: MetalEvaluationProgramHeaderV1,
+    sections: Vec<MetalEvaluationProgramSectionDescV1>,
+    base_consts: Vec<u32>,
+    ext_consts: Vec<[u32; 4]>,
+    base_insts: Vec<MetalEvaluationProgramBaseInstV1>,
+    ext_insts: Vec<MetalEvaluationProgramExtInstV1>,
+    constraint_roots: Vec<u32>,
+}
+
+impl OwnedMetalEvaluationProgramV1 {
+    pub fn header(&self) -> MetalEvaluationProgramHeaderV1 {
+        self.header
+    }
+
+    pub fn sections(&self) -> &[MetalEvaluationProgramSectionDescV1] {
+        &self.sections
+    }
+
+    pub fn base_consts(&self) -> &[u32] {
+        &self.base_consts
+    }
+
+    pub fn ext_consts(&self) -> &[[u32; 4]] {
+        &self.ext_consts
+    }
+
+    pub fn base_insts(&self) -> &[MetalEvaluationProgramBaseInstV1] {
+        &self.base_insts
+    }
+
+    pub fn ext_insts(&self) -> &[MetalEvaluationProgramExtInstV1] {
+        &self.ext_insts
+    }
+
+    pub fn constraint_roots(&self) -> &[u32] {
+        &self.constraint_roots
+    }
+
+    pub fn payload_len_bytes(&self) -> u64 {
+        self.sections
+            .iter()
+            .map(|section| section.offset_bytes + section.count * section.elem_size as u64)
+            .max()
+            .unwrap_or(0)
+    }
+
+    pub fn validate(
+        &self,
+        budget: MetalEvaluationProgramBudgetV1,
+    ) -> Result<(), MetalEvaluationProgramValidationError> {
+        validate_metal_evaluation_program_v1(
+            self.header,
+            &self.sections,
+            self.payload_len_bytes(),
+            budget,
+        )
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct MetalEvaluationProgramSpecializationV1 {
+    pub log_n_rows: u32,
+    pub n_columns: u32,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalEvaluationProgramLoweringError {
+    UnsupportedComponent {
+        component_name: &'static str,
+    },
+    InvalidWideFibonacciColumnCount {
+        n_columns: u32,
+    },
+    RegisterBudgetOverflow,
 }
 
 impl MetalEvaluationProgramBudgetV1 {
@@ -303,14 +470,290 @@ pub fn metal_evaluation_program_semantic_hash_v1(chunks: &[&[u8]]) -> u64 {
     hash
 }
 
+fn hash_u32s(values: &[u32]) -> Vec<u8> {
+    values
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect::<Vec<_>>()
+}
+
+fn hash_u32x4s(values: &[[u32; 4]]) -> Vec<u8> {
+    values
+        .iter()
+        .flat_map(|value| value.into_iter().flat_map(|limb| limb.to_le_bytes()))
+        .collect::<Vec<_>>()
+}
+
+fn hash_base_insts(values: &[MetalEvaluationProgramBaseInstV1]) -> Vec<u8> {
+    values
+        .iter()
+        .flat_map(|inst| {
+            let mut bytes = Vec::with_capacity(16);
+            bytes.push(inst.op);
+            bytes.push(inst.interaction);
+            bytes.extend_from_slice(&inst.dst.to_le_bytes());
+            bytes.extend_from_slice(&inst.a.to_le_bytes());
+            bytes.extend_from_slice(&inst.b.to_le_bytes());
+            bytes.extend_from_slice(&inst.imm.to_le_bytes());
+            bytes
+        })
+        .collect()
+}
+
+fn hash_ext_insts(values: &[MetalEvaluationProgramExtInstV1]) -> Vec<u8> {
+    values
+        .iter()
+        .flat_map(|inst| {
+            let mut bytes = Vec::with_capacity(20);
+            bytes.push(inst.op);
+            bytes.push(inst.reserved0);
+            bytes.extend_from_slice(&inst.dst.to_le_bytes());
+            bytes.extend_from_slice(&inst.a.to_le_bytes());
+            bytes.extend_from_slice(&inst.b.to_le_bytes());
+            bytes.extend_from_slice(&inst.c.to_le_bytes());
+            bytes.extend_from_slice(&inst.d.to_le_bytes());
+            bytes
+        })
+        .collect()
+}
+
+fn build_owned_program_v1(
+    capability_bits: u64,
+    n_interactions: u32,
+    n_base_params: u32,
+    n_ext_params: u32,
+    max_base_regs: u32,
+    max_ext_regs: u32,
+    base_consts: Vec<u32>,
+    ext_consts: Vec<[u32; 4]>,
+    base_insts: Vec<MetalEvaluationProgramBaseInstV1>,
+    ext_insts: Vec<MetalEvaluationProgramExtInstV1>,
+    constraint_roots: Vec<u32>,
+) -> OwnedMetalEvaluationProgramV1 {
+    let base_consts_bytes = hash_u32s(&base_consts);
+    let ext_consts_bytes = hash_u32x4s(&ext_consts);
+    let base_insts_bytes = hash_base_insts(&base_insts);
+    let ext_insts_bytes = hash_ext_insts(&ext_insts);
+    let constraint_roots_bytes = hash_u32s(&constraint_roots);
+
+    let semantic_hash = metal_evaluation_program_semantic_hash_v1(&[
+        &base_consts_bytes,
+        &ext_consts_bytes,
+        &base_insts_bytes,
+        &ext_insts_bytes,
+        &constraint_roots_bytes,
+    ]);
+
+    let mut offset_bytes = 0u64;
+    let mut next_section =
+        |kind: MetalEvaluationProgramSectionKindV1, elem_size: u32, count: u64| {
+            let section =
+                MetalEvaluationProgramSectionDescV1::new(kind, elem_size, offset_bytes, count);
+            offset_bytes += elem_size as u64 * count;
+            section
+        };
+
+    let sections = vec![
+        next_section(
+            MetalEvaluationProgramSectionKindV1::BaseConsts,
+            4,
+            base_consts.len() as u64,
+        ),
+        next_section(
+            MetalEvaluationProgramSectionKindV1::ExtConsts,
+            16,
+            ext_consts.len() as u64,
+        ),
+        next_section(
+            MetalEvaluationProgramSectionKindV1::BaseInsts,
+            size_of::<MetalEvaluationProgramBaseInstV1>() as u32,
+            base_insts.len() as u64,
+        ),
+        next_section(
+            MetalEvaluationProgramSectionKindV1::ExtInsts,
+            size_of::<MetalEvaluationProgramExtInstV1>() as u32,
+            ext_insts.len() as u64,
+        ),
+        next_section(
+            MetalEvaluationProgramSectionKindV1::ConstraintRoots,
+            4,
+            constraint_roots.len() as u64,
+        ),
+    ];
+
+    let header = MetalEvaluationProgramHeaderV1::new(
+        sections.len() as u32,
+        semantic_hash,
+        capability_bits,
+        n_interactions,
+        n_base_params,
+        n_ext_params,
+        constraint_roots.len() as u32,
+        max_base_regs,
+        max_ext_regs,
+    );
+
+    OwnedMetalEvaluationProgramV1 {
+        header,
+        sections,
+        base_consts,
+        ext_consts,
+        base_insts,
+        ext_insts,
+        constraint_roots,
+    }
+}
+
+pub fn lower_registered_metal_evaluation_program_v1(
+    component_name: &'static str,
+    specialization: MetalEvaluationProgramSpecializationV1,
+) -> Result<OwnedMetalEvaluationProgramV1, MetalEvaluationProgramLoweringError> {
+    match component_name {
+        "fibonacci_example" => lower_wide_fibonacci_evaluation_program_v1(specialization),
+        _ => Err(MetalEvaluationProgramLoweringError::UnsupportedComponent { component_name }),
+    }
+}
+
+pub fn lower_wide_fibonacci_evaluation_program_v1(
+    specialization: MetalEvaluationProgramSpecializationV1,
+) -> Result<OwnedMetalEvaluationProgramV1, MetalEvaluationProgramLoweringError> {
+    if specialization.n_columns < 3 {
+        return Err(
+            MetalEvaluationProgramLoweringError::InvalidWideFibonacciColumnCount {
+                n_columns: specialization.n_columns,
+            },
+        );
+    }
+
+    let n_constraints = specialization.n_columns - 2;
+    let base_regs_required = n_constraints
+        .checked_mul(7)
+        .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+    let ext_regs_required = n_constraints;
+
+    let mut base_insts = Vec::with_capacity(base_regs_required as usize);
+    let mut ext_insts = Vec::with_capacity(ext_regs_required as usize);
+    let mut constraint_roots = Vec::with_capacity(n_constraints as usize);
+
+    let mut next_base_reg = 0u16;
+    let mut next_ext_reg = 0u16;
+    for column in 2..specialization.n_columns {
+        let reg_a = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1::trace_col(
+            reg_a,
+            1,
+            column - 2,
+            0,
+        ));
+
+        let reg_b = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1::trace_col(
+            reg_b,
+            1,
+            column - 1,
+            0,
+        ));
+
+        let reg_c = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1::trace_col(
+            reg_c, 1, column, 0,
+        ));
+
+        let reg_a_sq = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
+            MetalEvaluationProgramBaseOpcodeV1::Mul,
+            reg_a_sq,
+            reg_a as u32,
+            reg_a as u32,
+        ));
+
+        let reg_b_sq = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
+            MetalEvaluationProgramBaseOpcodeV1::Mul,
+            reg_b_sq,
+            reg_b as u32,
+            reg_b as u32,
+        ));
+
+        let reg_sum = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
+            MetalEvaluationProgramBaseOpcodeV1::Add,
+            reg_sum,
+            reg_a_sq as u32,
+            reg_b_sq as u32,
+        ));
+
+        let reg_constraint = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
+            MetalEvaluationProgramBaseOpcodeV1::Sub,
+            reg_constraint,
+            reg_c as u32,
+            reg_sum as u32,
+        ));
+
+        let ext_reg = next_ext_reg;
+        next_ext_reg = next_ext_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        ext_insts.push(MetalEvaluationProgramExtInstV1::secure_col(
+            ext_reg,
+            reg_constraint as u32,
+            0,
+            0,
+            0,
+        ));
+        constraint_roots.push(ext_reg as u32);
+    }
+
+    Ok(build_owned_program_v1(
+        STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1
+            | STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1
+            | STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
+        2,
+        0,
+        0,
+        base_regs_required,
+        ext_regs_required,
+        Vec::new(),
+        Vec::new(),
+        base_insts,
+        ext_insts,
+        constraint_roots,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use core::mem::{align_of, offset_of, size_of};
 
     use super::{
+        lower_registered_metal_evaluation_program_v1, lower_wide_fibonacci_evaluation_program_v1,
         metal_evaluation_program_semantic_hash_v1, validate_metal_evaluation_program_v1,
-        MetalEvaluationProgramBudgetV1, MetalEvaluationProgramHeaderV1,
+        MetalEvaluationProgramBaseOpcodeV1, MetalEvaluationProgramBudgetV1,
+        MetalEvaluationProgramHeaderV1, MetalEvaluationProgramLoweringError,
         MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
+        MetalEvaluationProgramSpecializationV1,
         MetalEvaluationProgramValidationError, STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1,
         STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1, STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1,
         STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
@@ -527,6 +970,71 @@ mod tests {
                 required: 16,
                 supported: 8,
             }
+        );
+    }
+
+    #[test]
+    fn wide_fibonacci_lowering_builds_dense_v1_program() {
+        let program = lower_wide_fibonacci_evaluation_program_v1(
+            MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 20,
+                n_columns: 100,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(program.header().n_interactions, 2);
+        assert_eq!(program.header().n_constraints, 98);
+        assert_eq!(program.header().max_base_regs, 98 * 7);
+        assert_eq!(program.header().max_ext_regs, 98);
+        assert!(program.base_consts().is_empty());
+        assert!(program.ext_consts().is_empty());
+        assert_eq!(program.base_insts().len(), 98 * 7);
+        assert_eq!(program.ext_insts().len(), 98);
+        assert_eq!(program.constraint_roots().len(), 98);
+
+        let first_trace = &program.base_insts()[0];
+        assert_eq!(
+            first_trace.op,
+            MetalEvaluationProgramBaseOpcodeV1::TraceCol as u8
+        );
+        assert_eq!(first_trace.interaction, 1);
+        assert_eq!(first_trace.a, 0);
+        assert_eq!(first_trace.imm, 0);
+
+        program
+            .validate(MetalEvaluationProgramBudgetV1::new(2048, 512))
+            .unwrap();
+    }
+
+    #[test]
+    fn wide_fibonacci_lowering_rejects_too_few_columns() {
+        assert_eq!(
+            lower_wide_fibonacci_evaluation_program_v1(MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 4,
+                n_columns: 2,
+            }),
+            Err(
+                MetalEvaluationProgramLoweringError::InvalidWideFibonacciColumnCount {
+                    n_columns: 2,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn registered_lowering_rejects_unsupported_component() {
+        assert_eq!(
+            lower_registered_metal_evaluation_program_v1(
+                "poseidon_example",
+                MetalEvaluationProgramSpecializationV1 {
+                    log_n_rows: 8,
+                    n_columns: 16,
+                },
+            ),
+            Err(MetalEvaluationProgramLoweringError::UnsupportedComponent {
+                component_name: "poseidon_example",
+            })
         );
     }
 }

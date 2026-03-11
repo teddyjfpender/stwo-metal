@@ -31,8 +31,8 @@ mod workload_contract;
 pub use backend::MetalBackend;
 pub use benchmark::{
     declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError, MetalBenchmarkLaneError,
-    MetalBenchmarkOperation, MetalBenchmarkReferencePlatform, MetalBenchmarkTarget,
-    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
+    MetalBenchmarkOperation, MetalBenchmarkProgramError, MetalBenchmarkReferencePlatform,
+    MetalBenchmarkTarget, MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
     WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
 };
 pub use capability::{
@@ -42,10 +42,15 @@ pub use capability::{
 };
 pub use commitment_slice::MetalFriCommitmentSlice;
 pub use eval_program_v1::{
+    lower_registered_metal_evaluation_program_v1, lower_wide_fibonacci_evaluation_program_v1,
     metal_evaluation_program_semantic_hash_v1, validate_metal_evaluation_program_v1,
+    MetalEvaluationProgramBaseInstV1, MetalEvaluationProgramBaseOpcodeV1,
     MetalEvaluationProgramBudgetV1, MetalEvaluationProgramHeaderV1,
+    MetalEvaluationProgramLoweringError, MetalEvaluationProgramSpecializationV1,
     MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
     MetalEvaluationProgramV1, MetalEvaluationProgramValidationError,
+    MetalEvaluationProgramExtInstV1, MetalEvaluationProgramExtOpcodeV1,
+    OwnedMetalEvaluationProgramV1,
     STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1, STWO_METAL_EVAL_PROGRAM_ABI_MINOR_V1,
     STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1, STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1,
     STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,

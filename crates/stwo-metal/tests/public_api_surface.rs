@@ -6,23 +6,26 @@ use stwo_metal::{
     accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
     cuda_backend_surface_status, declare_exemplar_hybrid_fri_workload,
     declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
-    evaluate_polys_on_domain_batch, plan_exemplar_metal_prove_by_name, plan_exemplar_prove_by_name,
-    BaseFieldVec, CudaBackend, CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent,
-    CudaExecutionPlan, MetalBackend, MetalBaseFieldColumnBatch, MetalBaseFieldVec,
-    MetalBenchmarkInputError, MetalBenchmarkTarget, MetalCpuQuotientEvaluationInput,
-    MetalCpuWideFibonacciWitnessInput, MetalExecutionIntent, MetalExecutionPlan,
-    MetalEvaluationProgramBudgetV1, MetalEvaluationProgramHeaderV1,
+    evaluate_polys_on_domain_batch, lower_registered_metal_evaluation_program_v1,
+    plan_exemplar_metal_prove_by_name, plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend,
+    CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan,
+    MetalBackend, MetalBaseFieldColumnBatch, MetalBaseFieldVec, MetalBenchmarkInputError,
+    MetalBenchmarkProgramError, MetalBenchmarkTarget, MetalCpuQuotientEvaluationInput,
+    MetalCpuWideFibonacciWitnessInput, MetalEvaluationProgramBaseInstV1,
+    MetalEvaluationProgramBudgetV1, MetalEvaluationProgramExtInstV1,
+    MetalEvaluationProgramHeaderV1, MetalEvaluationProgramLoweringError,
     MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
-    MetalEvaluationProgramValidationError, MetalFriBlake2sSubpath, MetalFriFirstLayer,
+    MetalEvaluationProgramSpecializationV1, MetalEvaluationProgramValidationError,
+    MetalExecutionIntent, MetalExecutionPlan, MetalFriBlake2sSubpath, MetalFriFirstLayer,
     MetalFriInnerLayerRow, MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice,
     MetalFriProver, MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment,
     MetalLineEvaluation, MetalQuotientEvaluationInput, MetalSecureFieldVec,
-    MetalWideFibonacciBatchQuotientRequest,
-    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientError,
-    MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients, MetalWideFibonacciTrace,
-    MetalWideFibonacciTraceError, MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs,
-    MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership,
-    MetalWorkloadStage, OwnedConstraintEvalAbiV1, SecureFieldVec,
+    MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciBenchmarkBoundary,
+    MetalWideFibonacciQuotientError, MetalWideFibonacciQuotientRequest,
+    MetalWideFibonacciQuotients, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
+    MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs, MetalWorkloadBoundary,
+    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+    OwnedConstraintEvalAbiV1, OwnedMetalEvaluationProgramV1, SecureFieldVec,
     StwoCudaWideFibonacciEvalAbiV1, STWO_CUDA_BACKEND_SURFACES_V1,
     STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1, STWO_METAL_EVAL_PROGRAM_MAGIC_V1,
     STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
@@ -141,6 +144,11 @@ fn companion_surface_exports_workload_boundary_api() {
         benchmark_boundary.workload_boundary().plan(),
         MetalExecutionPlan::MetalFriHybrid
     );
+    let evaluation_program = benchmark_boundary.evaluation_program_v1().unwrap();
+    assert_eq!(
+        evaluation_program.header().n_constraints,
+        benchmark_boundary.target().n_columns - 2
+    );
 }
 
 #[test]
@@ -209,7 +217,29 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
         MetalEvaluationProgramBudgetV1::new(16, 8),
     )
     .unwrap();
+    let lowered = lower_registered_metal_evaluation_program_v1(
+        "fibonacci_example",
+        MetalEvaluationProgramSpecializationV1 {
+            log_n_rows: WIDE_FIBONACCI_PROVE_LOG20_TARGET.log_n_instances,
+            n_columns: WIDE_FIBONACCI_PROVE_LOG20_TARGET.n_columns,
+        },
+    )
+    .unwrap();
+    let _ = std::mem::size_of::<MetalBenchmarkProgramError>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramBaseInstV1>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramExtInstV1>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramLoweringError>();
     let _ = std::mem::size_of::<MetalEvaluationProgramHeaderV1>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramSpecializationV1>();
     let _ = std::mem::size_of::<MetalEvaluationProgramSectionDescV1>();
     let _ = std::mem::size_of::<MetalEvaluationProgramValidationError>();
+    let _ = std::mem::size_of::<OwnedMetalEvaluationProgramV1>();
+    assert_eq!(lowered.header().n_constraints, 98);
+    assert_eq!(lowered.base_insts().len(), 98 * 7);
+    assert_eq!(lowered.ext_insts().len(), 98);
+    let _ = lower_registered_metal_evaluation_program_v1
+        as fn(
+            &'static str,
+            MetalEvaluationProgramSpecializationV1,
+        ) -> Result<OwnedMetalEvaluationProgramV1, MetalEvaluationProgramLoweringError>;
 }

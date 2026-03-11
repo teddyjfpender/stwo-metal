@@ -40,8 +40,8 @@ Why it exists now:
 `dn-0008-metal-evaluation-program-v1.md` now freezes the intended host/device
 and runtime contract for generic and generated Metal execution, but the live
 generated `wide_fibonacci` benchmark row still uses older benchmark-specialized
-lowering and runtime glue rather than a validated `MetalEvaluationProgramV1`
-artifact.
+runtime glue rather than executing through the validated
+`MetalEvaluationProgramV1` artifact it can now lower and validate.
 
 Current containment:
 

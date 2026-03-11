@@ -28,6 +28,52 @@ Superseded by:
 
 ## Entries
 
+### DEC-0154: The first live MetalEvaluationProgramV1 lowering must attach to an existing generated workload before any interpreter work widens the runtime
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+The next G9 code slice after the ABI and validator must lower one existing
+generated workload into a validated `MetalEvaluationProgramV1` artifact before
+the repository widens into a generic interpreter implementation. The first
+component attached to that contract is `fibonacci_example`, and the
+wide-fibonacci benchmark boundary must be able to materialize and validate the
+same lowered program.
+
+Context:
+
+After the first G9 slice landed the fixed-width ABI and fail-closed validator,
+the next architecture risk was letting interpreter work or overlay work widen
+the runtime without any real component lowering pinned to the contract. The
+safer sequence is to attach one generated component immediately, prove that the
+public boundary can lower and validate it, and only then build runtime
+execution on top of a nontrivial concrete program.
+
+Alternatives rejected:
+
+- implement the generic interpreter before any real workload lowers into the
+  V1 contract
+- keep benchmark lowering fully separate until after the interpreter exists
+- widen multiple example components at once before pinning one first concrete
+  lowering law
+
+Impact:
+
+- `fibonacci_example` is now the first real lowered V1 component
+- the wide-fibonacci benchmark boundary now validates one concrete V1 program
+  contract in code
+- the next honest G9 work is interpreter execution and then generated-lane
+  runtime migration, not more speculative V1 schema growth
+
+Superseded by:
+
+- none
+
 ### DEC-0153: The first MetalEvaluationProgramV1 code slice must be a fixed-width fail-closed ABI and validator, not a speculative runtime
 
 - Date: `2026-03-11`

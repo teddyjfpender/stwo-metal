@@ -69,8 +69,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G9 first slice: freeze the V1 lowered-program contract and align the active
-control surface around it`
+`G9 second slice: lower the first generated component onto the V1
+lowered-program contract`
 
 The active formal basis is:
 
@@ -122,8 +122,19 @@ The second G9 slice is now landed in code:
   fail-closed validator error surface are implemented and exported through the
   public Metal companion surface
 - deterministic layout and validation-law tests now pin that contract in code
-- the next honest G9 work is to attach one real generated component lowering to
-  that V1 contract and bring up the first generic interpreter lane over it
+
+The third G9 slice is now landed in code:
+
+- the first real generated component lowering now exists in
+  `crates/stwo-metal/src/backend/metal/eval_program_v1.rs` for
+  `fibonacci_example`
+- the wide-fibonacci benchmark boundary can now lower and validate its target
+  as an `OwnedMetalEvaluationProgramV1`
+- public-surface coverage now exercises the first live lowering path through
+  the benchmark boundary
+- the next honest G9 work is to bring up the first generic interpreter lane on
+  top of that V1 contract and then migrate the live generated benchmark row
+  onto the same runtime contract
 
 ## Current implementation obligations under G3
 
