@@ -28,6 +28,45 @@ Superseded by:
 
 ## Entries
 
+### DEC-0173: Generated prove-values ownership now crosses a prepared sampled-values phase before vendored proof finishing
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
+
+Decision:
+
+The generated row may no longer treat `commitment_scheme.prove_values(...)` as
+one opaque authority. The sampled-values phase must be prepared first, lowered
+through the backend-owned sampled-values ABI family, and only then may the
+remaining vendored proof finishing continue.
+
+Context:
+
+After `DEC-0172`, caller-side proof reporting was already behind the
+backend-owned result boundary. The next semantics-preserving ownership cut was
+to split the vendored monolith so `stwo-metal` could own sampled-values
+preparation and ABI lowering before quotient/FRI finish and tree decommit.
+
+Alternatives rejected:
+
+- keep calling the vendored monolithic `prove_values(...)` path and only lower
+  sampled-values afterward
+- defer the split until a fully native post-composition path existed
+
+Impact:
+
+- the generated row now owns a prepared sampled-values phase before vendored
+  proof finishing
+- the remaining G10 blocker is narrowed to vendored quotient/FRI finishing and
+  tree-decommit generation above that prepared boundary
+
+Superseded by:
+
+- none
+
 ### DEC-0172: Generated-lane proof reporting above post-composition now belongs to the backend-owned result boundary
 
 - Date: `2026-03-11`

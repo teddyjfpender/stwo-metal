@@ -38,6 +38,181 @@ struct BatchedEvalGroup<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
     _marker: std::marker::PhantomData<MC>,
 }
 
+pub struct PreparedCommitmentSchemeProveValues<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
+    commitment_scheme: CommitmentSchemeProver<'a, B, MC>,
+    samples: TreeVec<Vec<Vec<PointSample>>>,
+    sampled_values: TreeVec<Vec<Vec<SecureField>>>,
+}
+
+impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel>
+    PreparedCommitmentSchemeProveValues<'a, B, MC>
+{
+    pub fn sampled_values(&self) -> &TreeVec<Vec<Vec<SecureField>>> {
+        &self.sampled_values
+    }
+
+    pub fn finish(mut self, channel: &mut MC::C) -> ExtendedCommitmentSchemeProof<MC::H> {
+        let debug_prove_values = std::env::var_os("STWO_CUDA_DEBUG_PROVE_VALUES").is_some();
+        let profile_prove_values = std::env::var_os("STWO_METAL_PROFILE_PROVE_VALUES").is_some();
+        let debug_phase = |phase: &str| {
+            if debug_prove_values {
+                eprintln!("prove_values_phase={phase}");
+            }
+        };
+        let emit_timing = |phase: &str, elapsed_ms: f64| {
+            if profile_prove_values {
+                eprintln!("prove_values_timing phase={phase} ms={elapsed_ms}");
+            }
+        };
+
+        let columns = self.commitment_scheme.evaluations();
+        print_column_size_histogram::<B, MC>(&columns);
+        let lifting_log_size = self
+            .commitment_scheme
+            .trees
+            .last()
+            .unwrap()
+            .commitment
+            .layers
+            .len() as u32
+            - 1;
+        let quotients_start = Instant::now();
+        let quotients = compute_fri_quotients(
+            &columns,
+            &self.samples,
+            channel.draw_secure_felt(),
+            lifting_log_size,
+            self.commitment_scheme.config.fri_config.log_blowup_factor,
+        );
+        emit_timing(
+            "quotients",
+            quotients_start.elapsed().as_secs_f64() * 1000.0,
+        );
+        debug_phase("quotients_ready");
+
+        let fri_commit_start = Instant::now();
+        let fri_prover = FriProver::<B, MC>::commit(
+            channel,
+            self.commitment_scheme.config.fri_config,
+            &quotients,
+            self.commitment_scheme.twiddles,
+        );
+        emit_timing(
+            "fri_commit",
+            fri_commit_start.elapsed().as_secs_f64() * 1000.0,
+        );
+        debug_phase("fri_commit_ready");
+
+        let span1 = span!(Level::INFO, "Grind", class = "Queries POW").entered();
+        let pow_start = Instant::now();
+        let proof_of_work = B::grind(channel, self.commitment_scheme.config.pow_bits);
+        span1.exit();
+        channel.mix_u64(proof_of_work);
+        emit_timing("proof_of_work", pow_start.elapsed().as_secs_f64() * 1000.0);
+        debug_phase("proof_of_work_ready");
+
+        let fri_decommit_start = Instant::now();
+        let FriDecommitResult {
+            fri_proof,
+            query_positions,
+            unsorted_query_locations,
+        } = fri_prover.decommit(channel);
+        emit_timing(
+            "fri_decommit",
+            fri_decommit_start.elapsed().as_secs_f64() * 1000.0,
+        );
+        debug_phase("fri_decommit_ready");
+
+        let query_tree_start = Instant::now();
+        let tree_log_sizes = self
+            .commitment_scheme
+            .trees
+            .iter()
+            .map(|tree| tree.commitment.layers.len() as u32 - 1)
+            .collect_vec();
+        let mut prepared_tree_queries_by_log_size = HashMap::<u32, Vec<usize>>::new();
+        for &tree_log_size in &tree_log_sizes {
+            prepared_tree_queries_by_log_size
+                .entry(tree_log_size)
+                .or_insert_with(|| {
+                    prepare_query_positions_for_tree(
+                        &query_positions,
+                        lifting_log_size,
+                        tree_log_size,
+                    )
+                });
+        }
+        emit_timing(
+            "query_position_tree",
+            query_tree_start.elapsed().as_secs_f64() * 1000.0,
+        );
+
+        let commitments = self.commitment_scheme.roots();
+        let mut queried_values = Vec::with_capacity(self.commitment_scheme.trees.len());
+        let mut decommitments = Vec::with_capacity(self.commitment_scheme.trees.len());
+        let mut aux = Vec::with_capacity(self.commitment_scheme.trees.len());
+        let tree_decommit_start = Instant::now();
+        for (tree_index, (tree, tree_log_size)) in self
+            .commitment_scheme
+            .trees
+            .as_ref()
+            .0
+            .into_iter()
+            .zip_eq(tree_log_sizes.into_iter())
+            .enumerate()
+        {
+            if debug_prove_values {
+                eprintln!("prove_values_phase=tree_decommit_start:{tree_index}");
+            }
+            let query_positions = prepared_tree_queries_by_log_size
+                .get(&tree_log_size)
+                .expect("prepared tree queries should exist for every tree log size");
+            let (values, decommit_result) = tree.decommit(query_positions);
+            queried_values.push(values);
+            decommitments.push(decommit_result.decommitment);
+            aux.push(decommit_result.aux);
+            if debug_prove_values {
+                eprintln!("prove_values_phase=tree_decommit_done:{tree_index}");
+            }
+        }
+        emit_timing(
+            "tree_decommit",
+            tree_decommit_start.elapsed().as_secs_f64() * 1000.0,
+        );
+        debug_phase("tree_decommit_ready");
+
+        for tree in &mut self.commitment_scheme.trees.0 {
+            if let MaybeOwned::Owned(tree) = tree {
+                for poly in tree.polynomials.drain(..) {
+                    let log_size = poly.evals.domain.log_size();
+                    self.commitment_scheme
+                        .base_column_pool
+                        .give_back(log_size, poly.evals.values);
+                }
+            }
+        }
+
+        let proof = ExtendedCommitmentSchemeProof {
+            proof: CommitmentSchemeProof {
+                commitments,
+                sampled_values: self.sampled_values,
+                decommitments: TreeVec(decommitments),
+                queried_values: TreeVec(queried_values),
+                proof_of_work,
+                fri_proof: fri_proof.proof,
+                config: self.commitment_scheme.config,
+            },
+            aux: CommitmentSchemeProofAux {
+                unsorted_query_locations,
+                trace_decommitment: TreeVec(aux),
+                fri: fri_proof.aux,
+            },
+        };
+        debug_phase("return_ready");
+        proof
+    }
+}
+
 impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> BatchedEvalGroup<'a, B, MC> {
     fn new() -> Self {
         Self {
@@ -205,11 +380,11 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         weights_dashmap
     }
 
-    pub fn prove_values(
-        mut self,
+    pub fn prepare_prove_values(
+        self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
         channel: &mut MC::C,
-    ) -> ExtendedCommitmentSchemeProof<MC::H> {
+    ) -> PreparedCommitmentSchemeProveValues<'a, B, MC> {
         let debug_prove_values = std::env::var_os("STWO_CUDA_DEBUG_PROVE_VALUES").is_some();
         let profile_prove_values = std::env::var_os("STWO_METAL_PROFILE_PROVE_VALUES").is_some();
         let debug_phase = |phase: &str| {
@@ -377,138 +552,19 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         );
         debug_phase("sampled_values_mixed");
 
-        let columns = self.evaluations();
-        print_column_size_histogram::<B, MC>(&columns);
-        // Compute oods quotients for boundary constraints on the sampled points.
-        let quotients_start = Instant::now();
-        let quotients = compute_fri_quotients(
-            &columns,
-            &samples,
-            channel.draw_secure_felt(),
-            lifting_log_size,
-            self.config.fri_config.log_blowup_factor,
-        );
-        emit_timing(
-            "quotients",
-            quotients_start.elapsed().as_secs_f64() * 1000.0,
-        );
-        debug_phase("quotients_ready");
-
-        // Run FRI commitment phase on the oods quotients.
-        let fri_commit_start = Instant::now();
-        let fri_prover =
-            FriProver::<B, MC>::commit(channel, self.config.fri_config, &quotients, self.twiddles);
-        emit_timing(
-            "fri_commit",
-            fri_commit_start.elapsed().as_secs_f64() * 1000.0,
-        );
-        debug_phase("fri_commit_ready");
-
-        // Proof of work.
-        let span1 = span!(Level::INFO, "Grind", class = "Queries POW").entered();
-        let pow_start = Instant::now();
-        let proof_of_work = B::grind(channel, self.config.pow_bits);
-        span1.exit();
-        channel.mix_u64(proof_of_work);
-        emit_timing("proof_of_work", pow_start.elapsed().as_secs_f64() * 1000.0);
-        debug_phase("proof_of_work_ready");
-
-        // FRI decommitment phase.
-        let fri_decommit_start = Instant::now();
-        let FriDecommitResult {
-            fri_proof,
-            query_positions,
-            unsorted_query_locations,
-        } = fri_prover.decommit(channel);
-        emit_timing(
-            "fri_decommit",
-            fri_decommit_start.elapsed().as_secs_f64() * 1000.0,
-        );
-        debug_phase("fri_decommit_ready");
-        // Build the query position tree.
-        let query_tree_start = Instant::now();
-        let tree_log_sizes = self
-            .trees
-            .iter()
-            .map(|tree| tree.commitment.layers.len() as u32 - 1)
-            .collect_vec();
-        let mut prepared_tree_queries_by_log_size = HashMap::<u32, Vec<usize>>::new();
-        for &tree_log_size in &tree_log_sizes {
-            prepared_tree_queries_by_log_size
-                .entry(tree_log_size)
-                .or_insert_with(|| {
-                    prepare_query_positions_for_tree(
-                        &query_positions,
-                        lifting_log_size,
-                        tree_log_size,
-                    )
-                });
+        PreparedCommitmentSchemeProveValues {
+            commitment_scheme: self,
+            samples,
+            sampled_values,
         }
-        emit_timing(
-            "query_position_tree",
-            query_tree_start.elapsed().as_secs_f64() * 1000.0,
-        );
-        let commitments = self.roots();
-        let mut queried_values = Vec::with_capacity(self.trees.len());
-        let mut decommitments = Vec::with_capacity(self.trees.len());
-        let mut aux = Vec::with_capacity(self.trees.len());
-        let tree_decommit_start = Instant::now();
-        for (tree_index, (tree, tree_log_size)) in self
-            .trees
-            .as_ref()
-            .0
-            .into_iter()
-            .zip_eq(tree_log_sizes.into_iter())
-            .enumerate()
-        {
-            if debug_prove_values {
-                eprintln!("prove_values_phase=tree_decommit_start:{tree_index}");
-            }
-            let query_positions = prepared_tree_queries_by_log_size
-                .get(&tree_log_size)
-                .expect("prepared tree queries should exist for every tree log size");
-            let (values, decommit_result) = tree.decommit(query_positions);
-            queried_values.push(values);
-            decommitments.push(decommit_result.decommitment);
-            aux.push(decommit_result.aux);
-            if debug_prove_values {
-                eprintln!("prove_values_phase=tree_decommit_done:{tree_index}");
-            }
-        }
-        emit_timing(
-            "tree_decommit",
-            tree_decommit_start.elapsed().as_secs_f64() * 1000.0,
-        );
-        debug_phase("tree_decommit_ready");
+    }
 
-        // Return evaluation buffers to the memory pool for reuse (owned trees only).
-        for tree in &mut self.trees.0 {
-            if let MaybeOwned::Owned(tree) = tree {
-                for poly in tree.polynomials.drain(..) {
-                    let log_size = poly.evals.domain.log_size();
-                    self.base_column_pool.give_back(log_size, poly.evals.values);
-                }
-            }
-        }
-
-        let proof = ExtendedCommitmentSchemeProof {
-            proof: CommitmentSchemeProof {
-                commitments,
-                sampled_values,
-                decommitments: TreeVec(decommitments),
-                queried_values: TreeVec(queried_values),
-                proof_of_work,
-                fri_proof: fri_proof.proof,
-                config: self.config,
-            },
-            aux: CommitmentSchemeProofAux {
-                unsorted_query_locations,
-                trace_decommitment: TreeVec(aux),
-                fri: fri_proof.aux,
-            },
-        };
-        debug_phase("return_ready");
-        proof
+    pub fn prove_values(
+        self,
+        sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        channel: &mut MC::C,
+    ) -> ExtendedCommitmentSchemeProof<MC::H> {
+        self.prepare_prove_values(sampled_points, channel).finish(channel)
     }
 }
 

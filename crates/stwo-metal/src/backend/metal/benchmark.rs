@@ -590,12 +590,13 @@ impl MetalWideFibonacciBenchmarkBoundary {
         ProvingError,
     > {
         let prove_values_start = std::time::Instant::now();
-        let commitment_scheme_proof =
-            commitment_scheme.prove_values(staging.sample_points, channel);
+        let prepared_prove_values =
+            commitment_scheme.prepare_prove_values(staging.sample_points, channel);
         let prove_values_ms = prove_values_start.elapsed().as_secs_f64() * 1000.0;
-        let proof = StarkProof(commitment_scheme_proof.proof);
         let sampled_values = self
-            .lower_post_composition_sampled_values_v1(&proof)
+            .lower_post_composition_sampled_values_v1_from_tree(
+                prepared_prove_values.sampled_values(),
+            )
             .map_err(|_| ProvingError::ConstraintsNotSatisfied)?;
 
         let reference_sampled_values_eval = self
@@ -622,6 +623,9 @@ impl MetalWideFibonacciBenchmarkBoundary {
         }
         let sanity_check_ms = sanity_check_start.elapsed().as_secs_f64() * 1000.0;
 
+        let commitment_scheme_proof = prepared_prove_values.finish(channel);
+        let proof = StarkProof(commitment_scheme_proof.proof);
+
         Ok((
             MetalBenchmarkProveValuesResult {
                 proof,
@@ -643,8 +647,16 @@ impl MetalWideFibonacciBenchmarkBoundary {
         proof: &StarkProof<Blake2sMerkleHasher>,
     ) -> Result<MetalBenchmarkPostCompositionSampledValuesV1, MetalSampledValuesLoweringError>
     {
+        self.lower_post_composition_sampled_values_v1_from_tree(&proof.sampled_values)
+    }
+
+    pub fn lower_post_composition_sampled_values_v1_from_tree(
+        &self,
+        sampled_values: &TreeVec<Vec<Vec<SecureField>>>,
+    ) -> Result<MetalBenchmarkPostCompositionSampledValuesV1, MetalSampledValuesLoweringError>
+    {
         Ok(MetalBenchmarkPostCompositionSampledValuesV1 {
-            sampled_values: lower_metal_sampled_values_v1(&proof.sampled_values)?,
+            sampled_values: lower_metal_sampled_values_v1(sampled_values)?,
         })
     }
 

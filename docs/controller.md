@@ -72,9 +72,11 @@ Invariants:
   both a correctness-first reference lane and a first Metal runtime lane for
   the live generated post-composition sampled-values shape, so the blocker is
   no longer “missing ABI” or “missing device execution”; the active blocker is
-  that the generated row still retains legacy `commitment_scheme.prove_values`
-  and decommit ownership on top of that ABI, even though `stwo-metal` now owns
-  the post-composition sampled-values result contract, generated-lane proof
+  that the generated row still retains legacy vendored PCS quotient/FRI
+  finishing and tree-decommit generation above that ABI, even though the
+  monolithic `commitment_scheme.prove_values(...)` call has now been split and
+  `stwo-metal` owns the sampled-values preparation boundary, the
+  post-composition sampled-values result contract, generated-lane proof
   reporting metadata, and post-composition sanity checking entirely inside the
   sampled-values ABI family rather than legacy proof extraction
 - the V1 contract now has both a correctness-first reference interpreter and a
@@ -94,7 +96,7 @@ Invariants:
 
 ## Next three deliverables
 
-1. Remove the remaining legacy `commitment_scheme.prove_values` and decommit
+1. Remove the remaining vendored PCS quotient/FRI finishing and tree-decommit
    ownership from the generated row by routing that flow through the
    sampled-values ABI/runtime contract instead of legacy component-level
    interpretation.
