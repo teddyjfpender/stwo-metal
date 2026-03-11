@@ -403,15 +403,22 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         debug_phase("fri_decommit_ready");
         // Build the query position tree.
         let query_tree_start = Instant::now();
+        let mut prepared_tree_queries_by_log_size = HashMap::<u32, Vec<usize>>::new();
         let query_positions_tree = TreeVec::new(
             self.trees
                 .iter()
                 .map(|tree| {
-                    prepare_query_positions_for_tree(
-                        &query_positions,
-                        lifting_log_size,
-                        tree.commitment.layers.len() as u32 - 1,
-                    )
+                    let tree_log_size = tree.commitment.layers.len() as u32 - 1;
+                    prepared_tree_queries_by_log_size
+                        .entry(tree_log_size)
+                        .or_insert_with(|| {
+                            prepare_query_positions_for_tree(
+                                &query_positions,
+                                lifting_log_size,
+                                tree_log_size,
+                            )
+                        })
+                        .clone()
                 })
                 .collect::<Vec<_>>(),
         );

@@ -111,20 +111,23 @@ Invariants:
   inventory belongs in the stable internal artifact registry before lowering
   starts in earnest
 - the wide-fibonacci generated lane now uses native Metal Blake2s leaf hashing
-  and native parent-layer hashing for standard Blake2s Merkle trees, and the
+  and native parent-layer hashing for standard Blake2s Merkle trees, the
   benchmark trace-tree builder now keeps parent layers native until the final
-  host decode, but the Merkle contract still materializes host
-  `Vec<Blake2sHash>` layers for the committed tree
+  host decode, and the next prove-values slice now caches lifted Merkle query
+  expansion by shift plus prepared tree-query vectors by tree log-size, but
+  the Merkle contract still materializes host `Vec<Blake2sHash>` layers for
+  the committed tree and `prove_values` still dominates the benchmark row
 - the current wide-fibonacci generated benchmark still trails SIMD from
   `log_size = 19` onward, so remaining prove-values and commitment staging
   costs must stay explicit and measured
 
 ## Next three deliverables
 
-1. Lower the remaining prove-values staging and grouping overhead above the
-   generated wide-fibonacci lane.
-2. Identify whether the next benchmark-critical host-owned cost is tree
-   decommit staging or sample grouping in the PCS prover.
+1. Lower the remaining prove-values grouping overhead above the generated
+   wide-fibonacci lane now that repeated tree-decommit staging has been
+   reduced.
+2. Measure whether the next benchmark-critical host-owned cost is sample
+   grouping or quotient/decommit staging in the PCS prover.
 3. Keep downstream `stark-v` hardening iced unless an external support signal
    appears.
 

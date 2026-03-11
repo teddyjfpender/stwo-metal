@@ -84,6 +84,7 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
 
         // Compute the queried values.
         let max_log_size = self.layers.len() - 1;
+        let mut query_read_indices_by_shift = HashMap::<usize, Vec<usize>>::new();
         if debug_tree_decommit {
             eprintln!(
                 "tree_decommit_phase=queried_values_start columns={} queries={}",
@@ -103,10 +104,12 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
                     shift
                 );
             }
-            let read_indices = query_positions
-                .iter()
-                .map(|pos| (pos >> (shift + 1) << 1) + (pos & 1))
-                .collect_vec();
+            let read_indices = query_read_indices_by_shift.entry(shift).or_insert_with(|| {
+                query_positions
+                    .iter()
+                    .map(|pos| (pos >> (shift + 1) << 1) + (pos & 1))
+                    .collect_vec()
+            });
             let res = col.batch_at(&read_indices);
             if debug_tree_decommit {
                 eprintln!(

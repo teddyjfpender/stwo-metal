@@ -28,6 +28,50 @@ Superseded by:
 
 ## Entries
 
+### DEC-0130: Reuse lifted decommit query expansion and prepared tree queries before changing prove-values grouping laws
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+Before changing the higher-level prove-values grouping law, the next
+semantics-preserving reduction should be to cache lifted Merkle read-index
+expansion by column shift and to cache prepared tree query vectors by tree
+log-size.
+
+Context:
+
+After native standard Blake2s parent hashing and native trace-tree residency
+landed, the measured wall remained `prove_values`. Inspection showed two
+remaining CPU-shaped staging loops that repeated identical work without
+changing proof semantics: lifted Merkle decommit rebuilt the same
+query-to-read-index vectors for every same-size column, and PCS prove-values
+rebuilt the same prepared tree queries for every tree of the same lifted size.
+
+Alternatives rejected:
+
+- widen public column or Merkle interfaces to expose staging caches
+- change the prove-values grouping contract before removing lower duplicated
+  staging work
+- treat the remaining wall as purely arithmetic without first removing obvious
+  repeated query-shaping work
+
+Impact:
+
+- lifted tree decommit now reuses query expansion across same-shift columns
+- PCS prove-values now reuses prepared tree query vectors across trees of the
+  same log-size
+- the next prove-values optimization step can focus on higher-level grouping
+  and quotient/decommit staging rather than repeated query-shaping overhead
+
+Superseded by:
+
+- none
+
 ### DEC-0128: The generated wide-fibonacci trace tree should keep standard Blake2s parent layers native until final decode
 
 - Date: `2026-03-11`

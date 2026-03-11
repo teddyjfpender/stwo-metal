@@ -1072,11 +1072,15 @@ non-plan benchmark measurements must use `cargo_profile = release` and
 under that production-grade contract, the row is still far from the declared
 north star: best measured `1456.654041 ms` total, with `prove_ms = 1456.38`
 and `verify_ms = 0.274041`, at `log_n_instances = 20`, `n_columns = 100`,
-`warmups = 0`, `samples = 1`, and `threads = 14`. The dominant measured costs
-are now `prove_core_prove_values_ms = 885.230166`,
-`trace_commit_ms = 225.42575000000002`,
-`prove_core_composition_generation_ms = 149.119209`, and
-`trace_commit_merkle_ms = 48.477041`.
+`warmups = 0`, `samples = 1`, and `threads = 14`. The benchmark has since
+landed native standard Blake2s parent hashing, kept the generated trace tree
+native through final decode, and reduced repeated lifted decommit and
+tree-query staging. A recent `log_n_instances = 20` production rerun with
+`warmups = 0`, `samples = 3`, and `threads = 14` came in at
+`prove_ms mean = 1162.3086803333333`, `prove_ms median = 956.267291`,
+`prove_core_prove_values_ms mean = 561.6742503333334`, and
+`trace_commit_merkle_ms mean = 78.27522233333333`. The dominant measured cost
+is still `prove_values`, not Merkle staging.
 
 Current containment:
 
@@ -1110,9 +1114,11 @@ its time in the currently dominant grouped PCS sampled-value,
 composition-generation, and remaining upper commitment stages, with progress
 evaluated against the recorded phase breakdown rather than against
 file-presence heuristics. The native point-evaluation lane, grouped sampled
-value scheduler, and direct wide-tree standard Blake2s leaf path are now
-landed, so the next expected structural retirements are the remaining
-prove-values work above that lane and the upper commitment/hash path.
+value scheduler, direct wide-tree standard Blake2s leaf path, native
+parent-layer hashing, native trace-tree residency, and repeated
+tree-decommit/query-preparation staging reductions are now landed, so the next
+expected structural retirements are the remaining prove-values grouping work
+above that lane and the upper commitment/hash path.
 
 Target retirement point:
 
