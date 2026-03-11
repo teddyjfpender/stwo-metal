@@ -2,6 +2,7 @@ use std::array;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use stwo::core::circle::Coset;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::fri::CIRCLE_TO_LINE_FOLD_STEP;
@@ -112,20 +113,8 @@ pub fn fold_circle_into_line_first_layer(
         "FRI first-layer fold requires one secure-field value per domain point"
     );
 
-    let inverse_y_factors = (0..(src.len() >> CIRCLE_TO_LINE_FOLD_STEP))
-        .map(|i| {
-            domain
-                .at(bit_reverse_index(
-                    i << CIRCLE_TO_LINE_FOLD_STEP,
-                    domain.log_size(),
-                ))
-                .y
-                .inverse()
-                .0
-        })
-        .collect::<Vec<_>>();
-
-    src.fold_circle_into_line_first_layer(&inverse_y_factors, alpha)
+    let inverse_y_factors = cached_circle_inverse_y_factors(domain);
+    src.fold_circle_into_line_first_layer_with_factor_buffer(inverse_y_factors.as_ref(), alpha)
 }
 
 pub fn fold_line(
@@ -197,6 +186,29 @@ impl FriOps for MetalBackend {
                 &evaluation.values.columns[3],
             ]),
         ))
+    }
+
+    fn fold_circle_into_line_first_layer(
+        src: &SecureEvaluation<Self, BitReversedOrder>,
+        alpha: SecureField,
+        _twiddles: &TwiddleTree<Self>,
+    ) -> LineEvaluation<Self> {
+        let inverse_y_factors = cached_circle_inverse_y_factors(src.domain);
+        let columns =
+            SecureFieldVec::fold_circle_into_line_first_layer_base_coords_with_factor_buffer(
+                [
+                    &src.values.columns[0],
+                    &src.values.columns[1],
+                    &src.values.columns[2],
+                    &src.values.columns[3],
+                ],
+                inverse_y_factors.as_ref(),
+                alpha,
+            );
+        let domain = LineDomain::new(Coset::half_odds(
+            src.domain.log_size() - CIRCLE_TO_LINE_FOLD_STEP,
+        ));
+        metal_line_evaluation_from_base_coords(domain, columns)
     }
 
     fn fold_line(

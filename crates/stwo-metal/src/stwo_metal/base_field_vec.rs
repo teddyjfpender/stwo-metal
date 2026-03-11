@@ -17,6 +17,10 @@ unsafe impl Send for BaseFieldVec {}
 unsafe impl Sync for BaseFieldVec {}
 
 impl BaseFieldVec {
+    pub(crate) fn buffer_identity(&self) -> usize {
+        self.buffer.identity()
+    }
+
     pub(crate) fn host_slice(&self) -> &[BaseField] {
         if let Some(values) = self.host_cache.get() {
             return values;

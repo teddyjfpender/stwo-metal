@@ -30,11 +30,11 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `benchmark CPU-dependence retirement: native standard Blake2s tree residency
-  plus prove-values staging cleanup`
+  `generated-lane hotspot retirement: packed quotient staging plus specialized
+  first-layer FRI fold`
 - Objective:
-  reduce benchmark-critical CPU ownership on the generated Metal lane without
-  widening public contracts or changing proving semantics
+  reduce the remaining generated-lane `prove_values` and early FRI commit
+  costs without widening public contracts or changing proving semantics
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
   and
@@ -145,10 +145,15 @@ Invariants:
   evaluation/commitment path, so the next ownership/performance wall is the
   shared PCS/FRI proving pipeline above that thinner bridge layer
 - the generic Blake2s lifted Merkle path can now batch full Metal parent-layer
-  construction from one packed leaf buffer, which materially reduces early FRI
-  commit cost for the generated lane; the next dominant subphases are now
-  quotient combination and the first Metal FRI fold rounds rather than repeated
-  host re-encoding of parent layers
+  construction from one packed leaf buffer, and the quotient path now keeps
+  partial numerators packed through `compute_quotients_and_combine` while the
+  generic FRI prover now has a dedicated first-layer fold hook for fresh line
+  evaluations; on the `wide_fibonacci` generated lane this moved `log20` to
+  about `1157 ms` mean and then `1132 ms` mean across successive bounded
+  slices, with `compute_quotients_and_combine` dropping sharply on warm runs;
+  the next dominant subphases are now quotient numerator accumulation and the
+  first FRI commitments rather than obvious quotient-combine or fold-kernel
+  overhead
 
 ## Next three deliverables
 
@@ -157,8 +162,8 @@ Invariants:
    interpolation, and the bounded FRI commitment slice no longer route through
    `CpuBackend`.
 2. Reduce the remaining `prove_values` wall in the PCS prover, with the next
-   measured targets being `compute_quotients_and_combine` and the first FRI
-   fold rounds.
+   measured targets now being quotient numerator accumulation and early FRI
+   commitment construction.
 3. Keep downstream `stark-v` hardening iced unless an external support signal
    appears.
 

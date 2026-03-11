@@ -70,7 +70,7 @@ Target retirement point:
 
 - `generated-lane performance follow-up`
 
-### TD-0034: Quotient combination and early FRI fold rounds are now the dominant generated-lane hot path
+### TD-0034: Quotient numerator accumulation and early FRI commitments are now the dominant generated-lane hot path
 
 - Status: `active`
 - Category: `measured performance hotspot`
@@ -80,12 +80,15 @@ Target retirement point:
 Why it exists now:
 
 After batching full Blake2s parent-layer construction for the generic Metal
-Merkle path, the measured `wide_fibonacci` `log20` generated-lane profile no
-longer points at repeated parent-layer host re-encoding as the dominant FRI
-commit cost. The remaining dominant subphases are now:
+Merkle path, then keeping quotient partial numerators packed through
+`compute_quotients_and_combine`, and then specializing the generic first FRI
+layer fold to skip zero-destination accumulation work, the measured
+`wide_fibonacci` `log20` generated-lane profile no longer points at repeated
+parent-layer host re-encoding, quotient combination, or the generic first fold
+kernel as the dominant remaining work. The next dominant subphases are now:
 
-- `compute_quotients_and_combine`
-- the first few generic Metal FRI fold rounds
+- quotient numerator accumulation before lift-and-accumulate
+- the earliest FRI commitment construction rounds
 
 Current containment:
 
@@ -93,18 +96,20 @@ Current containment:
 - `crates/stwo-metal-sys/metal/quotients.metal`
 - `vendor/stwo-upstream-dev-62b228e/crates/stwo/src/prover/fri.rs`
 - `crates/stwo-metal/src/backend/metal/fri.rs`
+- `vendor/stwo-upstream-dev-62b228e/crates/stwo/src/prover/pcs/quotient_ops.rs`
+- `vendor/stwo-upstream-dev-62b228e/crates/stwo/src/prover/vcs_lifted/prover.rs`
 
 Risk if left in place:
 
-The generated lane may remain around SIMD-parity territory instead of reaching
-clear GPU-class speedups, even after the Merkle path is substantially more
-native.
+The generated lane may remain in the SIMD-parity band instead of reaching
+clear GPU-class speedups, even after quotient combination and the generic
+first-layer fold are substantially more native.
 
 Exit condition:
 
-Measured evidence shows the quotient-combine phase and early FRI fold rounds
-are no longer dominant on the target rows, or those phases are replaced by a
-meaningfully more GPU-shaped execution path.
+Measured evidence shows quotient numerator accumulation and early FRI
+commitment construction are no longer dominant on the target rows, or those
+phases are replaced by a meaningfully more GPU-shaped execution path.
 
 Target retirement point:
 

@@ -65,6 +65,25 @@ pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField
         twiddles: &TwiddleTree<Self>,
     );
 
+    /// Folds the first circle layer into a fresh line evaluation.
+    ///
+    /// Laws:
+    /// - returns the same values as allocating a zero line evaluation on the first inner-layer
+    ///   domain and calling `fold_circle_into_line`
+    /// - preserves the domain and ordering expected by later inner-layer commitments
+    fn fold_circle_into_line_first_layer(
+        src: &SecureEvaluation<Self, BitReversedOrder>,
+        alpha: SecureField,
+        twiddles: &TwiddleTree<Self>,
+    ) -> LineEvaluation<Self> {
+        let first_inner_layer_log_size = src.domain.log_size() - CIRCLE_TO_LINE_FOLD_STEP;
+        let first_inner_layer_domain =
+            LineDomain::new(Coset::half_odds(first_inner_layer_log_size));
+        let mut dst = LineEvaluation::new_zero(first_inner_layer_domain);
+        Self::fold_circle_into_line(&mut dst, src, alpha, twiddles);
+        dst
+    }
+
     /// Decomposes a FRI-space polynomial into a polynomial inside the fft-space and the
     /// remainder term.
     /// FRI-space: polynomials of total degree n/2.
@@ -181,14 +200,10 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
             }
         };
         let first_inner_layer_log_size = column.domain.log_size() - CIRCLE_TO_LINE_FOLD_STEP;
-        let first_inner_layer_domain =
-            LineDomain::new(Coset::half_odds(first_inner_layer_log_size));
-
-        let mut layer_evaluation = LineEvaluation::new_zero(first_inner_layer_domain);
         let mut layers = Vec::new();
         let folding_alpha = channel.draw_secure_felt();
-
-        B::fold_circle_into_line(&mut layer_evaluation, column, folding_alpha, twiddles);
+        let mut layer_evaluation =
+            B::fold_circle_into_line_first_layer(column, folding_alpha, twiddles);
 
         let last_layer_log_domain_size = config.last_layer_domain_size().ilog2();
         // If we're already at the last layer, there are no inner layers to compute.

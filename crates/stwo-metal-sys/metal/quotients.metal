@@ -138,3 +138,61 @@ kernel void compute_quotients_and_combine_u32x4(
 
     stwo_metal_store_qm31(dst, row_index, quotient);
 }
+
+kernel void compute_quotients_and_combine_packed_u32x4(
+    device const uint *partials [[buffer(0)]],
+    device const uint *sample_points [[buffer(1)]],
+    device const uint *first_linear_terms [[buffer(2)]],
+    device const uint *partial_log_sizes [[buffer(3)]],
+    device const uint *partial_offsets [[buffer(4)]],
+    device const uint *domain_x [[buffer(5)]],
+    device const uint *domain_y [[buffer(6)]],
+    device uint *dst [[buffer(7)]],
+    constant uint &lifting_log_size [[buffer(8)]],
+    constant uint &n_accumulations [[buffer(9)]],
+    uint row_index [[thread_position_in_grid]]
+) {
+    uint row_count = 1u << lifting_log_size;
+    if (row_index >= row_count) {
+        return;
+    }
+
+    uint x = domain_x[row_index];
+    uint y = domain_y[row_index];
+    StwoMetalQm31 quotient = StwoMetalQm31 { 0u, 0u, 0u, 0u };
+
+    for (uint accumulation_index = 0u; accumulation_index < n_accumulations; ++accumulation_index) {
+        uint sample_base = accumulation_index * 8u;
+        StwoMetalCm31 prx = stwo_metal_cm31(sample_points[sample_base + 0u], sample_points[sample_base + 1u]);
+        StwoMetalCm31 pix = stwo_metal_cm31(sample_points[sample_base + 2u], sample_points[sample_base + 3u]);
+        StwoMetalCm31 pry = stwo_metal_cm31(sample_points[sample_base + 4u], sample_points[sample_base + 5u]);
+        StwoMetalCm31 piy = stwo_metal_cm31(sample_points[sample_base + 6u], sample_points[sample_base + 7u]);
+
+        StwoMetalCm31 denominator = stwo_metal_cm31_sub(
+            stwo_metal_cm31_mul(stwo_metal_cm31_sub(prx, stwo_metal_cm31(x, 0u)), piy),
+            stwo_metal_cm31_mul(stwo_metal_cm31_sub(pry, stwo_metal_cm31(y, 0u)), pix)
+        );
+        StwoMetalCm31 denominator_inverse = stwo_metal_cm31_inverse(denominator);
+
+        uint partial_log_size = partial_log_sizes[accumulation_index];
+        uint log_ratio = lifting_log_size - partial_log_size;
+        uint lifted_index = (row_index >> (log_ratio + 1u) << 1u) + (row_index & 1u);
+        uint offset = (partial_offsets[accumulation_index] + lifted_index) * 4u;
+        StwoMetalQm31 partial_numerator = StwoMetalQm31 {
+            partials[offset + 0u],
+            partials[offset + 1u],
+            partials[offset + 2u],
+            partials[offset + 3u],
+        };
+        StwoMetalQm31 full_numerator = stwo_metal_qm31_sub(
+            partial_numerator,
+            stwo_metal_qm31_mul_base(stwo_metal_load_qm31(first_linear_terms, accumulation_index), y)
+        );
+        quotient = stwo_metal_qm31_add(
+            quotient,
+            stwo_metal_qm31_mul_cm31(full_numerator, denominator_inverse)
+        );
+    }
+
+    stwo_metal_store_qm31(dst, row_index, quotient);
+}

@@ -19,6 +19,10 @@ impl SecureFieldVec {
         Self { buffer, size }
     }
 
+    pub(crate) fn into_buffer(self) -> U32Buffer {
+        self.buffer
+    }
+
     pub fn gkr_generate_eq_evals(y: &[SecureField], v: SecureField) -> Self {
         if y.is_empty() {
             return Self::from_vec(vec![v]);
@@ -168,6 +172,22 @@ impl SecureFieldVec {
         }
     }
 
+    pub fn fold_circle_into_line_first_layer_with_factor_buffer(
+        &self,
+        inverse_y_factors: &U32Buffer,
+        alpha: SecureField,
+    ) -> Self {
+        let alpha_limbs = alpha.to_m31_array().map(|limb| limb.0);
+        let buffer = self
+            .buffer
+            .fri_fold_circle_into_line_first_layer_u32x4(inverse_y_factors, alpha_limbs)
+            .expect("Metal FRI first-layer fold should succeed");
+        Self {
+            buffer,
+            size: self.size / 2,
+        }
+    }
+
     pub fn fold_circle_into_line_accumulate_into_base_coords(
         &self,
         dst_columns: &mut [BaseFieldVec; 4],
@@ -215,12 +235,7 @@ impl SecureFieldVec {
         let [src_0, src_1, src_2, src_3] = src_columns;
         let [dst_0, dst_1, dst_2, dst_3] = dst_columns;
         U32Buffer::fri_fold_circle_into_line_accumulate_from_coords_u32x4(
-            [
-                &src_0.buffer,
-                &src_1.buffer,
-                &src_2.buffer,
-                &src_3.buffer,
-            ],
+            [&src_0.buffer, &src_1.buffer, &src_2.buffer, &src_3.buffer],
             [
                 &mut dst_0.buffer,
                 &mut dst_1.buffer,
@@ -232,6 +247,28 @@ impl SecureFieldVec {
             alpha_sq_limbs,
         )
         .expect("Metal FRI first-layer accumulation should succeed");
+    }
+
+    pub fn fold_circle_into_line_first_layer_base_coords_with_factor_buffer(
+        src_columns: [&BaseFieldVec; 4],
+        inverse_y_factors: &U32Buffer,
+        alpha: SecureField,
+    ) -> [BaseFieldVec; 4] {
+        let alpha_limbs = alpha.to_m31_array().map(|limb| limb.0);
+        let [src_0, src_1, src_2, src_3] = src_columns;
+        let [dst_0, dst_1, dst_2, dst_3] =
+            U32Buffer::fri_fold_circle_into_line_first_layer_from_coords_u32x4(
+                [&src_0.buffer, &src_1.buffer, &src_2.buffer, &src_3.buffer],
+                inverse_y_factors,
+                alpha_limbs,
+            )
+            .expect("Metal FRI first-layer coordinate fold should succeed");
+        [
+            BaseFieldVec::from_buffer(dst_0),
+            BaseFieldVec::from_buffer(dst_1),
+            BaseFieldVec::from_buffer(dst_2),
+            BaseFieldVec::from_buffer(dst_3),
+        ]
     }
 
     pub fn fold_line_step(&self, inverse_x_factors: &[u32], alpha: SecureField) -> Self {
@@ -266,12 +303,7 @@ impl SecureFieldVec {
         let alpha_limbs = alpha.to_m31_array().map(|limb| limb.0);
         let [src_0, src_1, src_2, src_3] = src_columns;
         let [dst_0, dst_1, dst_2, dst_3] = U32Buffer::fri_fold_line_step_from_coords_u32x4(
-            [
-                &src_0.buffer,
-                &src_1.buffer,
-                &src_2.buffer,
-                &src_3.buffer,
-            ],
+            [&src_0.buffer, &src_1.buffer, &src_2.buffer, &src_3.buffer],
             inverse_x_factors,
             alpha_limbs,
         )

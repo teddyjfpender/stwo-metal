@@ -28,6 +28,84 @@ Superseded by:
 
 ## Entries
 
+### DEC-0139: Packed quotient partial numerators stay private but live across the quotient-combine boundary
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+`MetalBackend` now keeps packed Metal `qm31` partial numerators alive across
+the quotient pipeline through a private cache keyed by the unpacked coordinate
+buffers, and `compute_quotients_and_combine` consumes a packed fast path when
+that representation is available.
+
+Context:
+
+The quotient path already computed partial numerators as packed Metal `u32x4`
+buffers, but then immediately unpacked them into base-coordinate columns to
+fit the generic `AccumulatedNumerators` contract. The later quotient-combine
+stage then paid four separate staging copies and four independent buffer reads
+to reconstruct the same secure-field rows.
+
+Alternatives rejected:
+
+- widen `AccumulatedNumerators` with a public packed-Metal representation
+- keep the quotient-combine hot path on four coordinate buffers and rely only
+  on kernel micro-optimizations
+- add benchmark-only quotient staging shortcuts outside the backend
+
+Impact:
+
+- the public quotient contract is unchanged
+- the packed Metal representation now survives privately across the quotient
+  boundary when available
+- warm `compute_quotients_and_combine` timing dropped sharply on the generated
+  `wide_fibonacci` lane
+
+Superseded by:
+
+- none
+
+### DEC-0140: The generic FRI prover gets a dedicated first-layer fold hook for fresh line evaluations
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+`FriOps` now includes `fold_circle_into_line_first_layer`, with a default law-
+preserving implementation and a Metal specialization that folds directly into
+fresh line-coordinate buffers instead of routing through the generic
+zero-destination accumulation path.
+
+Context:
+
+The first inner FRI layer was still created by allocating a zero line
+evaluation and then calling the generic accumulate-style fold hook, which
+forces unnecessary destination reads and `alpha^2` work for the first fold.
+That was a real semantics-preserving specialization point because the first
+layer always starts from a fresh line evaluation.
+
+Alternatives rejected:
+
+- leave the first inner layer on the generic zero-and-accumulate path
+- special-case the first layer only inside benchmark code
+- widen the public workload surface instead of the backend FRI abstraction
+
+Impact:
+
+- the FRI abstraction now names the first fresh-line fold law directly
+- `MetalBackend` can skip redundant accumulation work on the first inner layer
+- the next dominant FRI work is now early commitment construction rather than
+  the first fold kernel itself
+
+Superseded by:
+
+- none
+
 ### DEC-0133: Feed quotient accumulation from direct log-size groups before changing higher-level prove-values laws
 
 - Date: `2026-03-11`
