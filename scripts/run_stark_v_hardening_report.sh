@@ -32,7 +32,18 @@ contract_output=$(sh "$contract_checker" "$repo")
 attachment_output=$(sh "$attachment_checker" "$repo")
 generated_output=$(sh "$generated_checker" "$repo")
 generated_gap_output=$(sh "$generated_gap_checker" "$repo")
-repo_head=$(git -C "$repo" rev-parse HEAD 2>/dev/null || echo "unknown")
+
+source_note="$repo/STARK_V_UPSTREAM_SOURCE.md"
+if [ -d "$repo/.git" ]; then
+  repo_head=$(git -C "$repo" rev-parse HEAD 2>/dev/null || echo "unknown")
+elif [ -f "$source_note" ]; then
+  repo_head=$(sed -n 's/^- Pinned HEAD: `\(.*\)`$/\1/p' "$source_note")
+  if [ -z "$repo_head" ]; then
+    repo_head="unknown"
+  fi
+else
+  repo_head="unknown"
+fi
 
 report_md="$output_dir/stark_v_hardening_report.md"
 report_json="$output_dir/stark_v_hardening_report.json"

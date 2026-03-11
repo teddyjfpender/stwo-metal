@@ -112,19 +112,19 @@ Invariants:
 - `stark-v` is now pinned as the first real G8 downstream input, and the
   current snapshot is now classified as `generic_lane = unsupported`,
   `generated_lane = required`, `status = fail_closed`; it is still not
-  vendored locally and not yet executed through `stwo-metal`; the minimum
-  generated subset for the first supported downstream row is now frozen, but
-  no compatible artifact exists yet and the current checkout exposes no
-  machine-readable generated artifact signal
+  executed through `stwo-metal`; the pinned checkout is now vendored locally,
+  the minimum generated subset for the first supported downstream row is now
+  frozen, but no compatible artifact exists yet and the current checkout
+  exposes no machine-readable generated artifact signal
 
 ## Next three deliverables
 
-1. Keep one deterministic local report for the pinned `stark-v` contract,
+1. Keep one deterministic local report for the vendored `stark-v` contract,
    attachment classification, generated readiness, and generated gap.
 2. Keep one frozen minimum generated subset for the first supported `stark-v`
    row without weakening the fail-closed generic-lane policy.
-3. Decide how that generated subset will be produced or mapped in the first
-   executable downstream row.
+3. Decide whether the first executable downstream row is a vendored mapping
+   experiment or an explicit long-lived unsupported fence.
 
 ## Explicitly not doing now
 

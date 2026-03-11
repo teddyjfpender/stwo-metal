@@ -1,0 +1,11 @@
+name: Trunk Code Quality setup
+description: Set up dependencies for Trunk Code Quality
+runs:
+  using: composite
+  steps:
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        components: clippy, rustfmt
+        targets: riscv32im-unknown-none-elf
+        toolchain: nightly-2025-07-14

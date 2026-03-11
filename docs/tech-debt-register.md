@@ -71,7 +71,7 @@ Target retirement point:
 
 - `G8`
 
-### TD-0029: `stark-v` is pinned as a downstream hardening input but is not yet vendored or executed through `stwo-metal`
+### TD-0029: Vendored `stark-v` input is still not executed through `stwo-metal`
 
 - Status: `active`
 - Category: `downstream hardening gap`
@@ -81,14 +81,16 @@ Target retirement point:
 Why it exists now:
 
 `stark-v` is now the pinned G8 downstream input, and its minimum proving
-contract is documented and checked. But the downstream repo is not vendored
-locally and no executable hardening row has yet been landed through
+contract is documented and checked. The downstream repo is now vendored
+locally, but no executable hardening row has yet been landed through
 `stwo-metal`.
 
 Current containment:
 
 - `docs/dn-0004-stark-v-hardening-input-and-contract.md`
 - `scripts/check_stark_v_contract.sh`
+- `scripts/run_vendored_stark_v_hardening_report.sh`
+- `vendor/stark-v-pinned-3a3cb4cf576d7d7e8ca82815acfb31bbc10e48ef`
 
 Risk if left in place:
 

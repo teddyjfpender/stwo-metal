@@ -1,0 +1,143 @@
+//! Shared glue code for all guest binaries.
+//!
+//! This module is only compiled for the riscv32 target.
+
+use core::arch::global_asm;
+use core::panic::PanicInfo;
+use core::ptr;
+
+use postcard::to_slice;
+use serde::Serialize;
+
+// -----------------------------------------------------------------------------
+// Linker symbols for I/O region (defined in linker.ld)
+// -----------------------------------------------------------------------------
+
+unsafe extern "C" {
+    static __halt_flag: u8;
+    static __output_len: u8;
+    static __output_data: u8;
+    static __output_end: u8;
+}
+
+// -----------------------------------------------------------------------------
+// Startup assembly (ELF entrypoint)
+// -----------------------------------------------------------------------------
+
+global_asm!(
+    r#"
+    .section .text._start
+    .globl _start
+_start:
+    .option push
+    .option norelax
+    la gp, __global_pointer$
+    .option pop
+
+    la sp, __stack_top
+
+    call __zkvm_start
+"#
+);
+
+// -----------------------------------------------------------------------------
+// Halt function (for opcode tests that don't produce output)
+// -----------------------------------------------------------------------------
+
+/// Halt the VM by spinning forever.
+/// The runner will detect the PC not changing and stop execution.
+/// Used by opcode test binaries that only need to generate traces.
+#[inline(never)]
+pub fn halt() -> ! {
+    #[allow(clippy::empty_loop)]
+    loop {}
+}
+
+// -----------------------------------------------------------------------------
+// Output functions
+// -----------------------------------------------------------------------------
+
+/// Serialize data with postcard and write to output region, then halt.
+///
+/// This function:
+/// 1. Serializes `data` using postcard into the output buffer
+/// 2. Writes the length to __output_len
+/// 3. Sets __halt_flag to signal the host
+/// 4. Loops forever (host will stop execution)
+pub fn output<T: Serialize>(data: &T) -> ! {
+    unsafe {
+        let data_addr = ptr::addr_of!(__output_data) as *mut u8;
+        let end_addr = ptr::addr_of!(__output_end) as usize;
+        let data_start = data_addr as usize;
+        let max_size = end_addr.saturating_sub(data_start);
+
+        // Create a slice from the output region
+        let output_buffer = core::slice::from_raw_parts_mut(data_addr, max_size);
+
+        // Serialize with postcard
+        match to_slice(data, output_buffer) {
+            Ok(written) => {
+                let len = written.len() as u32;
+                // Write length
+                let len_addr = ptr::addr_of!(__output_len) as *mut u32;
+                ptr::write_volatile(len_addr, len);
+            }
+            Err(_) => {
+                // Serialization failed - write 0 length
+                let len_addr = ptr::addr_of!(__output_len) as *mut u32;
+                ptr::write_volatile(len_addr, 0);
+            }
+        }
+
+        // Set halt flag
+        let halt_addr = ptr::addr_of!(__halt_flag) as *mut u32;
+        ptr::write_volatile(halt_addr, 1);
+    }
+
+    // Should never reach here - host stops on halt flag
+    #[allow(clippy::empty_loop)]
+    loop {}
+}
+
+/// Write raw bytes to output region and halt.
+///
+/// Unlike [`output`], this does not serialize with postcard — it writes
+/// the raw byte slice directly to the output buffer.
+pub fn output_raw(data: &[u8]) -> ! {
+    unsafe {
+        let data_addr = ptr::addr_of!(__output_data) as *mut u8;
+        let end_addr = ptr::addr_of!(__output_end) as usize;
+        let data_start = data_addr as usize;
+        let max_size = end_addr.saturating_sub(data_start);
+
+        let len = data.len().min(max_size);
+
+        // Write data
+        for (i, byte) in data.iter().take(len).enumerate() {
+            let addr = data_start + i;
+            ptr::write_volatile(addr as *mut u8, *byte);
+        }
+
+        // Write length
+        let len_addr = ptr::addr_of!(__output_len) as *mut u32;
+        ptr::write_volatile(len_addr, len as u32);
+
+        // Set halt flag
+        let halt_addr = ptr::addr_of!(__halt_flag) as *mut u32;
+        ptr::write_volatile(halt_addr, 1);
+    }
+
+    // Should never reach here - host stops on halt flag
+    #[allow(clippy::empty_loop)]
+    loop {}
+}
+
+// -----------------------------------------------------------------------------
+// Panic handler
+// -----------------------------------------------------------------------------
+
+#[panic_handler]
+fn panic(_: &PanicInfo) -> ! {
+    #[allow(clippy::empty_loop)]
+    loop {}
+}

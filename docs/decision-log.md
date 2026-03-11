@@ -28,6 +28,42 @@ Superseded by:
 
 ## Entries
 
+### DEC-0124: G8 should vendor the pinned stark-v input locally before claiming downstream hardening progress
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0004-stark-v-hardening-input-and-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0004-stark-v-hardening-input-and-contract.md)
+
+Decision:
+
+After pinning, classifying, and gap-checking `stark-v`, G8 should vendor the
+exact pinned checkout locally so downstream hardening no longer depends on a
+temp clone outside the repository.
+
+Context:
+
+The current hardening row had become deterministic in logic but still depended
+on an external temp checkout path. That is too weak for a milestone intended
+to harden the contract against a real downstream consumer.
+
+Alternatives rejected:
+
+- keep relying on an ad hoc temp checkout
+- vendor only textual notes while leaving the source tree external
+- claim G8 progress without preserving the inspected downstream input
+
+Impact:
+
+- G8 now has one local downstream input under version control
+- the hardening report can run against repository-local input
+- the remaining G8 blocker narrows to support, not to input preservation
+
+Superseded by:
+
+- none
+
 ### DEC-0123: G8 should enumerate the downstream generated gap explicitly
 
 - Date: `2026-03-11`

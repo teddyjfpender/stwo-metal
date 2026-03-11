@@ -1,0 +1,94 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/bench-cli",
+  "crates/debug-utils",
+  "crates/prover",
+  "crates/runner",
+  "crates/stwo-macros",
+  "crates/sdk",
+  "crates/simd",
+  "guest/guest-lib",
+]
+exclude = ["guest/guest-bin"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+
+[workspace.dependencies]
+# Stwo dependencies
+stwo = { path = "external/stwo/crates/stwo" }
+stwo-air-utils = { path = "external/stwo/crates/air-utils" }
+stwo-air-utils-derive = { path = "external/stwo/crates/air-utils-derive" }
+stwo-constraint-framework = { path = "external/stwo/crates/constraint-framework", features = [
+  "prover",
+  "std",
+] }
+stwo-types = { path = "external/stwo/crates/stwo-types", default-features = false }
+blake2 = { version = "0.10.6", default-features = false }
+blake3 = { version = "1.5.0", default-features = false }
+bytemuck = { version = "1.14.3", default-features = false }
+ctor = { version = "0.2" }
+divan = "0.1.21"
+educe = "0.5.0"
+hashbrown = { version = ">=0.15.2", features = ["serde"] }
+hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
+itertools = "0.13.0"
+mimalloc = { version = "*", features = ["v3"] }
+num-traits = "0.2.19"
+peak_alloc = { version = "0.2" }
+rayon = "1.10.0"
+serde_json = "1.0.132"
+smalloc = { package = "smmalloc", version = "7.0.1", git = "https://github.com/zooko/smalloc" }
+std-shims = { path = "external/stwo/crates/std-shims", default-features = false }
+test-log = { version = "0.2.15", features = ["trace"] }
+tikv-jemallocator = "0.6.1"
+rand = { version = "0.8.5", default-features = false, features = ["small_rng"] }
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1", default-features = false, features = ["derive"] }
+postcard = { version = "1", default-features = false }
+
+# Parsing
+goblin = "0.9"
+
+# Data structures
+rustc-hash = "2.1"
+
+# Debug / Table printing (lightweight alternative to polars)
+comfy-table = "7.1"
+
+# Error handling
+anyhow = "1"
+thiserror = "2.0"
+
+# External zkVM interface
+ere-zkvm-interface = { git = "https://github.com/eth-act/ere", rev = "66c516a24d9c3549f76b84f72365ab544299e63a" }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Proc-macro utilities
+paste = "1.0"
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full", "visit-mut"] }
+
+# Internal crates
+debug-utils = { path = "crates/debug-utils" }
+guest-lib = { path = "guest/guest-lib" }
+prover = { path = "crates/prover" }
+runner = { path = "crates/runner" }
+stwo-macros = { path = "crates/stwo-macros" }
+simd = { path = "crates/simd" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
