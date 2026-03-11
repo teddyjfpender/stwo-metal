@@ -28,6 +28,45 @@ Superseded by:
 
 ## Entries
 
+### DEC-0122: G8 should check generated readiness explicitly, not infer it from attachment class alone
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0006-stark-v-generated-minimum-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0006-stark-v-generated-minimum-contract.md)
+
+Decision:
+
+After freezing the minimum generated subset for `stark-v`, G8 should keep one
+deterministic generated-readiness check so the current downstream row says
+explicitly whether a machine-readable artifact is present.
+
+Context:
+
+`DEC-0121` defined what the first supported generated row would require. The
+next honest step is to check whether the pinned checkout exposes any
+machine-readable artifact signals at all, rather than assuming that generated
+support is merely "not wired yet."
+
+Alternatives rejected:
+
+- infer generated readiness only from the fail-closed attachment result
+- leave generated readiness as a manual reading of source files
+- claim downstream generated support is available before checking for an
+  artifact surface
+
+Impact:
+
+- G8 now distinguishes "generated lane required" from "generated artifact
+  actually present"
+- the current downstream blockage is stated more precisely
+- future generated support work has one deterministic before/after check
+
+Superseded by:
+
+- none
+
 ### DEC-0121: The first supported `stark-v` row must come through a bounded generated subset
 
 - Date: `2026-03-11`

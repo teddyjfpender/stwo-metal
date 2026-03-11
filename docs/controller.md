@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G8 third slice: emit one deterministic stark-v hardening report and keep
-  the current generic-lane result fail-closed`
+  `G8 fourth slice: add one deterministic generated-readiness check for the
+  pinned stark-v input and keep the current downstream row fail-closed`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -114,12 +114,13 @@ Invariants:
   `generated_lane = required`, `status = fail_closed`; it is still not
   vendored locally and not yet executed through `stwo-metal`; the minimum
   generated subset for the first supported downstream row is now frozen, but
-  no compatible artifact exists yet
+  no compatible artifact exists yet and the current checkout exposes no
+  machine-readable generated artifact signal
 
 ## Next three deliverables
 
-1. Keep one deterministic local report for the pinned `stark-v` contract and
-   attachment classification.
+1. Keep one deterministic local report for the pinned `stark-v` contract,
+   attachment classification, and generated readiness.
 2. Keep one frozen minimum generated subset for the first supported `stark-v`
    row without weakening the fail-closed generic-lane policy.
 3. Decide how that generated subset will be produced or mapped in the first

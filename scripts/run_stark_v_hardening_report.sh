@@ -13,6 +13,7 @@ output_dir=${2:-}
 root_dir=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 contract_checker="$root_dir/scripts/check_stark_v_contract.sh"
 attachment_checker="$root_dir/scripts/check_stark_v_attachment.sh"
+generated_checker="$root_dir/scripts/check_stark_v_generated_readiness.sh"
 
 if [ ! -d "$repo/.git" ] && [ ! -f "$repo/Cargo.toml" ]; then
   echo "invalid stark-v checkout: $repo" >&2
@@ -28,6 +29,7 @@ mkdir -p "$output_dir"
 
 contract_output=$(sh "$contract_checker" "$repo")
 attachment_output=$(sh "$attachment_checker" "$repo")
+generated_output=$(sh "$generated_checker" "$repo")
 repo_head=$(git -C "$repo" rev-parse HEAD 2>/dev/null || echo "unknown")
 
 report_md="$output_dir/stark_v_hardening_report.md"
@@ -52,6 +54,12 @@ $contract_output
 $attachment_output
 \`\`\`
 
+## Generated readiness
+
+\`\`\`
+$generated_output
+\`\`\`
+
 ## Current result
 
 - generic lane: unsupported
@@ -65,6 +73,8 @@ $attachment_output
 - \`crates/prover/src/lib.rs\` reconstructs preprocessing into \`Poly<SimdBackend>\`
 - \`crates/stwo-macros/src/components.rs\` emits \`ComponentProver<SimdBackend>\`
 - workspace \`Cargo.toml\` points at vendored \`external/stwo\`
+- no machine-readable generated artifact contract is detectable in the pinned
+  checkout
 
 ## Required next supported row
 
@@ -78,7 +88,8 @@ cat >"$report_json" <<EOF
   "head": "$repo_head",
   "generic_lane": "unsupported",
   "generated_lane": "required",
-  "status": "fail_closed"
+  "status": "fail_closed",
+  "generated_artifact": "absent"
 }
 EOF
 

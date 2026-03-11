@@ -50,6 +50,7 @@ Current containment:
 - `docs/dn-0005-stark-v-attachment-strategy.md`
 - `docs/dn-0006-stark-v-generated-minimum-contract.md`
 - `scripts/check_stark_v_attachment.sh`
+- `scripts/check_stark_v_generated_readiness.sh`
 - `scripts/run_stark_v_hardening_report.sh`
 
 Risk if left in place:

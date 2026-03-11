@@ -142,6 +142,8 @@ The next active work is:
   result
 - freeze the minimum generated subset required for the first supported
   `stark-v` row
+- keep one deterministic generated-readiness check for the pinned downstream
+  checkout
 - keep the dual-lane benchmark contract stable while downstream hardening
   proceeds
 
