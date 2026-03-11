@@ -11,19 +11,20 @@ use stwo_metal::{
     plan_exemplar_prove_by_name, validate_metal_evaluation_program_v1, BaseFieldVec, CudaBackend,
     CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan,
     MetalBackend, MetalBaseFieldColumnBatch, MetalBaseFieldVec, MetalBenchmarkInputError,
-    MetalBenchmarkProgramError, MetalBenchmarkProgramExecutionError, MetalBenchmarkTarget,
-    MetalBenchmarkTraceShapeError, MetalCpuQuotientEvaluationInput,
-    MetalCpuWideFibonacciWitnessInput, MetalEvaluationProgramBaseInstV1,
-    MetalEvaluationProgramBudgetV1, MetalEvaluationProgramExecutionError,
-    MetalEvaluationProgramExtInstV1, MetalEvaluationProgramHeaderV1,
-    MetalEvaluationProgramInterpreterError, MetalEvaluationProgramLoweringError,
-    MetalEvaluationProgramRuntimeInputsV1, MetalEvaluationProgramSectionDescV1,
-    MetalEvaluationProgramSectionKindV1, MetalEvaluationProgramSpecializationV1,
-    MetalEvaluationProgramTraceViewV1, MetalEvaluationProgramValidationError, MetalExecutionIntent,
-    MetalExecutionPlan, MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow,
-    MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver,
-    MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation,
-    MetalQuotientEvaluationInput, MetalSecureFieldVec, MetalWideFibonacciBatchQuotientRequest,
+    MetalBenchmarkProgramError, MetalBenchmarkProgramExecutionError,
+    MetalBenchmarkProveValuesStaging, MetalBenchmarkTarget, MetalBenchmarkTraceShapeError,
+    MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput,
+    MetalEvaluationProgramBaseInstV1, MetalEvaluationProgramBudgetV1,
+    MetalEvaluationProgramExecutionError, MetalEvaluationProgramExtInstV1,
+    MetalEvaluationProgramHeaderV1, MetalEvaluationProgramInterpreterError,
+    MetalEvaluationProgramLoweringError, MetalEvaluationProgramRuntimeInputsV1,
+    MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
+    MetalEvaluationProgramSpecializationV1, MetalEvaluationProgramTraceViewV1,
+    MetalEvaluationProgramValidationError, MetalExecutionIntent, MetalExecutionPlan,
+    MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice,
+    MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver, MetalFriReadyEvaluationInput,
+    MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation, MetalQuotientEvaluationInput,
+    MetalSecureFieldVec, MetalWideFibonacciBatchQuotientRequest,
     MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientError,
     MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients, MetalWideFibonacciTrace,
     MetalWideFibonacciTraceError, MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs,
@@ -219,6 +220,7 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
     .unwrap();
     let _ = std::mem::size_of::<MetalBenchmarkProgramError>();
     let _ = std::mem::size_of::<MetalBenchmarkProgramExecutionError>();
+    let _ = std::mem::size_of::<MetalBenchmarkProveValuesStaging>();
     let _ = std::mem::size_of::<MetalBenchmarkTraceShapeError>();
     let _ = std::mem::size_of::<MetalEvaluationProgramBaseInstV1>();
     let _ = std::mem::size_of::<MetalEvaluationProgramExecutionError>();

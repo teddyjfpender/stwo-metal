@@ -74,6 +74,50 @@ Superseded by:
 
 - none
 
+### DEC-0158: Generated prove-values staging for `wide_fibonacci` now belongs to `stwo-metal`
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+The live prove-values staging law for the generated `wide_fibonacci` benchmark
+row now belongs to `MetalWideFibonacciBenchmarkBoundary` in `stwo-metal`.
+Fixture shims may still wrap or translate surrounding benchmark behavior, but
+they must not define the active prove-values boundary law once that law exists
+in the backend crate.
+
+Context:
+
+After `DEC-0157`, the benchmark boundary could already lower, validate, and
+execute `MetalEvaluationProgramV1` on the live generated trace. The next honest
+prove-phase migration step was the prove-values staging law: `oods_point`,
+`max_log_degree_bound`, and `sample_points`. That staging was still owned by
+the benchmark fixture shim even though it depends only on benchmark-lane law
+already known inside `stwo-metal`.
+
+Alternatives rejected:
+
+- continue letting the fixture shim own the live prove-values staging law
+- claim a larger V1 prove-path migration before moving this boundary into
+  `stwo-metal`
+
+Impact:
+
+- `wide_fibonacci_prove.rs` now stages prove-values through
+  `MetalWideFibonacciBenchmarkBoundary`
+- the fixture shim no longer defines the live prove-values staging contract for
+  the generated benchmark row
+- the next honest migration target is the next prove-phase boundary after
+  prove-values staging
+
+Superseded by:
+
+- none
+
 ### DEC-0157: The first G10 migration step is live-trace V1 execution, not a fake full prove-path claim
 
 - Date: `2026-03-11`

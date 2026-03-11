@@ -175,6 +175,17 @@ The first G10 slice is now landed in code:
   remains in progress until one live prove-phase boundary is driven by the V1
   runtime contract rather than benchmark-specialized staging
 
+The second G10 slice is now landed in code:
+
+- the prove-values staging law for the generated `wide_fibonacci` row now lives
+  on `MetalWideFibonacciBenchmarkBoundary` in `stwo-metal` instead of the
+  benchmark fixture shim
+- `wide_fibonacci_prove.rs` now stages prove-values through the benchmark
+  boundary-owned contract directly
+- the fixture shim no longer defines the live prove-values boundary law for the
+  generated benchmark row, but the actual prove runtime still remains pre-V1
+  beyond that staged boundary
+
 ## Current implementation obligations under G3
 
 - preserve the non-public bridge laws from

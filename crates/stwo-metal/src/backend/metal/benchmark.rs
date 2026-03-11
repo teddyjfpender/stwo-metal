@@ -1,5 +1,11 @@
+use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
+use stwo::core::fields::qm31::SECURE_EXTENSION_DEGREE;
+use stwo::core::pcs::utils::get_lifting_log_size;
+use stwo::core::pcs::TreeVec;
+use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
+use stwo::prover::{CommitmentSchemeProver, ComponentProvers};
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
 use super::eval_program_v1::{
@@ -83,6 +89,12 @@ pub struct MetalWideFibonacciBenchmarkBoundary {
     execution_seed: RegisteredMetalExecutionSeed,
 }
 
+pub struct MetalBenchmarkProveValuesStaging {
+    pub oods_point: stwo::core::circle::CirclePoint<SecureField>,
+    pub max_log_degree_bound: u32,
+    pub sample_points: TreeVec<Vec<Vec<stwo::core::circle::CirclePoint<SecureField>>>>,
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalBenchmarkLaneError {
     PlanNotMetalCapable {
@@ -142,6 +154,41 @@ impl MetalWideFibonacciBenchmarkBoundary {
         }
 
         Ok(workload_name)
+    }
+
+    pub fn stage_prove_values(
+        &self,
+        component_provers: &ComponentProvers<'_, super::MetalBackend>,
+        channel: &mut Blake2sChannel,
+        commitment_scheme: &CommitmentSchemeProver<'_, super::MetalBackend, Blake2sMerkleChannel>,
+    ) -> Result<MetalBenchmarkProveValuesStaging, MetalBenchmarkLaneError> {
+        self.validate_prove_values_lane()?;
+
+        let oods_point = stwo::core::circle::CirclePoint::<SecureField>::get_random_point(channel);
+        let split_composition_log_size = commitment_scheme
+            .trees
+            .last()
+            .unwrap()
+            .commitment
+            .layers
+            .len() as u32
+            - 1;
+        let lifting_log_size =
+            get_lifting_log_size(&commitment_scheme.config, split_composition_log_size);
+        let max_log_degree_bound =
+            lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
+
+        let mut sample_points =
+            component_provers
+                .components()
+                .mask_points(oods_point, max_log_degree_bound, false);
+        sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
+
+        Ok(MetalBenchmarkProveValuesStaging {
+            oods_point,
+            max_log_degree_bound,
+            sample_points,
+        })
     }
 
     pub fn ingest_cpu_witness_inputs(

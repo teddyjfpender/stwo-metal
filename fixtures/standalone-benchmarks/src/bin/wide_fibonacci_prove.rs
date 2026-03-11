@@ -55,18 +55,13 @@ use stwo_examples::wide_fibonacci::{
 use stwo_metal::{
     accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
     declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
-    evaluate_polys_on_domain_batch, MetalBackend, MetalBenchmarkOperation,
+    evaluate_polys_on_domain_batch, MetalBackend, MetalBaseFieldVec, MetalBenchmarkOperation,
     MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalExecutionIntent,
-    MetalBaseFieldVec, MetalWideFibonacciBatchQuotientRequest,
-    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientRequest,
-    MetalWideFibonacciTrace,
+    MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciBenchmarkBoundary,
+    MetalWideFibonacciQuotientRequest, MetalWideFibonacciTrace,
 };
 #[cfg(feature = "metal-runtime")]
 use stwo_metal_fixture_shims::acceptance_bridge_catalog;
-#[cfg(feature = "metal-runtime")]
-use stwo_metal_fixture_shims::{
-    registered_wide_fibonacci_prove_values_lane, stage_wide_fibonacci_prove_values,
-};
 #[cfg(feature = "metal-runtime")]
 use stwo_metal_standalone_benchmarks::support::summarize;
 use stwo_metal_standalone_benchmarks::support::{
@@ -231,8 +226,14 @@ fn throughput_from_summary(instances: u64, summary: &SummaryStats) -> Option<f64
 #[cfg(feature = "metal-runtime")]
 fn phase_sample_timings_from_samples(samples: &[SampleResult]) -> PhaseSampleTimings {
     PhaseSampleTimings {
-        prove_ms: samples.iter().map(|sample| sample.prove_elapsed_ms).collect(),
-        verify_ms: samples.iter().map(|sample| sample.verify_elapsed_ms).collect(),
+        prove_ms: samples
+            .iter()
+            .map(|sample| sample.prove_elapsed_ms)
+            .collect(),
+        verify_ms: samples
+            .iter()
+            .map(|sample| sample.verify_elapsed_ms)
+            .collect(),
     }
 }
 
@@ -325,7 +326,9 @@ fn prove_breakdown_samples_from_samples(samples: &[ProveBreakdown]) -> ProveBrea
 }
 
 #[cfg(feature = "metal-runtime")]
-fn prove_breakdown_summary_from_samples(samples: &[ProveBreakdown]) -> ProveBreakdownSummaryTimings {
+fn prove_breakdown_summary_from_samples(
+    samples: &[ProveBreakdown],
+) -> ProveBreakdownSummaryTimings {
     ProveBreakdownSummaryTimings {
         setup_and_preprocessed_commit_ms: summarize(
             &samples
@@ -560,15 +563,21 @@ fn main() {
             let verify_summary = summarize(&verify_samples_ms);
             let cold_start_result = sample_results.first();
             let steady_state_results = steady_state_tail(&sample_results);
-            let steady_state_samples_ms =
-                steady_state_results.map(|samples| samples.iter().map(|sample| sample.total_elapsed_ms).collect::<Vec<_>>());
-            let steady_state_summary =
-                steady_state_samples_ms.as_ref().map(|samples| summarize(samples));
+            let steady_state_samples_ms = steady_state_results.map(|samples| {
+                samples
+                    .iter()
+                    .map(|sample| sample.total_elapsed_ms)
+                    .collect::<Vec<_>>()
+            });
+            let steady_state_summary = steady_state_samples_ms
+                .as_ref()
+                .map(|samples| summarize(samples));
             let prove_breakdown_samples = sample_results
                 .iter()
                 .map(|sample| sample.prove_breakdown)
                 .collect::<Option<Vec<_>>>();
-            let steady_state_phase_samples = steady_state_results.map(phase_sample_timings_from_samples);
+            let steady_state_phase_samples =
+                steady_state_results.map(phase_sample_timings_from_samples);
             let steady_state_phase_summary =
                 steady_state_results.map(phase_summary_timings_from_samples);
             let steady_state_prove_breakdown_samples = prove_breakdown_samples
@@ -626,8 +635,7 @@ fn main() {
                     prove_breakdown_summary_ms: prove_breakdown_samples
                         .map(|samples| prove_breakdown_summary_from_samples(&samples)),
                     steady_state_prove_breakdown_samples_ms: steady_state_prove_breakdown_samples,
-                    steady_state_prove_breakdown_summary_ms:
-                        steady_state_prove_breakdown_summary,
+                    steady_state_prove_breakdown_summary_ms: steady_state_prove_breakdown_summary,
                 },
                 proof: Some(last_sample.proof_metadata.clone()),
                 sentinel: Some(last_sample.sentinel.clone()),
@@ -1140,14 +1148,9 @@ fn prove_with_breakdown(
     tree_builder.commit(channel);
     let composition_commit_ms = composition_commit_start.elapsed().as_secs_f64() * 1000.0;
 
-    let prove_values_lane = registered_wide_fibonacci_prove_values_lane(benchmark_boundary)
+    let prove_values_stage = benchmark_boundary
+        .stage_prove_values(&component_provers, channel, &commitment_scheme)
         .expect("registered benchmark boundary must satisfy the prove-values lane contract");
-    let prove_values_stage = stage_wide_fibonacci_prove_values(
-        &prove_values_lane,
-        &component_provers,
-        channel,
-        &commitment_scheme,
-    );
 
     let prove_values_start = Instant::now();
     let commitment_scheme_proof =
@@ -1228,10 +1231,12 @@ fn build_native_standard_blake2s_merkle_prover(
     lifting_log_size: u32,
 ) -> Option<MerkleProverLifted<MetalBackend, Blake2sMerkleHasher>> {
     if columns.is_empty() {
-        return Some(MerkleProverLifted::<MetalBackend, Blake2sMerkleHasher>::commit(
-            Vec::new(),
-            lifting_log_size,
-        ));
+        return Some(
+            MerkleProverLifted::<MetalBackend, Blake2sMerkleHasher>::commit(
+                Vec::new(),
+                lifting_log_size,
+            ),
+        );
     }
 
     let leaves = <MetalBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(
@@ -1281,23 +1286,22 @@ fn commit_trace_with_breakdown(
         .config
         .lifting_log_size
         .unwrap_or(max_log_domain_size);
-    let commitment =
-        build_native_standard_blake2s_merkle_prover(
+    let commitment = build_native_standard_blake2s_merkle_prover(
+        trace_polynomials
+            .iter()
+            .map(|poly| &poly.evals.values)
+            .collect(),
+        lifting_log_size,
+    )
+    .unwrap_or_else(|| {
+        MerkleProverLifted::<MetalBackend, Blake2sMerkleHasher>::commit(
             trace_polynomials
                 .iter()
                 .map(|poly| &poly.evals.values)
                 .collect(),
             lifting_log_size,
         )
-        .unwrap_or_else(|| {
-            MerkleProverLifted::<MetalBackend, Blake2sMerkleHasher>::commit(
-                trace_polynomials
-                    .iter()
-                    .map(|poly| &poly.evals.values)
-                    .collect(),
-                lifting_log_size,
-            )
-        });
+    });
     let merkle_ms = merkle_start.elapsed().as_secs_f64() * 1000.0;
 
     let tree = CommitmentTreeProver {
@@ -1313,7 +1317,12 @@ fn commit_trace_with_breakdown(
     }
 }
 
-#[cfg(all(test, feature = "metal-runtime", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(all(
+    test,
+    feature = "metal-runtime",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
 mod native_merkle_tests {
     use super::build_native_standard_blake2s_merkle_prover;
     use stwo::core::fields::m31::BaseField;
