@@ -41,7 +41,8 @@ Why it exists now:
 and runtime contract for generic and generated Metal execution, but the live
 generated `wide_fibonacci` benchmark row still uses older benchmark-specialized
 runtime glue rather than executing through the validated
-`MetalEvaluationProgramV1` artifact it can now lower and validate.
+`MetalEvaluationProgramV1` artifact and first attached interpreter lanes it can
+now lower, validate, and execute for the currently supported subset.
 
 Current containment:
 

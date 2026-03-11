@@ -128,7 +128,7 @@ The superseded `T0` through `T8` sequence now lives in:
 | G7 | Retire temporary compatibility shims | `completed` | acceptance-local adapters and example-specific wrappers are removed or reduced to non-architectural fixtures |
 | G8 | Harden the contract against `stark-v` workloads | `iced` | a real downstream Stwo consumer uses the same generic/generated contract successfully |
 | G9 | Freeze and implement `MetalEvaluationProgramV1` | `in_progress` | generated and generic Metal execution both consume the same validated lowered program contract |
-| G10 | Migrate benchmark-specialized rows onto the V1 program contract | `planned` | the active generated benchmark path is driven by the V1 artifact and overlay contract rather than bespoke benchmark-only lowering |
+| G10 | Migrate benchmark-specialized rows onto the V1 program contract | `in_progress` | the active generated benchmark path is driven by the V1 artifact and overlay contract rather than bespoke benchmark-only lowering |
 | G11 | Re-open downstream hardening on the V1 contract | `planned` | downstream consumers such as `stark-v` are evaluated against the V1 program contract instead of a pre-V1 bridge surface |
 
 ## Active work definition
@@ -139,9 +139,9 @@ program contract is still unimplemented.
 
 The next active work is:
 
-- bring up one generic Metal `.metal` interpreter lane for the first lowered
-  `MetalEvaluationProgramV1` component on top of the new reference
-  interpreter
+- migrate the active generated benchmark row onto the first live
+  `MetalEvaluationProgramV1` runtime contract instead of benchmark-specialized
+  lowering
 - define the overlay lookup law keyed by semantic hash and capability profile
 - migrate the active generated benchmark row onto the same program contract
 - keep examples as the acceptance matrix for the generic and generated lanes

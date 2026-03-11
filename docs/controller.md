@@ -30,7 +30,7 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G9 third slice: attach first execution semantics to MetalEvaluationProgramV1`
+  `G9 fourth slice: attach first Metal device interpreter lane to MetalEvaluationProgramV1`
 - Objective:
   move `stwo-metal` from a benchmark-specialized generated path to one stable
   lowered-program contract that both the generic interpreter lane and the
@@ -47,16 +47,15 @@ Invariants:
 ## Current blockers
 
 - the repository now has a minimal `MetalEvaluationProgramV1` ABI module,
-  validator, first generated `fibonacci_example` lowering, and a deterministic
-  reference interpreter, but no live Metal `.metal` execution lane consumes
-  that contract yet
+  validator, first generated `fibonacci_example` lowering, a deterministic
+  reference interpreter, and a fail-closed first Metal `.metal` interpreter
+  lane for the currently lowered `fibonacci_example` subset
 - the active generated `wide_fibonacci` row can now lower its benchmark target
   into a validated V1 program, but it is still driven at runtime by pre-V1
   benchmark-specialized lowering rather than a stable lowered-program contract
-- the V1 contract now has a correctness-first reference interpreter lane, but
-  the first real generic Metal `.metal` interpreter lane still does not exist,
-  so the generated overlay lane has no device-level semantic baseline inside
-  the new contract
+- the V1 contract now has both a correctness-first reference interpreter and a
+  first Metal `.metal` interpreter lane, but the active generated benchmark
+  row still does not execute through that V1 runtime contract
 - the current acceptance matrix still proves backend viability, but it does not
   yet validate one shared lowered-program contract across generic and generated
   execution modes
@@ -71,9 +70,8 @@ Invariants:
 
 ## Next three deliverables
 
-1. Bring up the first live Metal `.metal` interpreter lane on top of
-   `MetalEvaluationProgramV1` and prove it matches the new reference
-   interpreter without changing proof semantics.
+1. Migrate the active generated `wide_fibonacci` benchmark row onto the
+   validated V1 runtime contract instead of benchmark-specialized lowering.
 2. Define the overlay lookup law keyed by semantic hash and capability profile,
    then migrate the active generated benchmark row onto that same contract
    instead of benchmark-local lowering.

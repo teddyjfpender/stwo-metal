@@ -69,8 +69,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G9 third slice: attach first execution semantics to the V1 lowered-program
-contract`
+`G9 fourth slice: attach first Metal device interpreter lane to the V1
+lowered-program contract`
 
 The active formal basis is:
 
@@ -145,9 +145,23 @@ The fourth G9 slice is now landed in code:
   surface
 - public-surface coverage now exercises the first live execution semantics on
   top of the lowered-program contract
-- the next honest G9 work is to bring up the first generic Metal `.metal`
-  interpreter lane on top of that V1 contract and then migrate the live
-  generated benchmark row onto the same runtime contract
+
+The fifth G9 slice is now landed in code:
+
+- `MetalEvaluationProgramV1` now has a first Metal `.metal` interpreter lane
+  for the currently lowered `fibonacci_example` subset in
+  `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`,
+  `crates/stwo-metal-sys/metal/eval_program_v1.metal`,
+  and `crates/stwo-metal-sys/metal/runtime.m`
+- the first device lane is fail-closed on unsupported nonzero trace offsets
+  and uses the same lowered program contract as the Rust reference
+  interpreter
+- unit tests now pin equality between the device lane and the reference lane
+  for the current lowered `fibonacci_example` row semantics
+- the next honest work is to migrate the active generated benchmark row onto
+  that V1 runtime contract, which opens G10 in practice even though G9 remains
+  in progress until generic and generated execution both consume the same
+  lowered contract
 
 ## Current implementation obligations under G3
 

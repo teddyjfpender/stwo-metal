@@ -3005,6 +3005,116 @@ bool stwo_metal_accumulate_wide_fibonacci_quotients_u32x4(
     }
 }
 
+bool stwo_metal_eval_program_v1_reference_u32x4(
+    void *runtime_ptr,
+    void *trace_values_ptr,
+    void *interaction_offsets_ptr,
+    void *preprocessed_values_ptr,
+    void *base_params_ptr,
+    void *ext_params_ptr,
+    void *random_coeff_powers_ptr,
+    void *base_insts_ptr,
+    void *ext_insts_ptr,
+    void *constraint_roots_ptr,
+    void *dst_ptr,
+    uint32_t row_count,
+    uint32_t n_interactions,
+    uint32_t n_preprocessed_columns,
+    uint32_t n_base_params,
+    uint32_t n_ext_params,
+    uint32_t n_base_insts,
+    uint32_t n_ext_insts,
+    uint32_t n_constraints,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *trace_values = stwo_metal_buffer_box(trace_values_ptr);
+        StwoMetalBufferBox *interaction_offsets = stwo_metal_buffer_box(interaction_offsets_ptr);
+        StwoMetalBufferBox *preprocessed_values = stwo_metal_buffer_box(preprocessed_values_ptr);
+        StwoMetalBufferBox *base_params = stwo_metal_buffer_box(base_params_ptr);
+        StwoMetalBufferBox *ext_params = stwo_metal_buffer_box(ext_params_ptr);
+        StwoMetalBufferBox *random_coeff_powers = stwo_metal_buffer_box(random_coeff_powers_ptr);
+        StwoMetalBufferBox *base_insts = stwo_metal_buffer_box(base_insts_ptr);
+        StwoMetalBufferBox *ext_insts = stwo_metal_buffer_box(ext_insts_ptr);
+        StwoMetalBufferBox *constraint_roots = stwo_metal_buffer_box(constraint_roots_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+
+        BOOL preprocessed_ok =
+            (n_preprocessed_columns == 0u) ||
+            (preprocessed_values.len == (NSUInteger)n_preprocessed_columns * row_count);
+        BOOL base_params_ok =
+            (n_base_params == 0u) ||
+            (base_params.len == (NSUInteger)n_base_params);
+        BOOL ext_params_ok =
+            (n_ext_params == 0u) ||
+            (ext_params.len == (NSUInteger)n_ext_params * 4u);
+
+        if (interaction_offsets.len != (NSUInteger)n_interactions + 1u ||
+            !preprocessed_ok ||
+            !base_params_ok ||
+            !ext_params_ok ||
+            random_coeff_powers.len != (NSUInteger)n_constraints * 4u ||
+            base_insts.len != (NSUInteger)n_base_insts * 4u ||
+            ext_insts.len != (NSUInteger)n_ext_insts * 5u ||
+            constraint_roots.len != (NSUInteger)n_constraints ||
+            dst.len != (NSUInteger)row_count * 4u) {
+            stwo_metal_write_error(error_message, error_message_len, @"MetalEvaluationProgramV1 reference lane expects canonical packed buffers and lengths.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"eval_program_v1_reference_u32x4", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:trace_values.buffer offset:0 atIndex:0];
+        [encoder setBuffer:interaction_offsets.buffer offset:0 atIndex:1];
+        [encoder setBuffer:preprocessed_values.buffer offset:0 atIndex:2];
+        [encoder setBuffer:base_params.buffer offset:0 atIndex:3];
+        [encoder setBuffer:ext_params.buffer offset:0 atIndex:4];
+        [encoder setBuffer:random_coeff_powers.buffer offset:0 atIndex:5];
+        [encoder setBuffer:base_insts.buffer offset:0 atIndex:6];
+        [encoder setBuffer:ext_insts.buffer offset:0 atIndex:7];
+        [encoder setBuffer:constraint_roots.buffer offset:0 atIndex:8];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:9];
+        [encoder setBytes:&row_count length:sizeof(row_count) atIndex:10];
+        [encoder setBytes:&n_base_insts length:sizeof(n_base_insts) atIndex:11];
+        [encoder setBytes:&n_ext_insts length:sizeof(n_ext_insts) atIndex:12];
+        [encoder setBytes:&n_constraints length:sizeof(n_constraints) atIndex:13];
+
+        MTLSize grid_size = MTLSizeMake(row_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_accumulate_partial_numerators_u32x4(
     void *runtime_ptr,
     void *columns_ptr,

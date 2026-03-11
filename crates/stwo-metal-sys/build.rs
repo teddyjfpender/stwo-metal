@@ -7,6 +7,7 @@ const METAL_MODE_VAR: &str = "STWO_METAL_MODE";
 const METAL_SOURCES: &[&str] = &[
     "fields",
     "twiddles",
+    "eval_program_v1",
     "eval_at_point",
     "poly_utils",
     "rfft",
@@ -113,6 +114,7 @@ fn main() {
     println!("cargo:rerun-if-changed=metal/runtime.m");
     println!("cargo:rerun-if-changed=metal/fields.metal");
     println!("cargo:rerun-if-changed=metal/twiddles.metal");
+    println!("cargo:rerun-if-changed=metal/eval_program_v1.metal");
     println!("cargo:rerun-if-changed=metal/eval_at_point.metal");
     println!("cargo:rerun-if-changed=metal/poly_utils.metal");
     println!("cargo:rerun-if-changed=metal/rfft.metal");

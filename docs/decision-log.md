@@ -28,6 +28,52 @@ Superseded by:
 
 ## Entries
 
+### DEC-0156: The first Metal device interpreter for MetalEvaluationProgramV1 must be a fail-closed subset lane over the same lowered contract as the Rust reference interpreter
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+The first `.metal` execution lane for `MetalEvaluationProgramV1` must consume
+the exact same lowered artifact as the Rust reference interpreter and fail
+closed on unsupported V1 features. It may start as a narrower supported subset
+for the currently lowered `fibonacci_example` component, but it must not
+invent a second benchmark-local runtime contract.
+
+Context:
+
+Once the Rust reference interpreter existed, the next architecture risk was
+letting the first device lane widen support by inventing a new runtime ABI or
+implicit benchmark-specific assumptions. The safer path is to attach one real
+Metal execution lane to the same lowered program contract, keep it explicit
+about unsupported features, and then migrate the active generated row onto
+that same contract.
+
+Alternatives rejected:
+
+- keep the first device execution inside benchmark-local lowering instead of
+  the V1 program contract
+- widen the first device interpreter by silently falling back on unsupported
+  V1 features
+- defer all device-lane work until the full generated benchmark migration is
+  ready
+
+Impact:
+
+- `MetalEvaluationProgramV1` now has both a reference interpreter and a first
+  Metal device interpreter lane over the same lowered artifact
+- the next honest work is benchmark migration and overlay law, not another
+  round of interpreter-only schema growth
+- G10 can now start against a real V1 runtime instead of a docs-only target
+
+Superseded by:
+
+- none
+
 ### DEC-0155: The first execution semantics for MetalEvaluationProgramV1 must be a deterministic reference interpreter before any Metal device interpreter widens the runtime
 
 - Date: `2026-03-11`
