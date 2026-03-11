@@ -28,6 +28,45 @@ Target retirement point:
 
 ## Active debt
 
+### TD-0030: The pinned `stark-v` snapshot is still SIMD-shaped and therefore unsupported on the generic lane
+
+- Status: `active`
+- Category: `downstream compatibility gap`
+- Introduced: `2026-03-11`
+- Owner area: `G8 downstream hardening`
+
+Why it exists now:
+
+The current pinned `stark-v` repo exposes the right high-level prove/verify
+surface, but its proving and preprocessing implementation still hardcodes
+`SimdBackend`, its generated component surface still emits
+`ComponentProver<SimdBackend>` and `CircleEvaluation<SimdBackend, ...>`, and
+the workspace depends on its own vendored `external/stwo`. That means the
+current downstream row is not yet a truthful generic `MetalBackend`
+substitution candidate.
+
+Current containment:
+
+- `docs/dn-0005-stark-v-attachment-strategy.md`
+- `scripts/check_stark_v_attachment.sh`
+
+Risk if left in place:
+
+The program could overstate G8 completion or claim downstream generic support
+where the current pinned consumer is still structurally SIMD-specific.
+
+Exit condition:
+
+The pinned downstream row either:
+
+- exposes a genuinely backend-parametric proving surface, or
+- emits a generated artifact that satisfies the `stwo-metal` generated
+  registration contract
+
+Target retirement point:
+
+- `G8`
+
 ### TD-0029: `stark-v` is pinned as a downstream hardening input but is not yet vendored or executed through `stwo-metal`
 
 - Status: `active`

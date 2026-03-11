@@ -30,8 +30,9 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G8 first slice: pin one real stark-v hardening input and validate the same
-  contract shape against it`
+  `G8 second slice: classify the pinned stark-v input against the same
+  generic/generated contract and fail closed on unsupported generic
+  substitution`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -44,6 +45,8 @@ Invariants:
   [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md)
   and
   [`dn-0004-stark-v-hardening-input-and-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0004-stark-v-hardening-input-and-contract.md)
+  and
+  [`dn-0005-stark-v-attachment-strategy.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0005-stark-v-attachment-strategy.md)
 - Current owner area:
   `acceptance integration against the stable planning seam`
 
@@ -105,16 +108,17 @@ Invariants:
 - the next decision is about how much ABI, specialization, and generated build
   inventory belongs in the stable internal artifact registry before lowering
   starts in earnest
-- `stark-v` is now pinned as the first real G8 downstream input, but it is not
-  yet vendored locally and its proving surface is still only contract-checked,
-  not executed through `stwo-metal`
+- `stark-v` is now pinned as the first real G8 downstream input, and the
+  current snapshot is now classified as `generic_lane = unsupported`,
+  `generated_lane = required`, `status = fail_closed`; it is still not
+  vendored locally and not yet executed through `stwo-metal`
 
 ## Next three deliverables
 
-1. Pin one real `stark-v` input surface locally so G8 is grounded in a real
-   downstream workload rather than a placeholder.
-2. Validate that the same generic/generated contract vocabulary applies to that
-   downstream input without widening the public backend API.
+1. Keep one deterministic local checker for the pinned `stark-v` contract and
+   attachment classification.
+2. Decide the first executable `supported` downstream row for `stark-v`
+   without weakening the fail-closed generic-lane policy.
 3. Keep the dual-lane benchmark contract stable while the downstream hardening
    tranche lands.
 

@@ -135,6 +135,8 @@ The next active work is:
 - pin one real `stark-v` hardening input locally
 - validate the current generic/generated contract vocabulary against that
   downstream input
+- classify whether that downstream input is a generic-lane candidate,
+  generated-lane candidate, or explicit fail-closed unsupported row
 - keep one deterministic local checker for the downstream contract shape
 - keep the dual-lane benchmark contract stable while downstream hardening
   proceeds

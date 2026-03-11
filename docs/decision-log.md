@@ -28,6 +28,50 @@ Superseded by:
 
 ## Entries
 
+### DEC-0119: The pinned `stark-v` snapshot is not a generic-lane substitution candidate
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0005-stark-v-attachment-strategy.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0005-stark-v-attachment-strategy.md)
+
+Decision:
+
+The current pinned `stark-v` snapshot should be treated as
+`generic_lane = unsupported`, `generated_lane = required`, and
+`status = fail_closed` until it exposes either a backend-parametric proving
+surface or a generated artifact that satisfies the `stwo-metal` contract.
+
+Context:
+
+After pinning the downstream contract in `DEC-0118`, the next honest question
+was whether `stwo-metal` could claim that `stark-v` was already a generic
+backend-substitution candidate. The answer is no. The downstream proving and
+preprocessing surfaces are typed directly around `SimdBackend`, generated macro
+output returns `ComponentProver<SimdBackend>` and
+`CircleEvaluation<SimdBackend, ...>`, and the repo depends on its own vendored
+`external/stwo`.
+
+Alternatives rejected:
+
+- claim generic-lane compatibility based only on similar public prove/verify
+  function names
+- silently treat generated mapping as an implicit fallback for the generic lane
+- defer the strategy decision and leave G8 attachment status ambiguous
+
+Impact:
+
+- G8 now has one truthful executable hardening row: deterministic contract
+  check plus deterministic fail-closed classification
+- the next supported downstream row must come through generated mapping or a
+  genuinely backend-parametric downstream proving surface
+- `stwo-metal` does not widen its public API for the current downstream shape
+
+Superseded by:
+
+- none
+
 ### DEC-0118: G8 starts by pinning the downstream `stark-v` contract before choosing a substitution strategy
 
 - Date: `2026-03-11`
