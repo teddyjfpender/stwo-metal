@@ -172,6 +172,12 @@ The next active work is:
 - once benchmark and acceptance support-bridge paths both stage from lower
   private contracts, re-evaluate whether `MetalExecutionAuthority` can shrink
   or disappear from some public paths entirely
+- once fixture edges no longer pass `MetalExecutionAuthority` into those
+  support bridges, remove any planning helpers that no longer have live
+  callers instead of preserving dormant transition layers
+- after that dead-surface cleanup, enumerate the remaining direct
+  `MetalExecutionAuthority` consumers and pick the next public or workspace-
+  private contract that can shrink safely
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

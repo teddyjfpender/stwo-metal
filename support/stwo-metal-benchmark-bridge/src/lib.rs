@@ -5,8 +5,8 @@ use stwo::core::pcs::TreeVec;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::{CommitmentSchemeProver, ComponentProver, ComponentProvers};
 use stwo_metal::{
-    MetalBackend, MetalExecutionAuthority, MetalExecutionPlan, MetalWorkloadOwnership,
-    MetalWorkloadStage,
+    MetalBackend, MetalExecutionAuthority, MetalExecutionPlan, MetalWideFibonacciBenchmarkBoundary,
+    MetalWorkloadOwnership, MetalWorkloadStage,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -42,7 +42,7 @@ pub struct WideFibonacciProveValuesStaging {
     pub sample_points: TreeVec<Vec<Vec<stwo::core::circle::CirclePoint<SecureField>>>>,
 }
 
-pub fn wide_fibonacci_prove_values_lane(
+fn wide_fibonacci_prove_values_lane(
     workload_name: &'static str,
     execution_authority: MetalExecutionAuthority,
 ) -> Result<WideFibonacciProveValuesLane, WideFibonacciProveValuesLaneError> {
@@ -75,6 +75,15 @@ pub fn wide_fibonacci_prove_values_lane(
     }
 
     Ok(WideFibonacciProveValuesLane { workload_name })
+}
+
+pub fn registered_wide_fibonacci_prove_values_lane(
+    benchmark_boundary: &MetalWideFibonacciBenchmarkBoundary,
+) -> Result<WideFibonacciProveValuesLane, WideFibonacciProveValuesLaneError> {
+    wide_fibonacci_prove_values_lane(
+        benchmark_boundary.target().workload_name,
+        benchmark_boundary.execution_authority(),
+    )
 }
 
 pub fn stage_wide_fibonacci_prove_values(
@@ -125,7 +134,10 @@ mod tests {
         declare_exemplar_metal_workload_boundary, MetalExecutionIntent, MetalExecutionPlan,
     };
 
-    use super::{wide_fibonacci_prove_values_lane, WideFibonacciProveValuesLaneError};
+    use super::{
+        registered_wide_fibonacci_prove_values_lane, wide_fibonacci_prove_values_lane,
+        WideFibonacciProveValuesLaneError,
+    };
 
     #[test]
     fn wide_fibonacci_workload_boundary_satisfies_prove_values_staging_contract() {
@@ -139,6 +151,19 @@ mod tests {
             boundary.execution_authority(),
         )
         .unwrap();
+
+        assert_eq!(lane.workload_name(), "fibonacci_example");
+    }
+
+    #[test]
+    fn registered_benchmark_boundary_satisfies_prove_values_staging_contract() {
+        let boundary = stwo_metal::declare_wide_fibonacci_benchmark_boundary(
+            MetalExecutionIntent::PreferMetal,
+            stwo_metal::WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+        )
+        .unwrap();
+
+        let lane = registered_wide_fibonacci_prove_values_lane(&boundary).unwrap();
 
         assert_eq!(lane.workload_name(), "fibonacci_example");
     }

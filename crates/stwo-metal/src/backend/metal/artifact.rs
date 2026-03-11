@@ -159,6 +159,7 @@ impl MetalArtifactRegistry {
         Ok(artifact)
     }
 
+    #[cfg(test)]
     pub fn generated_inventory_by_name<'a>(
         &self,
         component_name: &'a str,

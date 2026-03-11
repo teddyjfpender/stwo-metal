@@ -67,7 +67,10 @@ Invariants:
   workload-side live helpers have now moved below that public surface onto the
   private execution seed, and both the benchmark prove-values bridge and the
   upstream acceptance lane now depend on workspace-private validated lane
-  contracts instead of consuming `MetalExecutionAuthority` directly
+  contracts instead of consuming `MetalExecutionAuthority` directly; fixture
+  edges now enter those bridges through boundary-based constructors only, and
+  the dead transitional planning helpers that lost all live callers have been
+  removed instead of left as dormant API
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -88,14 +91,14 @@ Invariants:
 
 ## Next three deliverables
 
-1. Enumerate the remaining direct `MetalExecutionAuthority` consumers and pick
-   the next one that can either move lower or disappear behind an existing
-   private seam.
+1. Enumerate the remaining direct `MetalExecutionAuthority` consumers now that
+   fixture edges no longer carry it, and pick the next public or workspace-
+   private consumer that can either move lower or disappear.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate
    ownership while deciding whether the transitional public execution-law
-   surface can now shrink before G7.
+   surface can now shrink in `stwo-metal` companion exports before G7.
 
 ## Explicitly not doing now
 

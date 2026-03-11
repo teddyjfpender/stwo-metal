@@ -60,7 +60,6 @@ pub(crate) struct RegisteredMetalLoweringInput {
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct RegisteredMetalRuntimePlanInput {
-    pub lowering: RegisteredMetalLoweringInput,
     pub operation: MetalOperationKind,
     pub plan_input: MetalComponentPlanInput<'static>,
 }
@@ -71,14 +70,6 @@ pub(crate) struct RegisteredMetalWorkloadBoundaryInput {
     pub plan: MetalExecutionPlan,
     pub stage_assignments: &'static [MetalWorkloadStageAssignment],
     pub generated_inventory: MetalGeneratedInventory,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) struct RegisteredMetalBenchmarkDeclarationInput {
-    pub workload_boundary: RegisteredMetalWorkloadBoundaryInput,
-    pub lowering: RegisteredMetalLoweringInput,
-    pub benchmark_route: MetalGeneratedRouteKind,
-    pub supported_benchmark_operations: &'static [MetalRegisteredBenchmarkOperation],
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -145,24 +136,10 @@ impl RegisteredMetalComponent {
         operation: MetalOperationKind,
     ) -> RegisteredMetalRuntimePlanInput {
         RegisteredMetalRuntimePlanInput {
-            lowering: self.lowering_input(),
             operation,
             plan_input: self.artifact.as_plan_input(operation),
         }
     }
-}
-
-pub(crate) fn registered_generated_artifact<'a>(
-    component_name: &'a str,
-    route: MetalGeneratedRouteKind,
-) -> Result<MetalComponentArtifact, MetalPlannerError<'a>> {
-    registered_generated_component_in_registry(
-        &STWO_METAL_ARTIFACT_REGISTRY_V1,
-        STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
-        component_name,
-        route,
-    )
-    .map(|registration| registration.artifact)
 }
 
 pub(crate) fn registered_generated_component<'a>(
@@ -235,21 +212,6 @@ pub(crate) fn registered_execution_binding(
         supported_benchmark_operations: declaration_registration
             .artifact
             .supported_benchmark_operations,
-    })
-}
-
-pub(crate) fn registered_benchmark_declaration_input(
-    intent: MetalExecutionIntent,
-    component_name: &'static str,
-    route: MetalGeneratedRouteKind,
-) -> Result<RegisteredMetalBenchmarkDeclarationInput, MetalPlannerError<'static>> {
-    let binding = registered_execution_binding(intent, component_name, route)?;
-
-    Ok(RegisteredMetalBenchmarkDeclarationInput {
-        workload_boundary: binding.workload_boundary,
-        lowering: binding.declaration_lowering,
-        benchmark_route: route,
-        supported_benchmark_operations: binding.supported_benchmark_operations,
     })
 }
 
@@ -412,25 +374,6 @@ pub(crate) fn plan_registered_metal_prove<'a>(
     )
 }
 
-pub(crate) fn plan_registered_metal_component_prove(
-    intent: MetalExecutionIntent,
-    component_name: &'static str,
-) -> Result<RegisteredMetalExecutionPlan, MetalPlannerError<'static>> {
-    let runtime_input = registered_runtime_plan_input(
-        component_name,
-        MetalGeneratedRouteKind::RegisteredProve,
-        MetalOperationKind::Prove,
-    )?;
-    let plan = plan_metal_operation(intent, runtime_input.operation, &[runtime_input.plan_input])
-        .map_err(MetalPlannerError::Unsupported)?;
-
-    Ok(RegisteredMetalExecutionPlan {
-        schema_version: STWO_METAL_ARTIFACT_SCHEMA_VERSION_V1,
-        operation: runtime_input.operation,
-        plan,
-    })
-}
-
 pub(crate) fn registered_generated_component_in_registry<'a>(
     registry: &MetalArtifactRegistry,
     expected_schema_version: u16,
@@ -499,11 +442,9 @@ mod tests {
     use stwo::core::poly::circle::CanonicCoset;
 
     use super::{
-        plan_registered_metal_component_prove, plan_registered_metal_prove,
-        registered_benchmark_declaration_input, registered_execution_binding,
-        registered_execution_seed, registered_generated_artifact, registered_generated_component,
-        registered_runtime_plan_input, registered_workload_boundary_input,
-        RegisteredMetalExecutionSeedError,
+        plan_registered_metal_prove, registered_execution_binding, registered_execution_seed,
+        registered_generated_component, registered_runtime_plan_input,
+        registered_workload_boundary_input, RegisteredMetalExecutionSeedError,
     };
     use crate::backend::metal::artifact::{
         MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation,
@@ -538,19 +479,17 @@ mod tests {
     }
 
     #[test]
-    fn component_registered_planner_supports_declared_components() {
-        let plan = plan_registered_metal_component_prove(
-            MetalExecutionIntent::PreferMetal,
-            "poseidon_example",
-        )
-        .unwrap();
+    fn single_component_registered_planner_supports_declared_components() {
+        let plan =
+            plan_registered_metal_prove(MetalExecutionIntent::PreferMetal, &["poseidon_example"])
+                .unwrap();
 
         assert_eq!(plan.plan, MetalExecutionPlan::MetalFriHybrid);
     }
 
     #[test]
-    fn registered_generated_artifact_fails_closed_for_unsupported_route() {
-        let error = registered_generated_artifact(
+    fn registered_generated_component_fails_closed_for_unsupported_route() {
+        let error = registered_generated_component(
             "poseidon_example",
             MetalGeneratedRouteKind::BenchmarkProveVerify,
         )
@@ -612,6 +551,11 @@ mod tests {
 
     #[test]
     fn registered_runtime_plan_input_consumes_lowering_input() {
+        let registration = registered_generated_component(
+            "fibonacci_example",
+            MetalGeneratedRouteKind::RegisteredProve,
+        )
+        .unwrap();
         let runtime_input = registered_runtime_plan_input(
             "fibonacci_example",
             MetalGeneratedRouteKind::RegisteredProve,
@@ -619,12 +563,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(runtime_input.lowering.component_name, "fibonacci_example");
-        assert_eq!(runtime_input.lowering.abi_family, "wide_fibonacci");
         assert_eq!(runtime_input.operation, MetalOperationKind::Prove);
         assert_eq!(runtime_input.plan_input.component_name, "fibonacci_example");
         assert_eq!(
-            runtime_input.lowering.specialization_keys,
+            registration.lowering_input().specialization_keys,
             &["log_n_instances", "n_columns"]
         );
     }
@@ -655,8 +597,8 @@ mod tests {
     }
 
     #[test]
-    fn registered_benchmark_declaration_input_reuses_workload_boundary_input() {
-        let benchmark_input = registered_benchmark_declaration_input(
+    fn registered_execution_binding_reuses_workload_boundary_input_for_benchmarks() {
+        let binding = registered_execution_binding(
             MetalExecutionIntent::PreferMetal,
             "fibonacci_example",
             MetalGeneratedRouteKind::BenchmarkProveVerify,
@@ -664,30 +606,33 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            benchmark_input
+            binding
                 .workload_boundary
                 .generated_inventory
                 .registration_key,
             "fibonacci_example"
         );
         assert_eq!(
-            benchmark_input
-                .workload_boundary
-                .generated_inventory
-                .abi_family,
+            binding.workload_boundary.generated_inventory.abi_family,
             "wide_fibonacci"
         );
-        assert_eq!(benchmark_input.lowering.component_name, "fibonacci_example");
-        assert_eq!(benchmark_input.lowering.workload_family, "wide_fibonacci");
         assert_eq!(
-            benchmark_input.benchmark_route,
+            binding.declaration_lowering.component_name,
+            "fibonacci_example"
+        );
+        assert_eq!(
+            binding.declaration_lowering.workload_family,
+            "wide_fibonacci"
+        );
+        assert_eq!(
+            binding.declaration_route,
             MetalGeneratedRouteKind::BenchmarkProveVerify
         );
-        assert!(benchmark_input
+        assert!(binding
             .supported_benchmark_operations
             .contains(&MetalRegisteredBenchmarkOperation::ProveVerify));
         assert_eq!(
-            benchmark_input.workload_boundary.plan,
+            binding.workload_boundary.plan,
             MetalExecutionPlan::MetalFriHybrid
         );
     }

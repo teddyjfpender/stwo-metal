@@ -9,9 +9,7 @@ use stwo_metal::{
     declare_exemplar_metal_workload_boundary, metal_runtime_support, MetalBackend,
     MetalExecutionIntent, MetalRuntimeSupport,
 };
-use stwo_metal_upstream_example_acceptance::{
-    acceptance_metal_lane, simd_tree_to_metal, AcceptanceMetalBridgeCatalog,
-};
+use stwo_metal_upstream_example_acceptance::{acceptance_bridge_catalog, simd_tree_to_metal};
 
 #[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -29,9 +27,8 @@ fn vendored_upstream_blake_example_proves_and_verifies_via_metal_backend() {
         "blake_example",
     )
     .expect("blake workload boundary should be declared");
-    let lane = acceptance_metal_lane(boundary.workload_name(), boundary.execution_authority())
+    let catalog = acceptance_bridge_catalog(&boundary)
         .expect("blake acceptance lane should stay Metal-capable");
-    let catalog = AcceptanceMetalBridgeCatalog::new(lane);
     let setup = build_blake_proving_setup::<Blake2sMerkleChannel>(log_size, config);
 
     let twiddles = MetalBackend::precompute_twiddles(

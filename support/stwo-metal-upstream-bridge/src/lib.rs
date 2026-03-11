@@ -59,7 +59,7 @@ impl AcceptanceMetalLane {
     }
 }
 
-pub fn acceptance_metal_lane(
+fn acceptance_metal_lane(
     workload_name: &'static str,
     execution_authority: MetalExecutionAuthority,
 ) -> Result<AcceptanceMetalLane, AcceptanceMetalLaneError> {
@@ -74,7 +74,7 @@ pub fn acceptance_metal_lane(
     }
 }
 
-pub fn acceptance_registered_metal_lane(
+fn acceptance_registered_metal_lane(
     boundary: &MetalWorkloadBoundary,
 ) -> Result<AcceptanceMetalLane, AcceptanceMetalLaneError> {
     acceptance_metal_lane(boundary.workload_name(), boundary.execution_authority())

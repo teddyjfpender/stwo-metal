@@ -28,6 +28,52 @@ Superseded by:
 
 ## Entries
 
+### DEC-0102: Fixture edges should stop carrying `MetalExecutionAuthority` before the public authority surface shrinks
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Once the benchmark and acceptance support bridges both had lower private lane
+contracts, fixture edges should stop constructing those lanes from
+`MetalExecutionAuthority` directly. After that edge cleanup, any transitional
+planning helpers that no longer have live callers should be deleted rather than
+preserved.
+
+Context:
+
+The earlier G5 slices moved the live benchmark prove-values bridge and the live
+acceptance bridge below direct public-authority use, but the fixture edges were
+still constructing those private lanes manually. That kept `MetalExecutionAuthority`
+alive in places where the bridge boundary itself was already sufficient. The
+cleanest next step was to restore boundary-based entry at the edges, then let
+the compiler identify which transitional planning helpers had become dead.
+
+Alternatives rejected:
+
+- keep fixture-edge lane construction on `MetalExecutionAuthority`
+- preserve the now-unused planning helpers behind `allow(dead_code)`
+- try to shrink the public `MetalExecutionAuthority` surface before removing
+  its no-longer-needed edge uses
+
+Impact:
+
+- fixture edges now enter private support bridges through boundary-based
+  constructors only
+- dead transitional planning helpers have been removed, reducing the internal
+  planning seam to what live code still uses
+- the next honest G5 work is to enumerate the remaining direct
+  `MetalExecutionAuthority` consumers and decide whether the public companion
+  surface can shrink safely
+
+Superseded by:
+
+- none
+
 ### DEC-0101: The upstream acceptance lane should be the next support-bridge path lowered below direct authority use
 
 - Date: `2026-03-10`

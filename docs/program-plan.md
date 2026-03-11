@@ -280,6 +280,18 @@ The seventeenth G5 slice is now landed:
   `MetalExecutionAuthority` consumers and deciding whether the transitional
   public surface can now shrink
 
+The eighteenth G5 slice is now landed:
+
+- fixture edges no longer construct bridge lanes from `MetalExecutionAuthority`
+  directly; both the benchmark prove-values path and the upstream acceptance
+  path now enter their private support crates through boundary-based
+  constructors only
+- the dead transitional planning helpers that lost all live callers after that
+  lowering have been removed instead of being kept behind `allow(dead_code)`
+- the next honest G5 work is enumerating the remaining direct
+  `MetalExecutionAuthority` consumers and deciding whether any part of the
+  transitional public compatibility surface can now shrink
+
 ## G2 progress snapshot
 
 G2 is now complete:
