@@ -43,6 +43,7 @@ use stwo_metal::{
     declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
     MetalBackend, MetalBenchmarkOperation, MetalBenchmarkReferencePlatform,
     MetalBenchmarkTarget, MetalExecutionIntent, MetalGeneratedWideFibonacciBenchmarkIteration,
+    MetalGeneratedWideFibonacciBenchmarkRun,
     MetalGeneratedWideFibonacciBenchmarkSample,
 };
 #[cfg(feature = "metal-runtime")]
@@ -521,27 +522,38 @@ fn main() {
             let input_b_host = (0..input_len)
                 .map(|i| BaseField::from_u32_unchecked(i as u32))
                 .collect::<Vec<_>>();
-
-            for _ in 0..warmups {
-                let _ = run_one_sample(
+            let sample_results = if benchmark_lane == "generated-metal" {
+                run_generated_benchmark_samples(
                     &input_a_host,
                     &input_b_host,
                     log_n_instances,
                     n_columns as usize,
-                    &benchmark_lane,
-                );
-            }
+                    warmups,
+                    samples,
+                )
+            } else {
+                for _ in 0..warmups {
+                    let _ = run_one_sample(
+                        &input_a_host,
+                        &input_b_host,
+                        log_n_instances,
+                        n_columns as usize,
+                        &benchmark_lane,
+                    );
+                }
 
-            let mut sample_results = Vec::with_capacity(samples);
-            for _ in 0..samples {
-                sample_results.push(run_one_sample(
-                    &input_a_host,
-                    &input_b_host,
-                    log_n_instances,
-                    n_columns as usize,
-                    &benchmark_lane,
-                ));
-            }
+                let mut sample_results = Vec::with_capacity(samples);
+                for _ in 0..samples {
+                    sample_results.push(run_one_sample(
+                        &input_a_host,
+                        &input_b_host,
+                        log_n_instances,
+                        n_columns as usize,
+                        &benchmark_lane,
+                    ));
+                }
+                sample_results
+            };
 
             let samples_ms = sample_results
                 .iter()
@@ -710,6 +722,33 @@ fn run_one_generated_sample(
 }
 
 #[cfg(feature = "metal-runtime")]
+fn run_generated_benchmark_samples(
+    input_a_host: &[BaseField],
+    input_b_host: &[BaseField],
+    log_n_instances: u32,
+    n_columns: usize,
+    warmups: usize,
+    samples: usize,
+) -> Vec<SampleResult> {
+    let config = PcsConfig::default();
+    let benchmark_boundary = declare_wide_fibonacci_benchmark_boundary(
+        MetalExecutionIntent::PreferMetal,
+        benchmark_target(
+            log_n_instances,
+            n_columns,
+            MetalBenchmarkOperation::ProveVerify,
+        ),
+    )
+    .expect("wide-fibonacci prove benchmark boundary should be declared");
+
+    let run = benchmark_boundary
+        .run_generated_blake2s_benchmark(input_a_host, input_b_host, config, warmups, samples)
+        .expect("wide fibonacci generated benchmark should succeed");
+
+    sample_results_from_generated_run(&run)
+}
+
+#[cfg(feature = "metal-runtime")]
 fn run_one_generic_sample(
     input_a_host: &[BaseField],
     input_b_host: &[BaseField],
@@ -826,6 +865,32 @@ fn prove_breakdown_from_generated_iteration(
     iteration: &MetalGeneratedWideFibonacciBenchmarkIteration,
 ) -> ProveBreakdown {
     prove_breakdown_from_generated_sample(&iteration.sample)
+}
+
+#[cfg(feature = "metal-runtime")]
+fn sample_result_from_generated_iteration(
+    iteration: &MetalGeneratedWideFibonacciBenchmarkIteration,
+) -> SampleResult {
+    let proof_metadata = proof_metadata(&iteration.sample.proof);
+
+    SampleResult {
+        total_elapsed_ms: iteration.prove_elapsed_ms + iteration.verify_elapsed_ms,
+        prove_elapsed_ms: iteration.prove_elapsed_ms,
+        verify_elapsed_ms: iteration.verify_elapsed_ms,
+        prove_breakdown: Some(prove_breakdown_from_generated_iteration(iteration)),
+        proof_metadata,
+        sentinel: sentinel_from_generated_iteration(iteration),
+    }
+}
+
+#[cfg(feature = "metal-runtime")]
+fn sample_results_from_generated_run(
+    run: &MetalGeneratedWideFibonacciBenchmarkRun,
+) -> Vec<SampleResult> {
+    run.timed_iterations()
+        .iter()
+        .map(sample_result_from_generated_iteration)
+        .collect()
 }
 
 #[cfg(feature = "metal-runtime")]

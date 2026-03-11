@@ -40,11 +40,11 @@ Why it exists now:
 `dn-0008-metal-evaluation-program-v1.md` now freezes the intended host/device
 and runtime contract for generic and generated Metal execution, and the live
 generated `wide_fibonacci` benchmark row now lowers, validates, executes,
-verifies, and times that V1 contract through backend-owned generated sample and
-iteration flow. The remaining debt is that the row still does not prove end to
-end through the selected V1 runtime contract; broad prove-path ownership still
-sits partly in the older prove pipeline around the migrated selected-runtime
-gate.
+verifies, and times that V1 contract through backend-owned generated sample,
+iteration, and benchmark-run flow. The remaining debt is that the row still
+does not prove end to end through the selected V1 runtime contract; broad
+prove-path ownership still sits partly in the older prove pipeline around the
+migrated selected-runtime gate.
 
 The runtime contract now includes an explicit capability-profile and
 semantic-hash-based selector with one real generated overlay registration, but

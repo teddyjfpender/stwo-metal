@@ -29,7 +29,8 @@ use stwo_metal::{
     MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice,
     MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver, MetalFriReadyEvaluationInput,
     MetalGeneratedWideFibonacciBenchmarkBreakdown, MetalGeneratedWideFibonacciBenchmarkError,
-    MetalGeneratedWideFibonacciBenchmarkIteration, MetalGeneratedWideFibonacciBenchmarkSample,
+    MetalGeneratedWideFibonacciBenchmarkIteration, MetalGeneratedWideFibonacciBenchmarkRun,
+    MetalGeneratedWideFibonacciBenchmarkSample,
     MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation,
     MetalQuotientEvaluationInput, MetalSecureFieldVec,
     MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciBenchmarkBoundary,
@@ -235,6 +236,7 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
     let _ = std::mem::size_of::<MetalGeneratedWideFibonacciBenchmarkBreakdown>();
     let _ = std::mem::size_of::<MetalGeneratedWideFibonacciBenchmarkError>();
     let _ = std::mem::size_of::<MetalGeneratedWideFibonacciBenchmarkIteration>();
+    let _ = std::mem::size_of::<MetalGeneratedWideFibonacciBenchmarkRun>();
     let _ = std::mem::size_of::<MetalGeneratedWideFibonacciBenchmarkSample>();
     let _ = std::mem::size_of::<MetalBenchmarkTraceShapeError>();
     let _ = std::mem::size_of::<MetalEvaluationProgramBaseInstV1>();

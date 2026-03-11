@@ -149,6 +149,38 @@ pub struct MetalGeneratedWideFibonacciBenchmarkIteration {
     pub verify_elapsed_ms: f64,
 }
 
+#[derive(Clone, Debug)]
+pub struct MetalGeneratedWideFibonacciBenchmarkRun {
+    warmup_iterations: usize,
+    timed_iterations: Vec<MetalGeneratedWideFibonacciBenchmarkIteration>,
+}
+
+impl MetalGeneratedWideFibonacciBenchmarkRun {
+    pub fn warmup_iterations(&self) -> usize {
+        self.warmup_iterations
+    }
+
+    pub fn timed_iterations(&self) -> &[MetalGeneratedWideFibonacciBenchmarkIteration] {
+        &self.timed_iterations
+    }
+
+    pub fn cold_start_iteration(&self) -> Option<&MetalGeneratedWideFibonacciBenchmarkIteration> {
+        self.timed_iterations.first()
+    }
+
+    pub fn steady_state_iterations(&self) -> &[MetalGeneratedWideFibonacciBenchmarkIteration] {
+        if self.timed_iterations.len() >= 2 {
+            &self.timed_iterations[1..]
+        } else {
+            &[]
+        }
+    }
+
+    pub fn final_iteration(&self) -> Option<&MetalGeneratedWideFibonacciBenchmarkIteration> {
+        self.timed_iterations.last()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MetalGeneratedWideFibonacciBenchmarkBreakdown {
     pub setup_and_preprocessed_commit_ms: f64,
@@ -741,6 +773,30 @@ impl MetalWideFibonacciBenchmarkBoundary {
             verify_elapsed_ms,
         })
     }
+
+    pub fn run_generated_blake2s_benchmark(
+        &self,
+        input_a: &[BaseField],
+        input_b: &[BaseField],
+        config: PcsConfig,
+        warmup_iterations: usize,
+        timed_iterations: usize,
+    ) -> Result<MetalGeneratedWideFibonacciBenchmarkRun, MetalGeneratedWideFibonacciBenchmarkError>
+    {
+        for _ in 0..warmup_iterations {
+            let _ = self.run_generated_blake2s_iteration(input_a, input_b, config)?;
+        }
+
+        let mut iterations = Vec::with_capacity(timed_iterations);
+        for _ in 0..timed_iterations {
+            iterations.push(self.run_generated_blake2s_iteration(input_a, input_b, config)?);
+        }
+
+        Ok(MetalGeneratedWideFibonacciBenchmarkRun {
+            warmup_iterations,
+            timed_iterations: iterations,
+        })
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -1234,6 +1290,10 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
 mod tests {
     use stwo::core::fields::m31::BaseField;
     use stwo::core::fields::qm31::SecureField;
+    use stwo::core::pcs::TreeVec;
+    use stwo::core::pcs::PcsConfig;
+    use stwo::core::pcs::quotients::CommitmentSchemeProof;
+    use stwo::core::proof::StarkProof;
 
     use super::{
         declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError,
@@ -1481,5 +1541,64 @@ mod tests {
                 route: MetalGeneratedRouteKind::BenchmarkProveVerify,
             })
         );
+    }
+
+    #[test]
+    fn generated_benchmark_run_exposes_cold_and_steady_state_views() {
+        let iteration = super::MetalGeneratedWideFibonacciBenchmarkIteration {
+            sample: super::MetalGeneratedWideFibonacciBenchmarkSample {
+                proof: StarkProof(CommitmentSchemeProof {
+                    config: PcsConfig::default(),
+                    commitments: TreeVec::default(),
+                    sampled_values: TreeVec::default(),
+                    decommitments: TreeVec::default(),
+                    queried_values: TreeVec::default(),
+                    proof_of_work: 0,
+                    fri_proof: stwo::core::fri::FriProof {
+                        first_layer: stwo::core::fri::FriLayerProof {
+                            fri_witness: Vec::new(),
+                            decommitment: Default::default(),
+                            commitment: Default::default(),
+                        },
+                        inner_layers: Vec::new(),
+                        last_layer_poly: stwo::core::poly::line::LinePoly::new(vec![
+                            SecureField::from_u32_unchecked(0, 0, 0, 0),
+                        ]),
+                    },
+                }),
+                sentinel: super::MetalWideFibonacciSentinel {
+                    first_column_first_value: 1,
+                    second_column_first_value: 2,
+                    last_column_first_value: 3,
+                    last_column_last_value: 4,
+                },
+                breakdown: super::MetalGeneratedWideFibonacciBenchmarkBreakdown {
+                    setup_and_preprocessed_commit_ms: 1.0,
+                    trace_generation_ms: 2.0,
+                    trace_commit_ms: 3.0,
+                    trace_commit_interpolation_ms: 4.0,
+                    trace_commit_extension_ms: 5.0,
+                    trace_commit_merkle_ms: 6.0,
+                    prove_core_ms: 7.0,
+                    prove_core_evaluation_program_v1_ms: 8.0,
+                    prove_core_composition_generation_ms: 9.0,
+                    prove_core_composition_commit_ms: 10.0,
+                    prove_core_prove_values_ms: 11.0,
+                    prove_core_sanity_check_ms: 12.0,
+                },
+            },
+            prove_elapsed_ms: 13.0,
+            verify_elapsed_ms: 14.0,
+        };
+        let run = super::MetalGeneratedWideFibonacciBenchmarkRun {
+            warmup_iterations: 2,
+            timed_iterations: vec![iteration.clone(), iteration],
+        };
+
+        assert_eq!(run.warmup_iterations(), 2);
+        assert_eq!(run.timed_iterations().len(), 2);
+        assert_eq!(run.cold_start_iteration().unwrap().prove_elapsed_ms, 13.0);
+        assert_eq!(run.steady_state_iterations().len(), 1);
+        assert_eq!(run.final_iteration().unwrap().verify_elapsed_ms, 14.0);
     }
 }

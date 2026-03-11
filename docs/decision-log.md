@@ -121,6 +121,51 @@ Superseded by:
 
 - none
 
+### DEC-0166: Generated wide-fibonacci benchmark-run orchestration now belongs to `stwo-metal`
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+Once the generated `wide_fibonacci` row has backend-owned sample execution and
+backend-owned iteration timing, the generated lane's warmup/timed benchmark-run
+orchestration must also move into `MetalWideFibonacciBenchmarkBoundary`. The
+fixture binary may still shape reports, but it must not remain the authority
+for the generated lane's sample loop.
+
+Context:
+
+After `DEC-0164` and `DEC-0165`, the benchmark binary was already reduced to a
+thin caller for generated samples and iterations, but it still owned the
+generated lane's warmup and timed sample loop. That left the fixture as the
+effective benchmark-run authority even though the backend crate already owned
+the inner generated sample and iteration laws.
+
+Alternatives rejected:
+
+- keep the generated lane's warmup/sample loop in `wide_fibonacci_prove.rs`
+- move only more reporting metadata into `stwo-metal` while leaving benchmark
+  run orchestration fixture-local
+- claim broader G10 progress before the generated row enters one backend-owned
+  benchmark-run boundary
+
+Impact:
+
+- the generated `wide_fibonacci` row now enters a backend-owned benchmark-run
+  flow through `MetalWideFibonacciBenchmarkBoundary`
+- `wide_fibonacci_prove.rs` is thinner again and no longer defines the
+  generated lane's warmup/sample loop
+- the next honest G10 work is the remaining selected-runtime prove-path
+  ownership beyond that backend-owned benchmark-run boundary
+
+Superseded by:
+
+- none
+
 ### DEC-0156: The first Metal device interpreter for MetalEvaluationProgramV1 must be a fail-closed subset lane over the same lowered contract as the Rust reference interpreter
 
 - Date: `2026-03-11`
