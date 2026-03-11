@@ -26,6 +26,9 @@ Work is done only when the code, contract, and process state agree.
 - [ ] If the slice introduces or changes generated support, it defines schema
       compatibility, fail-closed behavior, and generated inventory ownership
       explicitly.
+- [ ] If the slice introduces or changes host/device ABI records, it keeps the
+      boundary `#[repr(C)]`, fixed-width, and covered by layout or reflection
+      checks.
 - [ ] If the slice introduces generated output, that output is durable,
       reviewable, and compatible with later hand tuning.
 - [ ] If the slice claims example progress, the example remains an acceptance

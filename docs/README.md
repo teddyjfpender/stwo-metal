@@ -40,6 +40,9 @@ is planned, controlled, reviewed, and changed.
   formal basis for the generic backend, generated fast path, and acceptance-fixture split
 - [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md):
   formal basis for the current private acceptance bridge catalog and its durable ownership rules
+- [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md):
+  formal basis for the next stable lowered-program ABI, validator, and
+  execution-mode contract
 
 ## Rules
 

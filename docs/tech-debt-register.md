@@ -28,6 +28,44 @@ Target retirement point:
 
 ## Active debt
 
+### TD-0035: The active generated benchmark lane still runs on a pre-V1 lowering contract
+
+- Status: `active`
+- Category: `architecture migration gap`
+- Introduced: `2026-03-11`
+- Owner area: `G9 V1 execution contract`
+
+Why it exists now:
+
+`dn-0008-metal-evaluation-program-v1.md` now freezes the intended host/device
+and runtime contract for generic and generated Metal execution, but the live
+generated `wide_fibonacci` benchmark row still uses older benchmark-specialized
+lowering and runtime glue rather than a validated `MetalEvaluationProgramV1`
+artifact.
+
+Current containment:
+
+- `docs/dn-0008-metal-evaluation-program-v1.md`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
+- `crates/stwo-metal/src/backend/metal/benchmark.rs`
+- `crates/stwo-metal/src/backend/metal/execution_plan.rs`
+
+Risk if left in place:
+
+The repository can keep improving the current generated lane while failing to
+converge on one stable ABI and execution contract, leaving future generic and
+downstream work tied to benchmark-local behavior.
+
+Exit condition:
+
+The active generated lane consumes a validated `MetalEvaluationProgramV1`
+artifact, and the generic interpreter lane and generated overlay lane share
+that same contract.
+
+Target retirement point:
+
+- `G10`
+
 ### TD-0033: FRI and workload handoff surfaces still own CPU-shaped evaluation transitions above the native last-layer path
 
 - Status: `active`

@@ -28,6 +28,49 @@ Superseded by:
 
 ## Entries
 
+### DEC-0152: Metal generated and generic execution must converge on MetalEvaluationProgramV1
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+`stwo-metal` must treat `MetalEvaluationProgramV1` as the next stable execution
+contract for both the generic interpreter lane and the generated overlay lane.
+The active generated benchmark path is no longer allowed to define the
+repository's durable ABI or lowering contract on its own.
+
+Context:
+
+The repository has already proven that a benchmark-specialized generated lane
+can be fast, but that path is still too shaped by local lowering and benchmark
+seams to serve as the long-term architecture. The accepted generic/codegen
+split in `DN-0002` needed a concrete Metal-side execution contract, and the V1
+program note now defines that contract.
+
+Alternatives rejected:
+
+- continue letting the active `wide_fibonacci` generated path act as the de
+  facto ABI
+- defer the V1 contract until after more benchmark-specific optimization
+- treat generic execution and generated execution as unrelated runtime
+  contracts
+
+Impact:
+
+- roadmap sequencing now centers on implementing the V1 lowered-program
+  contract in code
+- benchmark-specialized lowering becomes migration debt instead of active
+  architecture
+- `stark-v` hardening remains iced until the V1 contract exists in code
+
+Superseded by:
+
+- none
+
 ### DEC-0151: Generated-lane benchmark artifacts must publish cold-start and warmed steady-state as separate contracts
 
 - Date: `2026-03-11`

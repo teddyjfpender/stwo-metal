@@ -10,6 +10,8 @@ Inputs:
 - the local vendored Stwo snapshot under `vendor/`
 - the accepted architecture contract in
   [`dn-0002-generic-backend-and-codegen-contract.md`](./dn-0002-generic-backend-and-codegen-contract.md)
+- the V1 Metal execution contract in
+  [`dn-0008-metal-evaluation-program-v1.md`](./dn-0008-metal-evaluation-program-v1.md)
 - the engineering requirement that examples act as acceptance workloads rather
   than the implementation strategy
 
@@ -104,6 +106,7 @@ The target contract is:
 The required fields and laws live in:
 
 - [`dn-0002-generic-backend-and-codegen-contract.md`](./dn-0002-generic-backend-and-codegen-contract.md)
+- [`dn-0008-metal-evaluation-program-v1.md`](./dn-0008-metal-evaluation-program-v1.md)
 
 ## Milestone map
 
@@ -123,36 +126,27 @@ The superseded `T0` through `T8` sequence now lives in:
 | G5 | Lower generated artifacts into Metal runtime execution plans | `completed` | generated proving components drive Metal trace, evaluation, lookup, quotient, FRI, and commitment scheduling through the stable planning boundary |
 | G6 | Separate benchmark lanes and optimize against the right target | `completed` | generic and generated benchmark rows are measured separately and optimization work no longer conflates them |
 | G7 | Retire temporary compatibility shims | `completed` | acceptance-local adapters and example-specific wrappers are removed or reduced to non-architectural fixtures |
-| G8 | Harden the contract against `stark-v` workloads | `in_progress` | a real downstream Stwo consumer uses the same generic/generated contract successfully |
+| G8 | Harden the contract against `stark-v` workloads | `iced` | a real downstream Stwo consumer uses the same generic/generated contract successfully |
+| G9 | Freeze and implement `MetalEvaluationProgramV1` | `in_progress` | generated and generic Metal execution both consume the same validated lowered program contract |
+| G10 | Migrate benchmark-specialized rows onto the V1 program contract | `planned` | the active generated benchmark path is driven by the V1 artifact and overlay contract rather than bespoke benchmark-only lowering |
+| G11 | Re-open downstream hardening on the V1 contract | `planned` | downstream consumers such as `stark-v` are evaluated against the V1 program contract instead of a pre-V1 bridge surface |
 
 ## Active work definition
 
-The next active implementation work is not “more example multiplication” and
-not “more benchmark-local seams.”
+The next active implementation work is not “more example multiplication,” not
+“more benchmark-local seams,” and not more `stark-v` hardening while the V1
+program contract is still unimplemented.
 
 The next active work is:
 
-- pin one real `stark-v` hardening input locally
-- validate the current generic/generated contract vocabulary against that
-  downstream input
-- classify whether that downstream input is a generic-lane candidate,
-  generated-lane candidate, or explicit fail-closed unsupported row
-- keep one deterministic local checker for the downstream contract shape
-- keep one deterministic local report artifact for the downstream hardening
-  result
-- freeze the minimum generated subset required for the first supported
-  `stark-v` row
-- keep one deterministic generated-readiness check for the pinned downstream
-  checkout
-- keep one deterministic generated-gap check against the frozen minimum subset
-- keep one vendored local downstream input so G8 does not depend on a temp
-  checkout
-- keep one deterministic vendored fail-closed row so the current downstream
-  status is regression-checkable
-- keep one frozen support-promotion gate so G8 does not claim support without
-  a real downstream signal
-- keep the dual-lane benchmark contract stable while downstream hardening
-  proceeds
+- land the `MetalEvaluationProgramV1` ABI boundary and validator
+- lower one generic proving component into that V1 contract
+- bring up one generic interpreter lane for the V1 contract on Metal
+- define the overlay lookup law keyed by semantic hash and capability profile
+- migrate the active generated benchmark row onto the same program contract
+- keep examples as the acceptance matrix for the generic and generated lanes
+- keep `stark-v` iced until the V1 contract is available to test downstream
+  honestly
 
 ## Native runtime direction
 
@@ -166,6 +160,7 @@ Runtime rules:
 - prefer reusable proving-operation kernels over workload-specific kernels
 - let the execution-plan boundary decide how kernels are composed for a given
   artifact
+- keep host/device ABI records `#[repr(C)]`, fixed-width, and reflection-checked
 
 ## Upstream skill alignment
 
@@ -189,3 +184,5 @@ Minimum required alignment:
 - Unsupported generated components fail closed.
 - Performance work must follow a working correctness path and must identify
   whether it measures the generic lane or generated lane.
+- The long-term generated lane is defined by `MetalEvaluationProgramV1`, not by
+  benchmark-local specialization.

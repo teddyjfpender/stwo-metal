@@ -51,7 +51,10 @@ The superseded `T0` through `T8` sequence now lives in:
 | G5 | Lower generated artifacts into Metal runtime execution plans | `completed` | generated components drive trace, evaluation, lookup, quotient, FRI, and commitment scheduling through backend planning surfaces |
 | G6 | Separate benchmark lanes and optimize the right rows | `completed` | generic and generated benchmark rows are measured independently and optimization work targets the generated lane explicitly |
 | G7 | Retire temporary compatibility shims | `completed` | acceptance-local adapters and example-specific wrappers are removed or clearly reduced to non-architectural fixtures |
-| G8 | Harden the contract against `stark-v` workloads | `in_progress` | `stark-v` uses the same generic/generated backend contract successfully |
+| G8 | Harden the contract against `stark-v` workloads | `iced` | `stark-v` uses the same generic/generated backend contract successfully |
+| G9 | Freeze and implement `MetalEvaluationProgramV1` | `in_progress` | generic and generated Metal execution consume one validated lowered program contract |
+| G10 | Migrate the active generated lane onto the V1 program contract | `planned` | the benchmark-specialized generated row is driven by the V1 program and overlay law rather than bespoke lowering |
+| G11 | Re-open downstream hardening on the V1 contract | `planned` | downstream consumers are evaluated against the V1 program contract instead of the pre-V1 bridge surface |
 
 ## Immediate sequencing rules
 
@@ -62,21 +65,56 @@ The superseded `T0` through `T8` sequence now lives in:
 - keep verifier semantics unchanged across generic and generated lanes
 - benchmark generic and generated rows separately once both exist
 
-## Current focus
+## Active tranche
 
 The active tranche is:
 
-`G8 eighth slice: freeze the support-promotion gate for the vendored stark-v
-row`
+`G9 first slice: freeze the V1 lowered-program contract and align the active
+control surface around it`
 
 The active formal basis is:
 
 - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
-- [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md)
-- [`dn-0004-stark-v-hardening-input-and-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0004-stark-v-hardening-input-and-contract.md)
-- [`dn-0005-stark-v-attachment-strategy.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0005-stark-v-attachment-strategy.md)
-- [`dn-0006-stark-v-generated-minimum-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0006-stark-v-generated-minimum-contract.md)
+- [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+## Current implementation focus
+
+The active implementation focus is now:
+
+- freeze `MetalEvaluationProgramV1` as the stable generated and generic
+  execution contract
+- build the first ABI crate/module and validator for that contract
+- define the generic interpreter lane and generated overlay lane as two
+  execution modes of the same program contract
+- keep examples as the acceptance matrix rather than the producer surface
+- keep `stark-v` iced until the V1 contract exists in code
+
+## Immediate sequencing rules for G9
+
+- do not widen benchmark-specialized seams while the V1 contract is still
+  unimplemented
+- do not let the current generated `wide_fibonacci` path become the de facto
+  ABI
+- do not expose richer host/device structs than the V1 validator and runtime
+  actually require
+- keep the host/device boundary `#[repr(C)]`, fixed-width, and reflection-
+  checked
+- keep the generic interpreter lane correctness-first and fail-closed
+- keep the generated overlay lane semantically identical to the generic
+  interpreter lane
+
+## G9 progress snapshot
+
+The first G9 slice is now landed in docs:
+
+- `MetalEvaluationProgramV1` is frozen as the next stable generated and
+  generic execution contract in
+  [`dn-0008-metal-evaluation-program-v1.md`](./dn-0008-metal-evaluation-program-v1.md)
+- the active roadmap and controller now treat `stark-v` as iced until the V1
+  contract exists in code
+- the next honest G9 work is to land the first host/device ABI module and
+  validator rather than growing more benchmark-specialized lowering
 
 ## Current implementation obligations under G3
 
