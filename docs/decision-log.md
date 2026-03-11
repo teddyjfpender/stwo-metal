@@ -28,6 +28,51 @@ Superseded by:
 
 ## Entries
 
+### DEC-0111: G5 is complete once live runtime staging law is generated-owned and benchmark work can separate lanes instead of shrinking surfaces
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+G5 is complete now that generated registrations and execution seeds own the
+live runtime-planning and staging law for workload, benchmark, and bridge
+paths, and the next milestone should be G6 benchmark-lane separation rather
+than more surface-shrink work.
+
+Context:
+
+The G5 sequence started with checked generated registration inputs and widened
+through runtime-planning inputs, shared execution bindings, execution seeds,
+shared witness staging, quotient/FRI handoff checks, and prove-values staging.
+The later G5 slices then removed transitional execution-authority surfaces and
+lowered benchmark and acceptance lane checks into `stwo-metal` itself. The
+remaining workload-side handoff translation is now unified through one shared
+generated-seed mapping path, so the live runtime law is no longer split across
+bridge-local or boundary-local fragments.
+
+Alternatives rejected:
+
+- keep G5 open for more public-surface cleanup after the generated execution
+  law is already stable
+- start G6 benchmark work without explicitly declaring G5 complete
+- treat benchmark-lane reporting as incidental metadata instead of the next
+  milestone-owned problem
+
+Impact:
+
+- G5 is complete
+- G6 becomes the active milestone
+- the next honest work is explicit benchmark-lane identity and a deterministic
+  wide-fibonacci sweep/report path
+
+Superseded by:
+
+- none
+
 ### DEC-0110: Acceptance-lane Metal-capability law should live in `stwo-metal`, not in the private upstream bridge crate
 
 - Date: `2026-03-11`

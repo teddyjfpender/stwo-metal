@@ -120,8 +120,8 @@ The superseded `T0` through `T8` sequence now lives in:
 | G2 | Build the backend planning and registration surface | `completed` | `stwo-metal` owns a stable internal artifact-registry and execution-plan boundary with explicit schema compatibility checks |
 | G3 | Move acceptance coverage onto the stable generic path | `completed` | example-backed support no longer depends on architecture-local example shims where shared backend boundaries should exist |
 | G4 | Land the generated fast-path registration and ABI inventory | `completed` | generated artifacts can register component identity, ABI, build inventory, and specialization keys through a stable surface |
-| G5 | Lower generated artifacts into Metal runtime execution plans | `in_progress` | generated proving components drive Metal trace, evaluation, lookup, quotient, FRI, and commitment scheduling through the stable planning boundary |
-| G6 | Separate benchmark lanes and optimize against the right target | `planned` | generic and generated benchmark rows are measured separately and optimization work no longer conflates them |
+| G5 | Lower generated artifacts into Metal runtime execution plans | `completed` | generated proving components drive Metal trace, evaluation, lookup, quotient, FRI, and commitment scheduling through the stable planning boundary |
+| G6 | Separate benchmark lanes and optimize against the right target | `in_progress` | generic and generated benchmark rows are measured separately and optimization work no longer conflates them |
 | G7 | Retire temporary compatibility shims | `planned` | acceptance-local adapters and example-specific wrappers are removed or reduced to non-architectural fixtures |
 | G8 | Harden the contract against `stark-v` workloads | `planned` | a real downstream Stwo consumer uses the same generic/generated contract successfully |
 
@@ -132,76 +132,14 @@ not “more benchmark-local seams.”
 
 The next active work is:
 
-- lower one generated registration into a stable planning input for runtime-
-  facing execution-plan work
-- consume that lowering-facing input in one runtime-planning helper before
-  widening lowering further
-- use that canonical runtime-planning input in the first broader lowering-
-  oriented execution helper beyond prove-plan selection
-- keep the benchmark declaration path attached to that same generated seam
-  instead of composing route validation around it separately
-- package the shared generated boundary inputs into one reusable execution-
-  binding helper for later scheduling work
-- derive the first scheduling-oriented execution seed from that reusable
-  binding helper without widening runtime policy prematurely
-- consume that scheduling seed in the first non-declarative execution helper
-  so runtime scheduling starts from one canonical seed
-- widen that same execution seed into the next quotient or evaluation staging
-  helper instead of letting later runtime helpers rebuild route metadata
-- derive the first prove-values staging helper from that same canonical
-  generated seed or binding instead of recomposing PCS staging metadata
-- lift the first prove-values staging helper into a shared PCS-facing lowering
-  boundary instead of leaving it owned by benchmark fixtures
-- re-anchor the shared prove-values staging bridge on the lower generated
-  execution contract instead of the benchmark boundary
-- move that shared prove-values staging bridge below the public workload
-  surface so generated runtime authority remains private and linear
-- replace public workload-boundary dependence with a minimal execution-law
-  surface that carries only plan and stage ownership for live staging helpers
-- consume that reduced execution-law surface in more than one live staging
-  helper before deciding whether it remains public beyond G5
-- lower the remaining workload-side helpers that only need execution law so
-  `MetalWorkloadBoundary` stops being the default live staging authority
-- pick the first live helper that can move below the transitional public
-  authority and onto the next lower private generated contract
-- once one live helper sits below the public authority, decide which
-  support-bridge path moves next without violating the private support-crate
-  boundary
-- once the first support-bridge path is lowered, identify the next remaining
-  direct consumer of `MetalExecutionAuthority` and continue shrinking that set
-- once benchmark and acceptance support-bridge paths both stage from lower
-  private contracts, re-evaluate whether `MetalExecutionAuthority` can shrink
-  or disappear from some public paths entirely
-- once fixture edges no longer pass `MetalExecutionAuthority` into those
-  support bridges, remove any planning helpers that no longer have live
-  callers instead of preserving dormant transition layers
-- after that dead-surface cleanup, enumerate the remaining direct
-  `MetalExecutionAuthority` consumers and pick the next public or workspace-
-  private contract that can shrink safely
-- once that consumer set is smaller, remove any redundant companion-surface
-  export path that duplicates the workload-facing home of execution-law types
-- once private support crates no longer depend on the authority type, make the
-  next G5 decision explicitly about workload and benchmark public law rather
-  than private bridge validation glue
-- once the benchmark boundary no longer exposes a redundant authority
-  pass-through, decide explicitly whether the workload boundary should retain
-  `execution_authority()` or collapse onto its narrower workload-law methods
-- once execution law has collapsed onto workload methods, decide whether the
-  full `stage_assignments()` slice is still required publicly or whether
-  `stage_ownership()` is the stable semantic unit
-- once that public-law cleanup is complete, move G5 back to generated lowering
-  and runtime planning rather than doing more surface-only shrink work
-- when a workload and benchmark boundary still duplicate the same runtime law,
-  move that shared law down onto the generated execution seed before widening
-  outward again
-- when a private support bridge still re-checks benchmark lane law that is
-  already implied by the generated seed, move that validation into
-  `stwo-metal` and keep the bridge as a consumer-only layer
-- when the upstream acceptance bridge still checks workload Metal-capability
-  directly, move that validation into `stwo-metal` so acceptance remains a
-  consumer-only support layer too
-- keep the bridge-law surface non-public and private while generated lowering
-  grows above it
+- declare benchmark lanes explicitly in benchmark output so generic and
+  generated rows cannot be conflated by convention alone
+- add one deterministic sweep/report path for wide-fibonacci over
+  `log_n_instances = 16..23`
+- keep the current generated Metal row and any future generic row in distinct
+  comparison tables and JSON artifacts
+- make optimization work name the lane it is improving before changing the
+  benchmark harness
 - keep examples only as validation and benchmark inputs
 
 ## Native runtime direction

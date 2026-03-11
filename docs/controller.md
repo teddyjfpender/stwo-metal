@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G5 eighteenth slice: identify the remaining direct public-authority
-  consumers and decide whether the transitional surface can now shrink`
+  `G6 first slice: declare benchmark lanes explicitly and land the first
+  wide-fibonacci sweep/report path`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -87,7 +87,8 @@ Invariants:
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
 - benchmark work remains important, but it must now follow the generic and
-  generated contract instead of driving it
+  generated contract instead of driving it; G5 is now complete and the next
+  work is lane-separated measurement under G6
 - superseded milestone history has to stay out of the active control surface so
   the new sequence remains legible
 - the current acceptance rows now all consume registered workload lanes and one
@@ -103,15 +104,12 @@ Invariants:
 
 ## Next three deliverables
 
-1. Keep G5 on generated lowering now that benchmark and acceptance lane checks
-   have both moved into `stwo-metal`, and lower the next remaining
-   workload-side staging or error-mapping rule that still duplicates generated
-   seed law.
-2. Keep the restored pinned-nightly verification path explicit and narrow while
-   G5 continues lowering generated registrations.
-3. Preserve the non-public bridge-law boundary and private support-crate
-   ownership while lowering the remaining workload-side staging checks off
-   boundary-owned helpers before G7.
+1. Open G6 with explicit benchmark-lane identity in machine-readable benchmark
+   output so generic and generated rows cannot be conflated.
+2. Land one deterministic wide-fibonacci sweep/report path over
+   `log_n_instances = 16..23` that can emit the first Metal comparison table.
+3. Keep the restored pinned-nightly verification path explicit and narrow while
+   benchmark-lane separation work lands before G7.
 
 ## Explicitly not doing now
 

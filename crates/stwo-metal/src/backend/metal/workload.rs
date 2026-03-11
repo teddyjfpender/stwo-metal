@@ -40,11 +40,21 @@ fn assert_hybrid_fri_execution_seed(
     );
 }
 
-fn map_wide_fibonacci_witness_shape_error(
+fn map_execution_seed_handoff_error(
     workload_name: &'static str,
     error: super::execution_plan::RegisteredMetalExecutionSeedError,
 ) -> MetalWorkloadHandoffError<'static> {
     match error {
+        super::execution_plan::RegisteredMetalExecutionSeedError::PlanNotMetalCapable {
+            plan,
+            ..
+        } => MetalWorkloadHandoffError::PlanNotMetalCapable {
+            workload_name,
+            plan,
+        },
+        super::execution_plan::RegisteredMetalExecutionSeedError::NonCanonicDomain { .. } => {
+            MetalWorkloadHandoffError::NonCanonicDomain { workload_name }
+        }
         super::execution_plan::RegisteredMetalExecutionSeedError::UnsupportedCpuOwnership {
             stage,
             ..
@@ -78,43 +88,11 @@ fn map_wide_fibonacci_witness_shape_error(
             workload_name,
             n_columns,
         },
-        other => unreachable!(
-            "wide-fibonacci witness staging should only delegate to witness-shape seed checks, got {other:?}"
-        ),
+        other => unreachable!("workload staging should only delegate to generated execution-seed handoff checks, got {other:?}"),
     }
 }
 
 impl MetalWorkloadBoundary {
-    fn map_execution_seed_error(
-        &self,
-        error: super::execution_plan::RegisteredMetalExecutionSeedError,
-    ) -> MetalWorkloadHandoffError<'static> {
-        match error {
-            super::execution_plan::RegisteredMetalExecutionSeedError::PlanNotMetalCapable {
-                plan,
-                ..
-            } => MetalWorkloadHandoffError::PlanNotMetalCapable {
-                workload_name: self.workload_name,
-                plan,
-            },
-            super::execution_plan::RegisteredMetalExecutionSeedError::UnsupportedCpuOwnership {
-                stage,
-                ..
-            } => MetalWorkloadHandoffError::UnsupportedCpuOwnership {
-                workload_name: self.workload_name,
-                stage,
-            },
-            super::execution_plan::RegisteredMetalExecutionSeedError::NonCanonicDomain { .. } => {
-                MetalWorkloadHandoffError::NonCanonicDomain {
-                    workload_name: self.workload_name,
-                }
-            }
-            other => unreachable!(
-                "workload staging should only delegate to evaluation-handoff seed checks, got {other:?}"
-            ),
-        }
-    }
-
     pub fn workload_name(&self) -> &'static str {
         self.workload_name
     }
@@ -151,7 +129,7 @@ impl MetalWorkloadBoundary {
     ) -> Result<MetalFriReadyEvaluationInput, MetalWorkloadHandoffError<'static>> {
         self.execution_seed
             .allow_cpu_fri_ready_evaluation(evaluation.domain)
-            .map_err(|error| self.map_execution_seed_error(error))?;
+            .map_err(|error| map_execution_seed_handoff_error(self.workload_name, error))?;
 
         Ok(MetalFriReadyEvaluationInput {
             workload_name: self.workload_name,
@@ -166,7 +144,7 @@ impl MetalWorkloadBoundary {
     ) -> Result<MetalCpuQuotientEvaluationInput, MetalWorkloadHandoffError<'static>> {
         self.execution_seed
             .allow_cpu_quotient_evaluation(quotient_evaluation.domain)
-            .map_err(|error| self.map_execution_seed_error(error))?;
+            .map_err(|error| map_execution_seed_handoff_error(self.workload_name, error))?;
 
         Ok(MetalCpuQuotientEvaluationInput {
             workload_name: self.workload_name,
@@ -183,7 +161,7 @@ impl MetalWorkloadBoundary {
         let log_n_instances = self
             .execution_seed
             .validate_wide_fibonacci_witness_shape(input_a.len(), input_b.len(), n_columns)
-            .map_err(|error| map_wide_fibonacci_witness_shape_error(self.workload_name, error))?;
+            .map_err(|error| map_execution_seed_handoff_error(self.workload_name, error))?;
 
         Ok(MetalCpuWideFibonacciWitnessInput {
             workload_name: self.workload_name,
@@ -578,6 +556,29 @@ mod tests {
             MetalWorkloadHandoffError::PlanNotMetalCapable {
                 workload_name: "fibonacci_example",
                 plan: MetalExecutionPlan::CpuOnly,
+            }
+        );
+    }
+
+    #[test]
+    fn witness_handoff_rejects_invalid_column_count_through_shared_seed_mapping() {
+        let boundary = declare_exemplar_metal_workload_boundary(
+            MetalExecutionIntent::PreferMetal,
+            "fibonacci_example",
+        )
+        .unwrap();
+        let input_a = vec![BaseField::from_u32_unchecked(1); 1 << 3];
+        let input_b = vec![BaseField::from_u32_unchecked(2); 1 << 3];
+
+        let error = boundary
+            .ingest_cpu_wide_fibonacci_witness(&input_a, &input_b, 1)
+            .unwrap_err();
+
+        assert_eq!(
+            error,
+            MetalWorkloadHandoffError::InvalidWitnessColumnCount {
+                workload_name: "fibonacci_example",
+                n_columns: 1,
             }
         );
     }

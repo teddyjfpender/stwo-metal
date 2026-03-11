@@ -48,8 +48,8 @@ The superseded `T0` through `T8` sequence now lives in:
 | G2 | Build the backend planning and registration surface | `completed` | `stwo-metal` has a stable internal artifact-registry and execution-plan boundary with deterministic schema checks |
 | G3 | Move acceptance coverage onto the stable generic path | `completed` | acceptance coverage no longer depends on architecture-local example shims where shared backend boundaries should exist |
 | G4 | Land generated fast-path registration and ABI inventory | `completed` | generated artifacts register component identity, ABI, build inventory, and specialization keys through a stable surface |
-| G5 | Lower generated artifacts into Metal runtime execution plans | `in_progress` | generated components drive trace, evaluation, lookup, quotient, FRI, and commitment scheduling through backend planning surfaces |
-| G6 | Separate benchmark lanes and optimize the right rows | `planned` | generic and generated benchmark rows are measured independently and optimization work targets the generated lane explicitly |
+| G5 | Lower generated artifacts into Metal runtime execution plans | `completed` | generated components drive trace, evaluation, lookup, quotient, FRI, and commitment scheduling through backend planning surfaces |
+| G6 | Separate benchmark lanes and optimize the right rows | `in_progress` | generic and generated benchmark rows are measured independently and optimization work targets the generated lane explicitly |
 | G7 | Retire temporary compatibility shims | `planned` | acceptance-local adapters and example-specific wrappers are removed or clearly reduced to non-architectural fixtures |
 | G8 | Harden the contract against `stark-v` workloads | `planned` | `stark-v` uses the same generic/generated backend contract successfully |
 
@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G5 eighteenth slice: identify the remaining direct public-authority consumers
-and decide whether the transitional surface can now shrink`
+`G6 first slice: declare benchmark lanes explicitly and land the first
+wide-fibonacci sweep/report path`
 
 The active formal basis is:
 
@@ -380,6 +380,28 @@ The twenty-sixth G5 slice is now landed:
 - the next honest G5 work is to lower the next workload-side staging or
   error-mapping rule that still duplicates generated seed law above the
   boundary surface
+
+The twenty-seventh G5 slice is now landed:
+
+- the remaining workload-side handoff translation now runs through one shared
+  generated-seed-to-boundary mapper instead of separate witness and
+  evaluation-specific translation helpers
+- workload FRI-ready, quotient-evaluation, and wide-fibonacci witness handoffs
+  now all delegate their seed-law mapping through the same boundary path
+- G5 is now complete: generated proving components drive runtime planning and
+  live staging through the stable planning boundary instead of through local
+  bridge-owned or boundary-duplicated law
+
+## G6 progress snapshot
+
+The first G6 slice is now active:
+
+- benchmark results need an explicit lane identity instead of relying on
+  `classification` and `dependency_row` alone
+- wide-fibonacci needs one deterministic sweep/report path over
+  `log_n_instances = 16..23`
+- the next honest G6 work is to land that lane metadata and the first
+  wide-fibonacci comparison-table generator
 
 ## G2 progress snapshot
 
