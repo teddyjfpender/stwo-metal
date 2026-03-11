@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G6 third slice: keep the generic lane bounded and add one dual-lane reporting
-surface that makes the optimization target explicit`
+`G6 fourth slice: optimize the generated lane against the dual-lane report
+while keeping the generic lane bounded as a correctness-and-coverage row`
 
 The active formal basis is:
 
@@ -284,11 +284,20 @@ The second G6 slice is now landed and measured:
   than the generated lane, so the generic sweep is now intentionally bounded
   while G6 keeps the dual-lane comparison honest and executable
 
+The third G6 slice is now landed:
+
+- one dual-lane report now consumes the generated full-range table and the
+  bounded generic table together without conflating them
+- the optimization target is now explicit in the report itself: `generated-metal`
+- G6 can now treat the generic lane as a correctness-and-coverage benchmark row
+  while continuing to optimize the generated lane against the current scaling
+  deficit from `log_size = 19` onward
+
 The next honest G6 work is:
 
-- add one dual-lane reporting surface that records the generated full-range and
-  bounded generic rows together
 - keep optimization work explicitly pointed at the generated lane
+- use the dual-lane report to drive the next high-log generated-lane
+  optimization tranche
 - treat the generic lane as a correctness-and-coverage benchmark row rather
   than the current optimization target
 

@@ -141,7 +141,7 @@ The next active work is:
   lane
 - keep generated and generic rows in distinct comparison tables and JSON
   artifacts
-- add one dual-lane report surface that records both tables together so the
+- keep one dual-lane report surface that records both tables together so the
   optimization target stays explicit
 - make optimization work name the lane it is improving before changing the
   benchmark harness

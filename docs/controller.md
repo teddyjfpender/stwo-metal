@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G6 third slice: keep the generic lane bounded and add one dual-lane
-  reporting surface that makes the optimization target explicit`
+  `G6 fourth slice: optimize the generated lane against the dual-lane report
+  while keeping the generic lane bounded as a correctness-and-coverage row`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -89,8 +89,9 @@ Invariants:
 - benchmark work remains important, but it must now follow the generic and
   generated contract instead of driving it; G5 is now complete, the first
   generated-metal sweep and comparison table are landed, the first
-  `generic-metal` row is landed at `log_size = 16`, and the next work is one
-  dual-lane reporting surface plus generated-lane optimization under G6
+  `generic-metal` row is landed at `log_size = 16`, the first dual-lane report
+  now exists from live artifacts, and the next work is generated-lane
+  optimization under G6
 - superseded milestone history has to stay out of the active control surface so
   the new sequence remains legible
 - the current acceptance rows now all consume registered workload lanes and one
@@ -106,12 +107,11 @@ Invariants:
 
 ## Next three deliverables
 
-1. Add one dual-lane report surface that records the generated full-range table
-   and the bounded generic table together without conflating them.
+1. Use the dual-lane report to pick the next generated-lane optimization target
+   at `log_size = 19..23`, where the current scaling deficit remains explicit.
 2. Keep the generic lane bounded to the executable range while its cost stays
    far above the generated row.
-3. Use the lane-separated numbers to open the next generated-lane optimization
-   tranche before G7.
+3. Preserve the dual-lane report surface as the measurement contract before G7.
 
 ## Explicitly not doing now
 

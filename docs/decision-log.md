@@ -28,6 +28,48 @@ Superseded by:
 
 ## Entries
 
+### DEC-0115: Once both lanes exist, G6 optimization should target the generated lane and keep the generic lane bounded
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+After landing one dual-lane wide-fibonacci report, the active G6 optimization
+target should be the `generated-metal` lane, while the `generic-metal` lane
+remains a bounded correctness-and-coverage benchmark row.
+
+Context:
+
+The first dual-lane report now shows both benchmark regimes from live
+artifacts. The generated lane supports the full `16..23` sweep and is within
+range of SIMD at the low and mid logs, while the first generic row at
+`log_size = 16` is still around `63.6 s`. That makes the generated lane the
+only sensible near-term optimization target, but it does not remove the value
+of the generic lane as a separate, explicit coverage row.
+
+Alternatives rejected:
+
+- keep optimizing both lanes together even though their current envelopes are
+  radically different
+- drop the generic lane entirely once it is shown to be much slower
+- continue treating G6 as a reporting-only milestone after the dual-lane
+  report already exists
+
+Impact:
+
+- G6 optimization is now explicitly generated-lane work
+- the generic lane remains in the benchmark surface, but bounded
+- the next honest work is high-log generated-lane optimization against the
+  dual-lane report
+
+Superseded by:
+
+- none
+
 ### DEC-0114: G6 keeps the generic benchmark lane bounded until a full-range sweep is executable
 
 - Date: `2026-03-11`
