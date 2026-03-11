@@ -580,7 +580,7 @@ mod tests {
 
         assert_eq!(input.workload_name(), "fibonacci_example");
         assert_eq!(input.domain(), domain);
-        assert_eq!(input.quotient_evaluation().values.to_vec(), values);
+        assert_eq!(input.column().to_vec(), values);
     }
 
     #[test]

@@ -139,8 +139,8 @@ program contract is still unimplemented.
 
 The next active work is:
 
-- land the `MetalEvaluationProgramV1` ABI boundary and validator
-- lower one generic proving component into that V1 contract
+- lower one generic proving component into the `MetalEvaluationProgramV1`
+  contract
 - bring up one generic interpreter lane for the V1 contract on Metal
 - define the overlay lookup law keyed by semantic hash and capability profile
 - migrate the active generated benchmark row onto the same program contract

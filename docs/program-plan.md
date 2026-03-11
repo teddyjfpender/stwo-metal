@@ -113,8 +113,17 @@ The first G9 slice is now landed in docs:
   [`dn-0008-metal-evaluation-program-v1.md`](./dn-0008-metal-evaluation-program-v1.md)
 - the active roadmap and controller now treat `stark-v` as iced until the V1
   contract exists in code
-- the next honest G9 work is to land the first host/device ABI module and
-  validator rather than growing more benchmark-specialized lowering
+
+The second G9 slice is now landed in code:
+
+- one minimal `MetalEvaluationProgramV1` ABI module now exists in
+  `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
+- the first fixed-width `#[repr(C)]` host/device records, semantic hasher, and
+  fail-closed validator error surface are implemented and exported through the
+  public Metal companion surface
+- deterministic layout and validation-law tests now pin that contract in code
+- the next honest G9 work is to attach one real generated component lowering to
+  that V1 contract and bring up the first generic interpreter lane over it
 
 ## Current implementation obligations under G3
 

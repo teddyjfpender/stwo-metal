@@ -7,6 +7,7 @@ mod capability;
 mod column;
 mod commitment_slice;
 mod execution_plan;
+mod eval_program_v1;
 mod first_layer;
 mod fri;
 mod generated_policy;
@@ -40,6 +41,18 @@ pub use capability::{
     STWO_METAL_BACKEND_SURFACES_V1,
 };
 pub use commitment_slice::MetalFriCommitmentSlice;
+pub use eval_program_v1::{
+    metal_evaluation_program_semantic_hash_v1, validate_metal_evaluation_program_v1,
+    MetalEvaluationProgramBudgetV1, MetalEvaluationProgramHeaderV1,
+    MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
+    MetalEvaluationProgramV1, MetalEvaluationProgramValidationError,
+    STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1, STWO_METAL_EVAL_PROGRAM_ABI_MINOR_V1,
+    STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1, STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1,
+    STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
+    STWO_METAL_EVAL_PROGRAM_FLAG_DEBUG_PRESENT_V1,
+    STWO_METAL_EVAL_PROGRAM_FLAG_PREFINALIZED_LOGUP_V1, STWO_METAL_EVAL_PROGRAM_MAGIC_V1,
+    STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1,
+};
 pub use first_layer::MetalFriFirstLayer;
 pub use fri::{fold_circle_into_line_first_layer, fold_line};
 pub use handoff::{

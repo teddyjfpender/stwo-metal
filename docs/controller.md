@@ -46,9 +46,9 @@ Invariants:
 
 ## Current blockers
 
-- the repository still lacks an implemented `MetalEvaluationProgramV1` ABI
-  crate/module and validator, so the frozen V1 contract exists in docs but not
-  yet in the runtime surface
+- the repository now has a minimal `MetalEvaluationProgramV1` ABI module and
+  validator, but no live generated or generic proving row consumes that
+  contract yet
 - the active generated `wide_fibonacci` row is still driven by pre-V1
   benchmark-specialized lowering rather than a stable lowered-program contract
 - the generic interpreter lane for the V1 program does not exist yet, so the
@@ -68,15 +68,15 @@ Invariants:
 
 ## Next three deliverables
 
-1. Land the first `MetalEvaluationProgramV1` ABI surface in code: header,
-   section descriptors, fixed-width sections, semantic hash, and a validator
-   error surface.
-2. Lower one existing generated component path onto `MetalEvaluationProgramV1`
+1. Lower one existing generated component path onto `MetalEvaluationProgramV1`
    and prove it can drive a generic interpreter lane on Metal without changing
    proof semantics.
-3. Define the overlay lookup law keyed by semantic hash and capability profile,
+2. Define the overlay lookup law keyed by semantic hash and capability profile,
    then migrate the active generated benchmark row onto that same contract
    instead of benchmark-local lowering.
+3. Add layout/reflection verification for the V1 host/device boundary records
+   once the first live Metal runtime consumer exists, so the ABI surface is
+   checked both statically and against compiled Metal metadata.
 
 ## Explicitly not doing now
 

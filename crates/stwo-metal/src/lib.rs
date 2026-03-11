@@ -44,6 +44,22 @@ pub mod benchmark {
 }
 
 #[cfg(feature = "prover")]
+pub mod program {
+    pub use crate::backend::metal::{
+        metal_evaluation_program_semantic_hash_v1, validate_metal_evaluation_program_v1,
+        MetalEvaluationProgramBudgetV1, MetalEvaluationProgramHeaderV1,
+        MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
+        MetalEvaluationProgramV1, MetalEvaluationProgramValidationError,
+        STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1, STWO_METAL_EVAL_PROGRAM_ABI_MINOR_V1,
+        STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1, STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1,
+        STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
+        STWO_METAL_EVAL_PROGRAM_FLAG_DEBUG_PRESENT_V1,
+        STWO_METAL_EVAL_PROGRAM_FLAG_PREFINALIZED_LOGUP_V1, STWO_METAL_EVAL_PROGRAM_MAGIC_V1,
+        STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1,
+    };
+}
+
+#[cfg(feature = "prover")]
 pub mod planner {
     pub use crate::backend::cuda::{
         plan_exemplar_prove_by_name, CudaComponentCapability, CudaExecutionIntent,
@@ -119,6 +135,19 @@ pub use planner::{
     MetalExecutionIntent, MetalExecutionPlan, MetalOperationKind, MetalPlannerError,
     MetalSupportTier, UnknownCudaComponent, UnknownMetalComponent, UnsupportedCudaPlan,
     UnsupportedGeneratedMetalRoute, UnsupportedMetalPlan, STWO_METAL_PLANNER_COMPONENTS_V1,
+};
+#[cfg(feature = "prover")]
+pub use program::{
+    metal_evaluation_program_semantic_hash_v1, validate_metal_evaluation_program_v1,
+    MetalEvaluationProgramBudgetV1, MetalEvaluationProgramHeaderV1,
+    MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
+    MetalEvaluationProgramV1, MetalEvaluationProgramValidationError,
+    STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1, STWO_METAL_EVAL_PROGRAM_ABI_MINOR_V1,
+    STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1, STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1,
+    STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
+    STWO_METAL_EVAL_PROGRAM_FLAG_DEBUG_PRESENT_V1,
+    STWO_METAL_EVAL_PROGRAM_FLAG_PREFINALIZED_LOGUP_V1, STWO_METAL_EVAL_PROGRAM_MAGIC_V1,
+    STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1,
 };
 #[cfg(feature = "prover")]
 pub use quotient::{

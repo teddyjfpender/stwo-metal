@@ -11,16 +11,22 @@ use stwo_metal::{
     CudaExecutionPlan, MetalBackend, MetalBaseFieldColumnBatch, MetalBaseFieldVec,
     MetalBenchmarkInputError, MetalBenchmarkTarget, MetalCpuQuotientEvaluationInput,
     MetalCpuWideFibonacciWitnessInput, MetalExecutionIntent, MetalExecutionPlan,
-    MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice,
-    MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver, MetalFriReadyEvaluationInput,
-    MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation, MetalQuotientEvaluationInput,
-    MetalSecureFieldVec, MetalWideFibonacciBatchQuotientRequest,
+    MetalEvaluationProgramBudgetV1, MetalEvaluationProgramHeaderV1,
+    MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
+    MetalEvaluationProgramValidationError, MetalFriBlake2sSubpath, MetalFriFirstLayer,
+    MetalFriInnerLayerRow, MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice,
+    MetalFriProver, MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment,
+    MetalLineEvaluation, MetalQuotientEvaluationInput, MetalSecureFieldVec,
+    MetalWideFibonacciBatchQuotientRequest,
     MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientError,
     MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients, MetalWideFibonacciTrace,
     MetalWideFibonacciTraceError, MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs,
-    MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
-    OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
-    STWO_CUDA_BACKEND_SURFACES_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+    MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership,
+    MetalWorkloadStage, OwnedConstraintEvalAbiV1, SecureFieldVec,
+    StwoCudaWideFibonacciEvalAbiV1, STWO_CUDA_BACKEND_SURFACES_V1,
+    STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1, STWO_METAL_EVAL_PROGRAM_MAGIC_V1,
+    STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+    validate_metal_evaluation_program_v1,
 };
 
 #[test]
@@ -142,4 +148,68 @@ fn companion_surface_exports_constraint_eval_abi_values() {
     let abi = OwnedConstraintEvalAbiV1::WideFibonacci(StwoCudaWideFibonacciEvalAbiV1::new(7, 8));
 
     assert_eq!(abi.as_ptr().is_null(), false);
+}
+
+#[test]
+fn companion_surface_exports_metal_evaluation_program_v1_api() {
+    let header = MetalEvaluationProgramHeaderV1::new(
+        5,
+        7,
+        1 << 2,
+        1,
+        2,
+        3,
+        4,
+        8,
+        4,
+    );
+    let sections = [
+        MetalEvaluationProgramSectionDescV1::new(
+            MetalEvaluationProgramSectionKindV1::BaseConsts,
+            4,
+            0,
+            1,
+        ),
+        MetalEvaluationProgramSectionDescV1::new(
+            MetalEvaluationProgramSectionKindV1::ExtConsts,
+            16,
+            4,
+            1,
+        ),
+        MetalEvaluationProgramSectionDescV1::new(
+            MetalEvaluationProgramSectionKindV1::BaseInsts,
+            16,
+            20,
+            1,
+        ),
+        MetalEvaluationProgramSectionDescV1::new(
+            MetalEvaluationProgramSectionKindV1::ExtInsts,
+            20,
+            36,
+            1,
+        ),
+        MetalEvaluationProgramSectionDescV1::new(
+            MetalEvaluationProgramSectionKindV1::ConstraintRoots,
+            4,
+            56,
+            1,
+        ),
+    ];
+
+    assert_eq!(header.magic, STWO_METAL_EVAL_PROGRAM_MAGIC_V1);
+    assert_eq!(header.abi_major, STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1);
+    assert_eq!(
+        header.secure_ext_degree,
+        STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1
+    );
+    validate_metal_evaluation_program_v1(
+        header,
+        &sections,
+        60,
+        MetalEvaluationProgramBudgetV1::new(16, 8),
+    )
+    .unwrap();
+    let _ = std::mem::size_of::<MetalEvaluationProgramHeaderV1>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramSectionDescV1>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramValidationError>();
 }

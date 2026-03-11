@@ -28,6 +28,51 @@ Superseded by:
 
 ## Entries
 
+### DEC-0153: The first MetalEvaluationProgramV1 code slice must be a fixed-width fail-closed ABI and validator, not a speculative runtime
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+The first in-code implementation slice for `MetalEvaluationProgramV1` must be
+limited to the host/device ABI boundary, deterministic semantic hashing, and a
+fail-closed validator error surface. It must not guess at a full runtime
+interpreter or overlay implementation before the boundary records and
+validation laws are pinned in code.
+
+Context:
+
+`DN-0008` freezes a much larger V1 execution contract, but implementing the
+entire runtime at once would mix boundary design with execution-policy choices.
+The safer first step is to pin the data contract and rejection behavior
+independently so later interpreter and overlay work can build on one explicit
+surface.
+
+Alternatives rejected:
+
+- implement the generic interpreter before the ABI and validator exist as
+  standalone checked code
+- treat the current generated benchmark path as the de facto V1 runtime and
+  retrofit the ABI later
+- expose richer host/device records before the first validator defines what is
+  actually accepted
+
+Impact:
+
+- `stwo-metal` now has one minimal V1 ABI module and validator as the stable
+  starting point for G9
+- later G9 work must attach lowering and runtime execution to that checked
+  surface instead of redefining the ABI per workload
+- layout and validation-law tests are now part of the V1 contract
+
+Superseded by:
+
+- none
+
 ### DEC-0152: Metal generated and generic execution must converge on MetalEvaluationProgramV1
 
 - Date: `2026-03-11`
