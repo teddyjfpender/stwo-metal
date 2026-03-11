@@ -314,6 +314,18 @@ The twentieth G5 slice is now landed:
 - the next honest G5 work is deciding whether one of those remaining public
   consumers can shrink without lying about the current workload boundary law
 
+The twenty-first G5 slice is now landed:
+
+- `MetalWideFibonacciBenchmarkBoundary` no longer exposes its own redundant
+  `execution_authority()` pass-through; benchmark callers now go through the
+  workload boundary if they truly need that transitional type
+- that leaves `MetalWorkloadBoundary` as the only live public API owner of
+  `execution_authority()`, apart from tests that still pin the current
+  workload-law contract
+- the next honest G5 work is deciding whether `MetalWorkloadBoundary` can
+  retire `execution_authority()` entirely in favor of its narrower workload-law
+  methods without obscuring stage ownership semantics
+
 ## G2 progress snapshot
 
 G2 is now complete:

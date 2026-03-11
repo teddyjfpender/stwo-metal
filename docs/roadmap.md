@@ -183,6 +183,9 @@ The next active work is:
 - once private support crates no longer depend on the authority type, make the
   next G5 decision explicitly about workload and benchmark public law rather
   than private bridge validation glue
+- once the benchmark boundary no longer exposes a redundant authority
+  pass-through, decide explicitly whether the workload boundary should retain
+  `execution_authority()` or collapse onto its narrower workload-law methods
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

@@ -28,6 +28,50 @@ Superseded by:
 
 ## Entries
 
+### DEC-0105: The benchmark boundary should not duplicate `MetalExecutionAuthority` once workload law is already available beneath it
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+`MetalWideFibonacciBenchmarkBoundary` should not expose its own
+`execution_authority()` pass-through once it already exposes the underlying
+`MetalWorkloadBoundary` and that workload boundary owns the execution-law
+surface.
+
+Context:
+
+After the support-crate cleanup, the remaining direct authority consumers were
+public workload and benchmark surfaces. The benchmark boundary carried no extra
+execution-law information; it only forwarded to `workload_boundary()`. Keeping
+that second path would preserve duplicate public surface area with no semantic
+benefit.
+
+Alternatives rejected:
+
+- keep the benchmark-boundary pass-through indefinitely
+- remove workload-boundary access and force all benchmark users onto a special
+  benchmark-specific authority shape
+- shrink the workload-boundary law first while the benchmark duplicate still
+  exists
+
+Impact:
+
+- benchmark callers now go through `workload_boundary()` if they need the
+  transitional authority type
+- the remaining live public owner of `execution_authority()` is now
+  `MetalWorkloadBoundary`
+- the next honest G5 work is deciding whether that workload-boundary authority
+  method can also disappear in favor of the narrower workload-law methods
+
+Superseded by:
+
+- none
+
 ### DEC-0104: Private support crates should validate directly from workload and benchmark boundaries once the root authority export is gone
 
 - Date: `2026-03-11`

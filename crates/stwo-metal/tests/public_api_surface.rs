@@ -133,7 +133,10 @@ fn companion_surface_exports_workload_boundary_api() {
     )
     .unwrap();
     assert_eq!(
-        benchmark_boundary.execution_authority().plan(),
+        benchmark_boundary
+            .workload_boundary()
+            .execution_authority()
+            .plan(),
         MetalExecutionPlan::MetalFriHybrid
     );
 }

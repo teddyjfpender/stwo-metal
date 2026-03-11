@@ -7,7 +7,6 @@ use super::execution_plan::{
 use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload::{declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary};
-use super::workload_contract::MetalExecutionAuthority;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalBenchmarkOperation {
@@ -77,10 +76,6 @@ pub struct MetalWideFibonacciBenchmarkBoundary {
 impl MetalWideFibonacciBenchmarkBoundary {
     pub fn workload_boundary(&self) -> &MetalWorkloadBoundary {
         &self.workload_boundary
-    }
-
-    pub fn execution_authority(&self) -> MetalExecutionAuthority {
-        self.workload_boundary.execution_authority()
     }
 
     pub fn target(&self) -> &MetalBenchmarkTarget {
@@ -262,11 +257,12 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            boundary.execution_authority().plan(),
+            boundary.workload_boundary().execution_authority().plan(),
             MetalExecutionPlan::MetalFriHybrid
         );
         assert_eq!(
             boundary
+                .workload_boundary()
                 .execution_authority()
                 .stage_ownership(MetalWorkloadStage::WitnessMain),
             Some(MetalWorkloadOwnership::CpuOwned)
@@ -336,7 +332,7 @@ mod tests {
         assert_eq!(inputs.execution_seed.component_name, "fibonacci_example");
         assert_eq!(
             inputs.execution_seed.plan,
-            boundary.execution_authority().plan()
+            boundary.workload_boundary().execution_authority().plan()
         );
         assert_eq!(request.n_columns, target.n_columns);
     }
