@@ -2,7 +2,6 @@ use std::collections::HashSet;
 
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleHasher};
 use stwo::prover::backend::{Backend, BackendForChannel};
-use stwo_metal::workload::MetalExecutionAuthority;
 use stwo_metal::{
     accumulate_wide_fibonacci_quotients, cuda_backend_surface_status,
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
@@ -59,7 +58,6 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<MetalCpuQuotientEvaluationInput>();
     let _ = std::mem::size_of::<MetalCpuWideFibonacciWitnessInput>();
     let _ = std::mem::size_of::<MetalFriReadyEvaluationInput>();
-    let _ = std::mem::size_of::<MetalExecutionAuthority>();
     let _ = std::mem::size_of::<MetalWorkloadBoundary>();
     let _ = std::mem::size_of::<MetalWorkloadHandoffError<'static>>();
     let _ = std::mem::size_of::<MetalHybridFriWorkload>();
@@ -107,23 +105,14 @@ fn companion_surface_exports_workload_boundary_api() {
         stwo::core::fri::FriConfig::new(3, 2, 3, 2),
     )
     .unwrap();
-    let execution_authority = boundary.execution_authority();
 
     assert_eq!(boundary.plan(), MetalExecutionPlan::MetalFriHybrid);
-    assert_eq!(
-        execution_authority.plan(),
-        MetalExecutionPlan::MetalFriHybrid
-    );
     assert_eq!(
         workload.boundary().plan(),
         MetalExecutionPlan::MetalFriHybrid
     );
     assert_eq!(
         boundary.stage_ownership(MetalWorkloadStage::FriBlake2s),
-        Some(MetalWorkloadOwnership::MetalNative)
-    );
-    assert_eq!(
-        execution_authority.stage_ownership(MetalWorkloadStage::FriBlake2s),
         Some(MetalWorkloadOwnership::MetalNative)
     );
 
@@ -133,10 +122,7 @@ fn companion_surface_exports_workload_boundary_api() {
     )
     .unwrap();
     assert_eq!(
-        benchmark_boundary
-            .workload_boundary()
-            .execution_authority()
-            .plan(),
+        benchmark_boundary.workload_boundary().plan(),
         MetalExecutionPlan::MetalFriHybrid
     );
 }

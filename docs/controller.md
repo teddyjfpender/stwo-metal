@@ -78,7 +78,8 @@ Invariants:
   API and the workload-scoped companion reexport; the benchmark boundary no
   longer exposes its own redundant `execution_authority()` pass-through, so the
   remaining direct callers now sit on `MetalWorkloadBoundary` and tests of that
-  workload-law surface
+  workload-law surface; `MetalExecutionAuthority` itself is now gone, leaving
+  the workload law as `plan()`, `stage_assignments()`, and `stage_ownership()`
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
@@ -99,10 +100,10 @@ Invariants:
 
 ## Next three deliverables
 
-1. Decide whether `MetalWorkloadBoundary::execution_authority()` still needs to
-   exist as a public companion surface once the benchmark pass-through is gone,
-   or whether `plan()`, `stage_assignments()`, and `stage_ownership()` are now
-   the truthful stable workload law.
+1. Decide whether `MetalWorkloadBoundary::stage_assignments()` still needs to
+   exist as a public companion surface now that execution law has collapsed to
+   plain workload methods, or whether `plan()` plus `stage_ownership()` are the
+   truthful stable workload law.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate

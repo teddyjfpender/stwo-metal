@@ -186,6 +186,9 @@ The next active work is:
 - once the benchmark boundary no longer exposes a redundant authority
   pass-through, decide explicitly whether the workload boundary should retain
   `execution_authority()` or collapse onto its narrower workload-law methods
+- once execution law has collapsed onto workload methods, decide whether the
+  full `stage_assignments()` slice is still required publicly or whether
+  `stage_ownership()` is the stable semantic unit
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

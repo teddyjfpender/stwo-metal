@@ -257,13 +257,12 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            boundary.workload_boundary().execution_authority().plan(),
+            boundary.workload_boundary().plan(),
             MetalExecutionPlan::MetalFriHybrid
         );
         assert_eq!(
             boundary
                 .workload_boundary()
-                .execution_authority()
                 .stage_ownership(MetalWorkloadStage::WitnessMain),
             Some(MetalWorkloadOwnership::CpuOwned)
         );
@@ -332,7 +331,7 @@ mod tests {
         assert_eq!(inputs.execution_seed.component_name, "fibonacci_example");
         assert_eq!(
             inputs.execution_seed.plan,
-            boundary.workload_boundary().execution_authority().plan()
+            boundary.workload_boundary().plan()
         );
         assert_eq!(request.n_columns, target.n_columns);
     }

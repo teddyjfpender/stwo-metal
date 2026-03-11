@@ -28,6 +28,46 @@ Superseded by:
 
 ## Entries
 
+### DEC-0106: The transitional `MetalExecutionAuthority` object should be retired once workload law is available directly
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+Once benchmark and support paths no longer require a separate authority object,
+`MetalExecutionAuthority` should be removed and execution law should live
+directly on `MetalWorkloadBoundary` as `plan()`, `stage_assignments()`, and
+`stage_ownership()`.
+
+Context:
+
+By the end of the prior slice, the authority object had no live semantic role
+left beyond packaging values the workload boundary already exposed or could
+expose directly. Keeping it would preserve a transitional wrapper with no
+unique law. The semantics-preserving cleanup was to retire the object and move
+tests to the narrower workload methods.
+
+Alternatives rejected:
+
+- keep `MetalExecutionAuthority` as a permanent companion type
+- remove stage law from the workload boundary entirely
+- shrink `stage_assignments()` before removing the redundant authority object
+
+Impact:
+
+- `MetalExecutionAuthority` is gone from the companion surface
+- workload and benchmark paths now pin the narrower workload-law methods
+- the next honest G5 task is deciding whether `stage_assignments()` still needs
+  to remain public or whether `stage_ownership()` is the stable semantic unit
+
+Superseded by:
+
+- none
+
 ### DEC-0105: The benchmark boundary should not duplicate `MetalExecutionAuthority` once workload law is already available beneath it
 
 - Date: `2026-03-11`

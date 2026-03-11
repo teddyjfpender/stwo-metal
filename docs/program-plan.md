@@ -326,6 +326,17 @@ The twenty-first G5 slice is now landed:
   retire `execution_authority()` entirely in favor of its narrower workload-law
   methods without obscuring stage ownership semantics
 
+The twenty-second G5 slice is now landed:
+
+- `MetalExecutionAuthority` is retired entirely; `MetalWorkloadBoundary` now
+  owns execution law directly through `plan()`, `stage_assignments()`, and
+  `stage_ownership()`
+- workload, benchmark, and public-surface tests now pin that narrower law
+  directly instead of going through an intermediate authority object
+- the next honest G5 work is deciding whether `stage_assignments()` still
+  belongs on the public workload surface, or whether callers only need
+  per-stage ownership
+
 ## G2 progress snapshot
 
 G2 is now complete:

@@ -33,13 +33,12 @@ fn wide_fibonacci_benchmark_boundary_is_hybrid_with_cpu_witness_stage() {
     .unwrap();
 
     assert_eq!(
-        boundary.workload_boundary().execution_authority().plan(),
+        boundary.workload_boundary().plan(),
         MetalExecutionPlan::MetalFriHybrid
     );
     assert_eq!(
         boundary
             .workload_boundary()
-            .execution_authority()
             .stage_ownership(MetalWorkloadStage::WitnessMain),
         Some(MetalWorkloadOwnership::CpuOwned)
     );

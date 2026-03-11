@@ -63,9 +63,9 @@ pub mod workload {
     pub use crate::backend::metal::{
         declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
         MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput,
-        MetalExecutionAuthority, MetalFriReadyEvaluationInput, MetalHybridFriWorkload,
-        MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership,
-        MetalWorkloadStage, MetalWorkloadStageAssignment,
+        MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalWorkloadBoundary,
+        MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+        MetalWorkloadStageAssignment,
     };
 }
 
