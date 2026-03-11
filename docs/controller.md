@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G8 seventh slice: promote the vendored stark-v fail-closed status into one
-  deterministic local hardening row`
+  `G8 eighth slice: freeze the support-promotion gate for the vendored stark-v
+  row`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -48,6 +48,8 @@ Invariants:
   [`dn-0005-stark-v-attachment-strategy.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0005-stark-v-attachment-strategy.md)
   and
   [`dn-0006-stark-v-generated-minimum-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0006-stark-v-generated-minimum-contract.md)
+  and
+  [`dn-0007-stark-v-support-promotion-gate.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0007-stark-v-support-promotion-gate.md)
 - Current owner area:
   `acceptance integration against the stable planning seam`
 
@@ -121,10 +123,10 @@ Invariants:
 
 1. Keep one deterministic local fail-closed row for the vendored `stark-v`
    input.
-2. Keep one frozen minimum generated subset for the first supported `stark-v`
-   row without weakening the fail-closed generic-lane policy.
-3. Decide whether the first supported downstream row is a vendored mapping
-   experiment or a future downstream-produced generated artifact.
+2. Keep one frozen promotion gate that prevents support claims without an
+   actual downstream support signal.
+3. Wait for or integrate one real downstream support signal:
+   backend-parametric proving or a generated artifact satisfying `DN-0006`.
 
 ## Explicitly not doing now
 

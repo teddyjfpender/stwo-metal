@@ -149,6 +149,8 @@ The next active work is:
   checkout
 - keep one deterministic vendored fail-closed row so the current downstream
   status is regression-checkable
+- keep one frozen support-promotion gate so G8 does not claim support without
+  a real downstream signal
 - keep the dual-lane benchmark contract stable while downstream hardening
   proceeds
 

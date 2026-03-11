@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G8 seventh slice: promote the vendored stark-v fail-closed result into one
-deterministic local hardening row`
+`G8 eighth slice: freeze the support-promotion gate for the vendored stark-v
+row`
 
 The active formal basis is:
 

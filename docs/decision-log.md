@@ -28,6 +28,45 @@ Superseded by:
 
 ## Entries
 
+### DEC-0126: The vendored stark-v row cannot promote beyond fail-closed without an external support signal
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0007-stark-v-support-promotion-gate.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0007-stark-v-support-promotion-gate.md)
+
+Decision:
+
+The current vendored `stark-v` row cannot promote from fail-closed to
+supported status through internal-only `stwo-metal` changes. Promotion requires
+either a backend-parametric downstream proving surface or a downstream
+generated artifact satisfying `DN-0006`.
+
+Context:
+
+After vendoring the pinned checkout and landing a deterministic fail-closed
+row, the remaining temptation would be to keep moving G8 forward by adding
+local adapter logic until the downstream row appears supported. That would
+conflict with the frozen generic/generated contract and would turn the vendor
+directory into a hidden private fork.
+
+Alternatives rejected:
+
+- allow internal-only support promotion through local wrappers
+- patch the vendored downstream tree until it matches `stwo-metal`
+- leave the support-promotion gate implicit
+
+Impact:
+
+- the current G8 state is explicit and bounded
+- the remaining G8 blocker is external and correctly named
+- `stwo-metal` stays honest about what is and is not currently supported
+
+Superseded by:
+
+- none
+
 ### DEC-0125: The current vendored stark-v hardening row should be executable and fail-closed
 
 - Date: `2026-03-11`

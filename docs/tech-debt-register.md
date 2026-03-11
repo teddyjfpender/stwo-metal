@@ -71,6 +71,44 @@ Target retirement point:
 
 - `G8`
 
+### TD-0031: The vendored `stark-v` row is hard-blocked on an external support signal for promotion
+
+- Status: `active`
+- Category: `external downstream dependency`
+- Introduced: `2026-03-11`
+- Owner area: `G8 downstream hardening`
+
+Why it exists now:
+
+The vendored `stark-v` row now has a deterministic local fail-closed check, but
+the first supported row cannot come from internal-only `stwo-metal` changes.
+Promotion requires either a backend-parametric downstream surface or a
+downstream-generated artifact satisfying `DN-0006`.
+
+Current containment:
+
+- `docs/dn-0007-stark-v-support-promotion-gate.md`
+- `scripts/check_vendored_stark_v_fail_closed.sh`
+- `vendor/stark-v-pinned-3a3cb4cf576d7d7e8ca82815acfb31bbc10e48ef`
+
+Risk if left in place:
+
+The project could misclassify an external dependency as a missing internal
+implementation step and start widening local wrapper code in ways that violate
+the frozen contract.
+
+Exit condition:
+
+One real downstream support signal exists and is exercised by a new executable
+row:
+
+- backend-parametric downstream proving surface, or
+- generated artifact satisfying the `stwo-metal` registration contract
+
+Target retirement point:
+
+- `G8`
+
 ### TD-0029: Vendored `stark-v` input is still not executed through `stwo-metal`
 
 - Status: `retired`
