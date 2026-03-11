@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G8 second slice: classify the pinned stark-v input against the generic and
-generated attachment contract`
+`G8 third slice: emit a deterministic hardening report for the pinned stark-v
+input and keep unsupported generic substitution explicit`
 
 The active formal basis is:
 

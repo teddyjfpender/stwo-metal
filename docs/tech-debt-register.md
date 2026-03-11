@@ -49,6 +49,7 @@ Current containment:
 
 - `docs/dn-0005-stark-v-attachment-strategy.md`
 - `scripts/check_stark_v_attachment.sh`
+- `scripts/run_stark_v_hardening_report.sh`
 
 Risk if left in place:
 

@@ -30,9 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G8 second slice: classify the pinned stark-v input against the same
-  generic/generated contract and fail closed on unsupported generic
-  substitution`
+  `G8 third slice: emit one deterministic stark-v hardening report and keep
+  the current generic-lane result fail-closed`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -115,7 +114,7 @@ Invariants:
 
 ## Next three deliverables
 
-1. Keep one deterministic local checker for the pinned `stark-v` contract and
+1. Keep one deterministic local report for the pinned `stark-v` contract and
    attachment classification.
 2. Decide the first executable `supported` downstream row for `stark-v`
    without weakening the fail-closed generic-lane policy.

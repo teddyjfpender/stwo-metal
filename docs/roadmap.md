@@ -138,6 +138,8 @@ The next active work is:
 - classify whether that downstream input is a generic-lane candidate,
   generated-lane candidate, or explicit fail-closed unsupported row
 - keep one deterministic local checker for the downstream contract shape
+- keep one deterministic local report artifact for the downstream hardening
+  result
 - keep the dual-lane benchmark contract stable while downstream hardening
   proceeds
 

@@ -28,6 +28,46 @@ Superseded by:
 
 ## Entries
 
+### DEC-0120: G8 should emit a deterministic downstream hardening report before any support claim changes
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0005-stark-v-attachment-strategy.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0005-stark-v-attachment-strategy.md)
+
+Decision:
+
+After pinning and classifying `stark-v`, G8 should emit one deterministic
+local hardening report artifact before any attempt to widen support claims or
+start a downstream executable row.
+
+Context:
+
+The contract checker and attachment classifier now make the current status
+truthful, but the result still lives only in process output. A stable G8 needs
+one rerunnable artifact that records the pinned downstream head, the contract
+result, the attachment classification, and the current fail-closed status.
+
+Alternatives rejected:
+
+- leave the hardening result as ephemeral shell output
+- start changing support claims before the current unsupported status is
+  captured as an artifact
+- fold the hardening report into the benchmark lane tooling
+
+Impact:
+
+- G8 now has one deterministic report artifact for the downstream hardening
+  row
+- future support changes have one stable before/after record
+- the unsupported generic-lane result remains explicit until a new supported
+  row exists
+
+Superseded by:
+
+- none
+
 ### DEC-0119: The pinned `stark-v` snapshot is not a generic-lane substitution candidate
 
 - Date: `2026-03-11`
