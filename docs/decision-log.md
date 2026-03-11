@@ -28,6 +28,50 @@ Superseded by:
 
 ## Entries
 
+### DEC-0166: G10 cannot widen beyond composition generation until the post-composition sampled-values ABI is explicit
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
+
+Decision:
+
+After selected `MetalEvaluationProgramV1` execution became the authority for
+generated-lane composition generation, the next G10 migration step must not
+continue through benchmark-local reinterpretation of live proof samples. The
+post-composition sampled-values ABI must be defined explicitly before broader
+selected-runtime prove-path ownership can move forward.
+
+Context:
+
+The active generated `wide_fibonacci` row now lowers, validates, dispatches,
+and executes the V1 program, and composition generation is now selected-V1
+owned. The next attempted migration step failed honestly: post-composition
+`proof.sampled_values` for the main trace are secure-field values, while the
+current V1 trace-interaction contract only accepts explicit base-field trace
+interactions. That is a real ABI mismatch, not a missing benchmark-local
+helper.
+
+Alternatives rejected:
+
+- keep widening G10 by benchmark-local reinterpretation of proof samples
+- collapse secure-field sampled values into fake base-field trace views
+- claim broader G10 completion with V1-owned composition generation alone
+
+Impact:
+
+- the next honest G10 work is an explicit sampled-values ABI step
+- migration work after composition generation must stay fail-closed until that
+  ABI exists
+- benchmark-local glue is no longer an acceptable substitute for the missing
+  shared contract
+
+Superseded by:
+
+- none
+
 ### DEC-0164: Generated wide-fibonacci sample orchestration now belongs to `stwo-metal`
 
 - Date: `2026-03-11`

@@ -43,6 +43,9 @@ is planned, controlled, reviewed, and changed.
 - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md):
   formal basis for the next stable lowered-program ABI, validator, and
   execution-mode contract
+- [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md):
+  formal basis for the next shared ABI step after V1-owned composition
+  generation
 
 ## Rules
 
