@@ -28,6 +28,47 @@ Superseded by:
 
 ## Entries
 
+### DEC-0149: Standard native Blake2s commitment should stay on Metal down to log-size 12 on the generated lane
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+The standard native Blake2s commitment path for `MetalBackend` should remain
+enabled down to `lifting_log_size = 12` instead of switching back to the host
+path at smaller early FRI commitment layers.
+
+Context:
+
+Once the benchmark contract exposed steady-state timings directly, the warmed
+generated `wide_fibonacci` `log20` row still showed the first FRI commitment
+band as one of the few remaining material GPU-shaped costs. A threshold-only
+experiment kept more early standard Blake2s layers on Metal without changing
+the proof contract and moved the warmed row from about `655 ms` mean to about
+`620 ms` mean.
+
+Alternatives rejected:
+
+- keep the native threshold at `16` and treat early FRI commitment as fully
+  optimized
+- introduce a benchmark-only threshold override instead of changing the generic
+  Metal commitment rule
+- combine this threshold change with unrelated quotient-kernel changes before
+  validating it on its own
+
+Impact:
+
+- more early standard Blake2s commitment rounds stay on Metal
+- the warmed generated benchmark row improves without widening public APIs
+- the next measured wall is still quotient-side numerator accumulation rather
+  than early threshold-driven commitment fallback
+
+Superseded by:
+
+- none
+
 ### DEC-0148: Generated-lane benchmark reporting should default to steady-state summaries when available
 
 - Date: `2026-03-11`

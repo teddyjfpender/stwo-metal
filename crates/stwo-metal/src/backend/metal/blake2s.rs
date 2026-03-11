@@ -27,7 +27,7 @@ fn build_leaves_native_standard(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
 ) -> Option<MetalBlake2sHashVec> {
-    if columns.is_empty() || lifting_log_size < 16 || columns.len() > 8 {
+    if columns.is_empty() || lifting_log_size < 12 || columns.len() > 8 {
         return None;
     }
 
@@ -95,7 +95,7 @@ fn build_leaves_native_standard_packed(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
 ) -> Option<U32Buffer> {
-    if columns.is_empty() || lifting_log_size < 16 || columns.len() > 8 {
+    if columns.is_empty() || lifting_log_size < 12 || columns.len() > 8 {
         return None;
     }
 

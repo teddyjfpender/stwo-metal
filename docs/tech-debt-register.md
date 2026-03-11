@@ -90,9 +90,11 @@ native commitment chain, and now finally building generic parent-layer chains
 inside one Metal command buffer while removing the second packed-buffer clone
 before quotient unpack, the measured `wide_fibonacci` `log20` generated-lane
  profile has moved to about `854 ms` mean / `638 ms` median, while the new
- steady-state benchmark contract shows a warmed `log20` row of about
- `655 ms` mean after the cold first sample is excluded. The dominant remaining
- subphases are now:
+ steady-state benchmark contract first showed a warmed `log20` row of about
+ `655 ms` mean after the cold first sample was excluded and then, after
+ lowering the standard native Blake2s threshold to `log_size = 12`, moved that
+ warmed row again to about `620 ms` mean. The dominant remaining subphases are
+ now:
 
 - quotient numerator accumulation before lift-and-accumulate
 - the earliest FRI commitment construction rounds

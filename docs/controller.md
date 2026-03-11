@@ -185,11 +185,15 @@ Invariants:
   than a mixed cold-start mean; on the current `da9c598` baseline, the warmed
   `log20` row is about `655.18 ms` mean / `654.97 ms` prove mean while the full
   three-sample mean remains about `867.79 ms`
+- lowering the standard native Blake2s commitment threshold from `log_size 16`
+  to `log_size 12` keeps more early FRI commitment rounds on Metal and moves
+  the warmed generated `wide_fibonacci` `log20` row to about `619.55 ms` mean /
+  `619.36 ms` prove mean, with `prove_core_prove_values_ms` about `204.87 ms`
 
 ## Next three deliverables
 
 1. Reduce numerator accumulation in the generated `prove_values` lane from the
-   new `~655 ms steady-state` / `~638 ms median` baseline, with the next
+   new `~620 ms steady-state` / `~619 ms warmed prove` baseline, with the next
    measured target still
    being the quotient numerator kernel before lift-and-accumulate.
 2. Reduce the first FRI fold and commit band from the same baseline now that
