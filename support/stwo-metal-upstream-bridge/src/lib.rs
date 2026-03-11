@@ -19,7 +19,10 @@ use stwo::prover::{AccumulationOps, ComponentProver, DomainEvaluationAccumulator
 use stwo_constraint_framework::{
     CpuDomainEvaluator, FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX,
 };
-use stwo_metal::{MetalBackend, MetalBaseFieldVec, MetalExecutionPlan, MetalWorkloadBoundary};
+use stwo_metal::{
+    MetalAcceptanceLaneError, MetalBackend, MetalBaseFieldVec, MetalExecutionPlan,
+    MetalWorkloadBoundary,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum AcceptanceMetalLaneError {
@@ -59,17 +62,18 @@ impl AcceptanceMetalLane {
 fn acceptance_registered_metal_lane(
     boundary: &MetalWorkloadBoundary,
 ) -> Result<AcceptanceMetalLane, AcceptanceMetalLaneError> {
-    match boundary.plan() {
-        MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull => {
-            Ok(AcceptanceMetalLane {
-                workload_name: boundary.workload_name(),
-            })
-        }
-        plan => Err(AcceptanceMetalLaneError::PlanNotMetalCapable {
-            workload_name: boundary.workload_name(),
-            plan,
-        }),
-    }
+    boundary
+        .validate_acceptance_lane()
+        .map(|workload_name| AcceptanceMetalLane { workload_name })
+        .map_err(|error| match error {
+            MetalAcceptanceLaneError::PlanNotMetalCapable {
+                workload_name,
+                plan,
+            } => AcceptanceMetalLaneError::PlanNotMetalCapable {
+                workload_name,
+                plan,
+            },
+        })
 }
 
 /// Registered acceptance-bridge catalog.

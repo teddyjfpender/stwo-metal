@@ -22,6 +22,14 @@ pub struct MetalWorkloadBoundary {
     execution_seed: RegisteredMetalExecutionSeed,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalAcceptanceLaneError {
+    PlanNotMetalCapable {
+        workload_name: &'static str,
+        plan: MetalExecutionPlan,
+    },
+}
+
 fn assert_hybrid_fri_execution_seed(
     workload_name: &'static str,
     execution_seed: RegisteredMetalExecutionSeed,
@@ -113,6 +121,20 @@ impl MetalWorkloadBoundary {
 
     pub fn plan(&self) -> MetalExecutionPlan {
         self.execution_seed.plan
+    }
+
+    pub fn validate_acceptance_lane(
+        &self,
+    ) -> Result<&'static str, MetalAcceptanceLaneError> {
+        match self.execution_seed.plan {
+            MetalExecutionPlan::MetalFriHybrid | MetalExecutionPlan::MetalFull => {
+                Ok(self.workload_name)
+            }
+            plan => Err(MetalAcceptanceLaneError::PlanNotMetalCapable {
+                workload_name: self.workload_name,
+                plan,
+            }),
+        }
     }
 
     pub fn generated_inventory(&self) -> MetalGeneratedInventory {
@@ -389,8 +411,9 @@ mod tests {
     use stwo::prover::poly::BitReversedOrder;
 
     use super::{
-        declare_exemplar_metal_workload_boundary, MetalExecutionIntent, MetalExecutionPlan,
-        MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+        declare_exemplar_metal_workload_boundary, MetalAcceptanceLaneError,
+        MetalExecutionIntent, MetalExecutionPlan, MetalWorkloadHandoffError,
+        MetalWorkloadOwnership, MetalWorkloadStage,
     };
 
     #[test]
@@ -419,6 +442,7 @@ mod tests {
             boundary.generated_inventory().specialization_keys,
             &["log_n_instances", "n_columns"]
         );
+        assert_eq!(boundary.validate_acceptance_lane(), Ok("fibonacci_example"));
     }
 
     #[test]
@@ -432,6 +456,23 @@ mod tests {
         assert_eq!(
             boundary.stage_ownership(MetalWorkloadStage::WitnessInteraction),
             Some(MetalWorkloadOwnership::CpuOwned)
+        );
+    }
+
+    #[test]
+    fn acceptance_lane_rejects_cpu_only_plan() {
+        let boundary = declare_exemplar_metal_workload_boundary(
+            MetalExecutionIntent::ForceCpu,
+            "fibonacci_example",
+        )
+        .unwrap();
+
+        assert_eq!(
+            boundary.validate_acceptance_lane(),
+            Err(MetalAcceptanceLaneError::PlanNotMetalCapable {
+                workload_name: "fibonacci_example",
+                plan: MetalExecutionPlan::CpuOnly,
+            })
         );
     }
 

@@ -197,6 +197,9 @@ The next active work is:
 - when a private support bridge still re-checks benchmark lane law that is
   already implied by the generated seed, move that validation into
   `stwo-metal` and keep the bridge as a consumer-only layer
+- when the upstream acceptance bridge still checks workload Metal-capability
+  directly, move that validation into `stwo-metal` so acceptance remains a
+  consumer-only support layer too
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

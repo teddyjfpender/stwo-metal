@@ -369,6 +369,18 @@ The twenty-fifth G5 slice is now landed:
   workload-side staging rules that still depend on boundary-local plan checks
   or duplicated error mapping
 
+The twenty-sixth G5 slice is now landed:
+
+- `MetalWorkloadBoundary` now owns acceptance-lane Metal-capability validation
+  inside `stwo-metal` instead of leaving that rule inside the private upstream
+  bridge crate
+- the private upstream acceptance bridge now consumes the validated acceptance
+  lane and only maps the narrow error surface it needs, so it no longer
+  re-checks workload plan law on its own
+- the next honest G5 work is to lower the next workload-side staging or
+  error-mapping rule that still duplicates generated seed law above the
+  boundary surface
+
 ## G2 progress snapshot
 
 G2 is now complete:

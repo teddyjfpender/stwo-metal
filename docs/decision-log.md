@@ -28,6 +28,49 @@ Superseded by:
 
 ## Entries
 
+### DEC-0110: Acceptance-lane Metal-capability law should live in `stwo-metal`, not in the private upstream bridge crate
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The acceptance-lane Metal-capability check should be validated by
+`MetalWorkloadBoundary` inside `stwo-metal`, and the private upstream bridge
+crate should consume that validated lane instead of matching on workload plans
+itself.
+
+Context:
+
+After `DEC-0109`, the benchmark prove-values bridge was no longer a policy
+owner. The remaining analogous support-bridge rule was the upstream acceptance
+lane check, which still matched directly on `MetalExecutionPlan`. That rule is
+part of the workload declaration contract and should live with the workload
+boundary, not in the private bridge crate.
+
+Alternatives rejected:
+
+- leave the acceptance-lane Metal-capability check in the private upstream
+  bridge crate
+- reintroduce a wider public execution-authority helper for acceptance only
+- lower acceptance validation into example fixtures instead of the shared
+  workload boundary
+
+Impact:
+
+- acceptance-lane validation now lives in `stwo-metal`
+- the private upstream bridge is narrowed further to a consumer-only support
+  layer
+- the next honest G5 work is to lower the next workload-side staging or
+  error-mapping rule that still duplicates generated seed law
+
+Superseded by:
+
+- none
+
 ### DEC-0109: Benchmark prove-values lane law should live in `stwo-metal`, not in the private bridge crate
 
 - Date: `2026-03-11`
