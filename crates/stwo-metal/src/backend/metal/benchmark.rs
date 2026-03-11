@@ -17,7 +17,8 @@ use stwo::prover::vcs_lifted::ops::MerkleOpsLifted;
 use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
 use stwo::prover::{
     AccumulationOps, CommitmentSchemeProver, CommitmentTreeProver, ComponentProver,
-    ComponentProvers, DomainEvaluationAccumulator, ProvingError, Trace,
+    ComponentProvers, DomainEvaluationAccumulator, PreparedCommitmentSchemeProveValues,
+    ProvingError, Trace,
 };
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
@@ -264,6 +265,14 @@ pub struct MetalBenchmarkProveValuesResult {
     sampled_values: MetalBenchmarkPostCompositionSampledValuesV1,
     post_composition_eval: SecureField,
     sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
+}
+
+struct MetalBenchmarkPostCompositionRuntime<'a> {
+    prepared_prove_values:
+        PreparedCommitmentSchemeProveValues<'a, super::MetalBackend, Blake2sMerkleChannel>,
+    sampled_values: MetalBenchmarkPostCompositionSampledValuesV1,
+    oods_point: stwo::core::circle::CirclePoint<SecureField>,
+    max_log_degree_bound: u32,
 }
 
 impl MetalBenchmarkProveValuesResult {
@@ -590,29 +599,64 @@ impl MetalWideFibonacciBenchmarkBoundary {
         ProvingError,
     > {
         let prove_values_start = std::time::Instant::now();
+        let runtime = self.prepare_post_composition_runtime(
+            channel,
+            commitment_scheme,
+            staging,
+        )?;
+        let prove_values_ms = prove_values_start.elapsed().as_secs_f64() * 1000.0;
+        let (result, mut breakdown) = self.execute_post_composition_runtime(channel, runtime)?;
+        breakdown.prove_values_ms = prove_values_ms;
+        Ok((result, breakdown))
+    }
+
+    fn prepare_post_composition_runtime<'a>(
+        &self,
+        channel: &mut Blake2sChannel,
+        commitment_scheme: CommitmentSchemeProver<'a, super::MetalBackend, Blake2sMerkleChannel>,
+        staging: MetalBenchmarkProveValuesStaging,
+    ) -> Result<MetalBenchmarkPostCompositionRuntime<'a>, ProvingError> {
         let prepared_prove_values =
             commitment_scheme.prepare_prove_values(staging.sample_points, channel);
-        let prove_values_ms = prove_values_start.elapsed().as_secs_f64() * 1000.0;
         let sampled_values = self
             .lower_post_composition_sampled_values_v1_from_tree(
                 prepared_prove_values.sampled_values(),
             )
             .map_err(|_| ProvingError::ConstraintsNotSatisfied)?;
 
+        Ok(MetalBenchmarkPostCompositionRuntime {
+            prepared_prove_values,
+            sampled_values,
+            oods_point: staging.oods_point,
+            max_log_degree_bound: staging.max_log_degree_bound,
+        })
+    }
+
+    fn execute_post_composition_runtime(
+        &self,
+        channel: &mut Blake2sChannel,
+        runtime: MetalBenchmarkPostCompositionRuntime<'_>,
+    ) -> Result<
+        (
+            MetalBenchmarkProveValuesResult,
+            MetalBenchmarkProveValuesBreakdown,
+        ),
+        ProvingError,
+    > {
         let reference_sampled_values_eval = self
             .interpret_post_composition_sampled_values_v1_reference(
-                staging.oods_point,
-                &sampled_values,
-                staging.max_log_degree_bound,
+                runtime.oods_point,
+                &runtime.sampled_values,
+                runtime.max_log_degree_bound,
             )
             .map_err(|_| ProvingError::ConstraintsNotSatisfied)?;
 
         let sampled_values_v1_start = std::time::Instant::now();
         let (post_composition_eval, sampled_values_dispatch) = self
             .execute_post_composition_sampled_values_v1(
-                staging.oods_point,
-                &sampled_values,
-                staging.max_log_degree_bound,
+                runtime.oods_point,
+                &runtime.sampled_values,
+                runtime.max_log_degree_bound,
             )
             .map_err(|_| ProvingError::ConstraintsNotSatisfied)?;
         let sampled_values_v1_ms = sampled_values_v1_start.elapsed().as_secs_f64() * 1000.0;
@@ -623,18 +667,18 @@ impl MetalWideFibonacciBenchmarkBoundary {
         }
         let sanity_check_ms = sanity_check_start.elapsed().as_secs_f64() * 1000.0;
 
-        let commitment_scheme_proof = prepared_prove_values.finish(channel);
+        let commitment_scheme_proof = runtime.prepared_prove_values.finish(channel);
         let proof = StarkProof(commitment_scheme_proof.proof);
 
         Ok((
             MetalBenchmarkProveValuesResult {
                 proof,
-                sampled_values,
+                sampled_values: runtime.sampled_values,
                 post_composition_eval,
                 sampled_values_dispatch,
             },
             MetalBenchmarkProveValuesBreakdown {
-                prove_values_ms,
+                prove_values_ms: 0.0,
                 sampled_values_v1_ms,
                 sampled_values_dispatch,
                 sanity_check_ms,

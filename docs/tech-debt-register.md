@@ -133,14 +133,15 @@ The generated `wide_fibonacci` row now uses selected
 and the repository now has an explicit `OwnedMetalSampledValuesV1` ABI plus
 both a correctness-first reference lane and a first Metal runtime lane for the
 live post-composition sampled-values shape. `stwo-metal` now also owns the
-post-composition prove-values result boundary itself, carrying the proof,
-sampled-values ABI object, post-composition evaluation, and dispatch kind. The
+post-composition runtime boundary itself, carrying the prepared
+sampled-values phase, sampled-values ABI object, post-composition evaluation,
+dispatch kind, and proof/result ownership under one backend contract. The
 remaining debt is that the vendored PCS quotient/FRI finishing path and the
-following tree-decommit generation still retain ownership above that ABI, so
-the generated prove path cannot yet stay on the V1/overlay contract end to
-end. The monolithic `commitment_scheme.prove_values(...)` call is no longer
-the live authority in the generated row; it has been split into a prepared
-sampled-values phase and a later finish phase.
+following tree-decommit generation still retain ownership behind that runtime
+boundary, so the generated prove path cannot yet stay on the V1/overlay
+contract end to end. The monolithic `commitment_scheme.prove_values(...)`
+call is no longer the live authority in the generated row; it has been split
+into a prepared sampled-values phase and a later finish phase.
 
 Current containment:
 

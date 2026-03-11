@@ -75,7 +75,8 @@ Invariants:
   that the generated row still retains legacy vendored PCS quotient/FRI
   finishing and tree-decommit generation above that ABI, even though the
   monolithic `commitment_scheme.prove_values(...)` call has now been split and
-  `stwo-metal` owns the sampled-values preparation boundary, the
+  `stwo-metal` owns the backend post-composition runtime boundary, the
+  sampled-values preparation boundary, the
   post-composition sampled-values result contract, generated-lane proof
   reporting metadata, and post-composition sanity checking entirely inside the
   sampled-values ABI family rather than legacy proof extraction

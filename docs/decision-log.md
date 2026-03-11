@@ -28,6 +28,43 @@ Superseded by:
 
 ## Entries
 
+### DEC-0174: Generated post-composition ownership now flows through one backend runtime boundary
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
+
+Decision:
+
+The generated row must cross post-composition through one backend-owned runtime
+boundary that prepares sampled values, drives the sampled-values ABI/runtime
+family, and only then allows vendored proof finishing.
+
+Context:
+
+After `DEC-0173`, the monolithic vendored `prove_values(...)` call was already
+split. The next semantics-preserving step was to make that split explicit in
+`stwo-metal` itself so the generated row stopped depending on vendored PCS
+finishing as its direct public authority after composition generation.
+
+Alternatives rejected:
+
+- keep the split only as an implementation detail inside vendored PCS
+- continue letting the benchmark boundary call prepared finish directly with no
+  backend-owned runtime contract around it
+
+Impact:
+
+- the generated row now owns one backend post-composition runtime boundary
+- the remaining G10 blocker is narrowed to the vendored quotient/FRI finish and
+  tree-decommit implementation that still sits behind that boundary
+
+Superseded by:
+
+- none
+
 ### DEC-0173: Generated prove-values ownership now crosses a prepared sampled-values phase before vendored proof finishing
 
 - Date: `2026-03-11`
