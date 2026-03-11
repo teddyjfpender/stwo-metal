@@ -396,12 +396,17 @@ The twenty-seventh G5 slice is now landed:
 
 The first G6 slice is now active:
 
-- benchmark results need an explicit lane identity instead of relying on
-  `classification` and `dependency_row` alone
-- wide-fibonacci needs one deterministic sweep/report path over
+The first G6 slice is now landed:
+
+- standalone benchmark JSON now carries an explicit `benchmark_lane` field
+  instead of relying on `classification` and `dependency_row` alone
+- a deterministic wide-fibonacci Metal sweep script now exists for
   `log_n_instances = 16..23`
-- the next honest G6 work is to land that lane metadata and the first
-  wide-fibonacci comparison-table generator
+- a dedicated comparison-table renderer now exists for the wide-fibonacci
+  SIMD-vs-Metal generated lane report shape
+- the next honest G6 work is to run and stabilize that sweep on real artifacts
+  and then decide how the future generic lane plugs into the same table/report
+  path
 
 ## G2 progress snapshot
 

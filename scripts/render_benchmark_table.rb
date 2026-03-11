@@ -22,6 +22,7 @@ rows = ARGV.map do |path|
 
   {
     "workload" => "#{workload.fetch("family")}/#{workload.fetch("operation")}",
+    "benchmark_lane" => data["benchmark_lane"] || "unknown",
     "channel" => workload.fetch("channel"),
     "log_n_instances" => workload.fetch("log_n_instances"),
     "n_columns" => workload.fetch("n_columns"),
@@ -37,11 +38,12 @@ rows = ARGV.map do |path|
   }
 end
 
-puts "| Workload | Channel | Log(Size) | Columns | Mean ms | Prove ms | Verify ms | Median ms | Min ms | Max ms | Thr Kelem/s | Classification | Commit |"
-puts "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+puts "| Workload | Lane | Channel | Log(Size) | Columns | Mean ms | Prove ms | Verify ms | Median ms | Min ms | Max ms | Thr Kelem/s | Classification | Commit |"
+puts "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
 rows.each do |row|
   puts [
     row["workload"],
+    row["benchmark_lane"],
     row["channel"],
     row["log_n_instances"],
     row["n_columns"],

@@ -106,10 +106,11 @@ Invariants:
 
 1. Open G6 with explicit benchmark-lane identity in machine-readable benchmark
    output so generic and generated rows cannot be conflated.
-2. Land one deterministic wide-fibonacci sweep/report path over
-   `log_n_instances = 16..23` that can emit the first Metal comparison table.
+2. Run and stabilize the new deterministic wide-fibonacci sweep/report path
+   over `log_n_instances = 16..23` so it can emit the first Metal comparison
+   table from real artifacts.
 3. Keep the restored pinned-nightly verification path explicit and narrow while
-   benchmark-lane separation work lands before G7.
+   lane-separated benchmarking lands before G7.
 
 ## Explicitly not doing now
 

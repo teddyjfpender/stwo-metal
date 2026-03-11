@@ -23,6 +23,7 @@ const DEFAULT_SAMPLES: usize = 5;
 struct BenchmarkResult {
     schema_version: u32,
     benchmark_id: String,
+    benchmark_lane: String,
     status: String,
     classification: String,
     dependency_row: String,
@@ -88,6 +89,7 @@ fn main() {
     };
 
     let classification = env_or("STWO_BENCH_CLASSIFICATION", "supported-benchmark-candidate");
+    let benchmark_lane = env_or("STWO_BENCH_LANE", "generated-metal");
     let dependency_row = env_or("STWO_BENCH_DEPENDENCY_ROW", "vendored-upstream-bridge-v1");
     let git_commit = env_or("STWO_BENCH_GIT_COMMIT", "unknown");
     let command = env_or("STWO_BENCH_COMMAND", "unknown");
@@ -96,6 +98,7 @@ fn main() {
         BenchmarkResult {
             schema_version: RESULT_SCHEMA_VERSION,
             benchmark_id: BENCHMARK_ID.to_string(),
+            benchmark_lane: benchmark_lane.clone(),
             status: "planned".to_string(),
             classification,
             dependency_row,
@@ -161,6 +164,7 @@ fn main() {
         BenchmarkResult {
             schema_version: RESULT_SCHEMA_VERSION,
             benchmark_id: BENCHMARK_ID.to_string(),
+            benchmark_lane: benchmark_lane.clone(),
             status: "completed".to_string(),
             classification,
             dependency_row,

@@ -28,6 +28,47 @@ Superseded by:
 
 ## Entries
 
+### DEC-0112: G6 benchmark separation starts with explicit lane identity and a deterministic wide-fibonacci comparison path
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The first G6 slice should add explicit benchmark-lane identity to benchmark
+JSON and land one deterministic wide-fibonacci sweep/report path, rather than
+starting optimization work from ad hoc single-row measurements.
+
+Context:
+
+With G5 complete, the next milestone problem is no longer generated lowering.
+It is separating benchmark rows so generic and generated results are not
+blurred together. The existing standalone benchmark JSON had `classification`
+and `dependency_row`, but those fields are too loose to serve as the stable
+lane contract for later comparison tables or optimization decisions.
+
+Alternatives rejected:
+
+- keep using `classification` and `dependency_row` as the only lane markers
+- begin optimization work before a deterministic sweep/report path exists
+- build a new benchmark harness before adding the minimum stable metadata to
+  the current one
+
+Impact:
+
+- standalone benchmark JSON now names the benchmark lane explicitly
+- a deterministic wide-fibonacci sweep/report path exists for
+  `log_n_instances = 16..23`
+- the next honest G6 work is running that path on real artifacts and deciding
+  how the future generic lane plugs into the same comparison surface
+
+Superseded by:
+
+- none
+
 ### DEC-0111: G5 is complete once live runtime staging law is generated-owned and benchmark work can separate lanes instead of shrinking surfaces
 
 - Date: `2026-03-11`
