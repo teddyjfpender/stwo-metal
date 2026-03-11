@@ -515,6 +515,14 @@ impl MetalWideFibonacciBenchmarkBoundary {
             .lower_post_composition_sampled_values_v1(&proof)
             .map_err(|_| ProvingError::ConstraintsNotSatisfied)?;
 
+        let reference_sampled_values_eval = self
+            .interpret_post_composition_sampled_values_v1_reference(
+                staging.oods_point,
+                &sampled_values,
+                staging.max_log_degree_bound,
+            )
+            .map_err(|_| ProvingError::ConstraintsNotSatisfied)?;
+
         let sampled_values_v1_start = std::time::Instant::now();
         let (post_composition_eval, sampled_values_dispatch) = self
             .execute_post_composition_sampled_values_v1(
@@ -526,10 +534,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
         let sampled_values_v1_ms = sampled_values_v1_start.elapsed().as_secs_f64() * 1000.0;
 
         let sanity_check_start = std::time::Instant::now();
-        if extract_composition_oods_eval(&proof, staging.oods_point, staging.max_log_degree_bound)
-            .unwrap()
-            != post_composition_eval
-        {
+        if reference_sampled_values_eval != post_composition_eval {
             return Err(ProvingError::ConstraintsNotSatisfied);
         }
         let sanity_check_ms = sanity_check_start.elapsed().as_secs_f64() * 1000.0;
@@ -1095,34 +1100,6 @@ pub enum MetalGeneratedWideFibonacciBenchmarkError {
     Verify {
         source: VerificationError,
     },
-}
-
-fn extract_composition_oods_eval(
-    proof: &StarkProof<Blake2sMerkleHasher>,
-    oods_point: stwo::core::circle::CirclePoint<SecureField>,
-    max_log_degree_bound: u32,
-) -> Option<SecureField> {
-    let [.., left_and_right_composition_mask] = &**proof.sampled_values else {
-        return None;
-    };
-    let left_and_right_coordinate_evals: [SecureField; 2 * SECURE_EXTENSION_DEGREE] =
-        left_and_right_composition_mask
-            .iter()
-            .map(|columns| {
-                let &[eval] = &columns[..] else {
-                    return None;
-                };
-                Some(eval)
-            })
-            .collect::<Option<Vec<_>>>()?
-            .try_into()
-            .ok()?;
-
-    let (left_coordinate_evals, right_coordinate_evals) =
-        left_and_right_coordinate_evals.split_at(SECURE_EXTENSION_DEGREE);
-    let left_eval = SecureField::from_partial_evals(left_coordinate_evals.try_into().ok()?);
-    let right_eval = SecureField::from_partial_evals(right_coordinate_evals.try_into().ok()?);
-    Some(left_eval + oods_point.repeated_double(max_log_degree_bound - 1).x * right_eval)
 }
 
 #[derive(Clone)]

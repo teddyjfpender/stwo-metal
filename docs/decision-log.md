@@ -28,6 +28,44 @@ Superseded by:
 
 ## Entries
 
+### DEC-0170: Post-composition sanity now belongs solely to the sampled-values ABI family
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
+
+Decision:
+
+Once `OwnedMetalSampledValuesV1` had both a correctness-first reference lane
+and a Metal runtime lane, the generated row's post-composition sanity check
+must stop extracting composition OODS values from the legacy proof shape.
+That sanity boundary now belongs entirely to the sampled-values ABI family.
+
+Context:
+
+The generated `wide_fibonacci` row still retains legacy `prove_values` and
+decommit ownership, but after `DEC-0169` it no longer needed legacy proof
+extraction just to verify post-composition equivalence. Keeping that old proof
+extraction around would preserve an unnecessary mixed-law boundary after the
+ABI/runtime family was already sufficient for the same check.
+
+Alternatives rejected:
+
+- keep comparing against legacy proof extraction for post-composition sanity
+- defer the cleanup until all remaining `prove_values` ownership was migrated
+
+Impact:
+
+- post-composition sanity now depends only on the sampled-values ABI family
+- the remaining G10 blocker is narrower and more explicit: legacy
+  `prove_values` and decommit ownership above the ABI
+
+Superseded by:
+
+- none
+
 ### DEC-0169: Post-composition sampled-values execution now belongs to one backend-owned ABI family
 
 - Date: `2026-03-11`

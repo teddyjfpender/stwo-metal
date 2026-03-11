@@ -150,7 +150,8 @@ Risk if left in place:
 The repository can keep a truthful ABI and reference lane in place while still
 failing to migrate the live prove-values/decommit path onto the selected V1
 runtime contract, leaving the generated row architecturally mixed and slower
-than it should be.
+than it should be. Post-composition sanity is no longer part of this debt,
+because it now runs entirely through the sampled-values ABI family.
 
 Exit condition:
 

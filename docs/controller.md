@@ -73,7 +73,9 @@ Invariants:
   the live generated post-composition sampled-values shape, so the blocker is
   no longer “missing ABI” or “missing device execution”; the active blocker is
   that the generated row still retains legacy `prove_values`/decommit
-  ownership on top of that ABI
+  ownership on top of that ABI, although post-composition sanity checking now
+  belongs entirely to the sampled-values ABI family rather than legacy proof
+  extraction
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
   row still does not prove through that V1 runtime contract
