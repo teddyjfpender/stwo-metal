@@ -28,6 +28,40 @@ Target retirement point:
 
 ## Active debt
 
+### TD-0029: `stark-v` is pinned as a downstream hardening input but is not yet vendored or executed through `stwo-metal`
+
+- Status: `active`
+- Category: `downstream hardening gap`
+- Introduced: `2026-03-11`
+- Owner area: `G8 downstream hardening`
+
+Why it exists now:
+
+`stark-v` is now the pinned G8 downstream input, and its minimum proving
+contract is documented and checked. But the downstream repo is not vendored
+locally and no executable hardening row has yet been landed through
+`stwo-metal`.
+
+Current containment:
+
+- `docs/dn-0004-stark-v-hardening-input-and-contract.md`
+- `scripts/check_stark_v_contract.sh`
+
+Risk if left in place:
+
+The roadmap could claim downstream hardening progress without actually running
+an executable downstream row or making an explicit fail-closed decision.
+
+Exit condition:
+
+One executable or explicitly fail-closed `stark-v` hardening row exists and is
+tracked through the same generic/generated contract vocabulary as the rest of
+the program.
+
+Target retirement point:
+
+- `G8`
+
 ### TD-0027: The generated-metal wide-fibonacci row still falls behind SIMD from `log_size = 19` onward
 
 - Status: `active`

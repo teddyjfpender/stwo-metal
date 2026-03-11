@@ -42,6 +42,8 @@ Invariants:
   [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
   and
   [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md)
+  and
+  [`dn-0004-stark-v-hardening-input-and-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0004-stark-v-hardening-input-and-contract.md)
 - Current owner area:
   `acceptance integration against the stable planning seam`
 
@@ -103,6 +105,9 @@ Invariants:
 - the next decision is about how much ABI, specialization, and generated build
   inventory belongs in the stable internal artifact registry before lowering
   starts in earnest
+- `stark-v` is now pinned as the first real G8 downstream input, but it is not
+  yet vendored locally and its proving surface is still only contract-checked,
+  not executed through `stwo-metal`
 
 ## Next three deliverables
 

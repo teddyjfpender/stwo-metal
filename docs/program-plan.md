@@ -74,6 +74,7 @@ The active formal basis is:
 - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
 - [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md)
+- [`dn-0004-stark-v-hardening-input-and-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0004-stark-v-hardening-input-and-contract.md)
 
 ## Current implementation obligations under G3
 
@@ -312,9 +313,17 @@ The first G7 slice is now landed:
 
 The next honest G8 work is:
 
-- pin one real `stark-v` input surface locally
-- validate the existing generic/generated contract vocabulary against that
-  downstream consumer
+The first G8 slice is now landed:
+
+- one pinned downstream `stark-v` hardening note now records the current HEAD
+  input and the minimum prove/verify/preprocess contract
+- one deterministic checker now validates the minimum downstream contract shape
+  against a local `stark-v` checkout
+
+The next honest G8 work is:
+
+- decide whether the first executable hardening row is generic substitution,
+  generated mapping, or explicit fail-closed unsupported status
 - keep the public backend API unchanged while the first downstream hardening
   slice lands
 

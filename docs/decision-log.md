@@ -28,6 +28,51 @@ Superseded by:
 
 ## Entries
 
+### DEC-0118: G8 starts by pinning the downstream `stark-v` contract before choosing a substitution strategy
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0004-stark-v-hardening-input-and-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0004-stark-v-hardening-input-and-contract.md)
+
+Decision:
+
+The first G8 slice should pin the real downstream `stark-v` contract and add a
+deterministic local checker for it before choosing whether the first executable
+hardening row is generic substitution, generated mapping, or explicit
+fail-closed unsupported status.
+
+Context:
+
+With G6 and G7 complete, the next milestone is no longer about internal
+benchmark or shim structure. It is about validating the frozen contract against
+one real downstream Stwo consumer. `stark-v` is the best current candidate,
+but its proving surface is SIMD-first and lives against its own vendored Stwo
+snapshot. The safest first step is to pin and check the real downstream
+contract shape rather than guessing the eventual integration mode.
+
+Alternatives rejected:
+
+- jump straight to a speculative `stwo-metal` substitution inside `stark-v`
+  without pinning the downstream contract
+- vendor the entire downstream repo before deciding what minimum hardening
+  signal is actually required
+- leave G8 as a purely documentary milestone without a deterministic local
+  checker
+
+Impact:
+
+- G8 is now grounded in one real downstream input
+- the next hardening decision will be made against the pinned contract rather
+  than against memory or guesswork
+- the public `stwo-metal` API stays unchanged during this first downstream
+  slice
+
+Superseded by:
+
+- none
+
 ### DEC-0117: G7 is complete once the remaining compatibility bridges are fixture-owned rather than architecture-adjacent support crates
 
 - Date: `2026-03-11`
