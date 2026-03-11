@@ -16,7 +16,7 @@ mod pcs;
 pub use pcs::quotient_ops::{AccumulatedNumerators, QuotientOps};
 pub use pcs::{
     CommitmentSchemeProver, CommitmentTreeProver, PreparedCommitmentSchemeFinish,
-    PreparedCommitmentSchemeProveValues, TreeBuilder,
+    PreparedCommitmentSchemeProveValues, PreparedCommitmentSchemeTreeDecommit, TreeBuilder,
 };
 pub mod backend;
 pub mod channel;

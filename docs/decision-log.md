@@ -105,6 +105,44 @@ Superseded by:
 
 - none
 
+### DEC-0176: Generated post-composition finishing now crosses an explicit prepared tree-decommit contract
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
+
+Decision:
+
+The generated row may no longer treat tree-decommit generation as an implicit
+suffix of vendored finishing. The remaining post-composition finishing must
+cross an explicit prepared tree-decommit contract owned by the backend runtime.
+
+Context:
+
+After `DEC-0175`, the generated row already crossed a prepared-finish contract
+after sampled-values runtime execution. The next semantics-preserving split was
+to break the remaining vendored tail again so tree-decommit became a separate
+prepared phase under the backend-owned runtime family.
+
+Alternatives rejected:
+
+- keep tree-decommit as part of one vendored `finish()` tail
+- defer the split until a fully backend-owned decommit implementation exists
+
+Impact:
+
+- the generated row now owns explicit sampled-values, prepared-finish, and
+  prepared tree-decommit contracts
+- the remaining G10 blocker is narrowed to the vendored quotient/FRI and
+  tree-decommit implementation behind those contracts, not the contract
+  boundaries themselves
+
+Superseded by:
+
+- none
+
 ### DEC-0173: Generated prove-values ownership now crosses a prepared sampled-values phase before vendored proof finishing
 
 - Date: `2026-03-11`

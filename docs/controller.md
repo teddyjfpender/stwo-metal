@@ -74,10 +74,11 @@ Invariants:
   no longer “missing ABI” or “missing device execution”; the active blocker is
   that the generated row still retains vendored quotient/FRI finishing and
   tree-decommit implementation behind the backend-owned post-composition
-  runtime contract, even though the monolithic
+  runtime contracts, even though the monolithic
   `commitment_scheme.prove_values(...)` call has now been split and
   `stwo-metal` owns the backend post-composition runtime boundary, the
   sampled-values preparation boundary, the
+  prepared-finish boundary, the prepared tree-decommit boundary, the
   post-composition sampled-values result contract, generated-lane proof
   reporting metadata, and post-composition sanity checking entirely inside the
   sampled-values ABI family rather than legacy proof extraction
@@ -99,7 +100,7 @@ Invariants:
 ## Next three deliverables
 
 1. Replace the vendored quotient/FRI finishing and tree-decommit
-   implementation behind the backend-owned post-composition runtime contract
+   implementation behind the backend-owned post-composition runtime contracts
    with backend-owned or V1-owned execution, so the generated row no longer
    depends on vendored PCS finishing after the sampled-values ABI phase.
 2. Add layout/reflection verification for the V1 host/device boundary records

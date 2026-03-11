@@ -135,13 +135,16 @@ both a correctness-first reference lane and a first Metal runtime lane for the
 live post-composition sampled-values shape. `stwo-metal` now also owns the
 post-composition runtime boundary itself, carrying the prepared
 sampled-values phase, sampled-values ABI object, post-composition evaluation,
-dispatch kind, and proof/result ownership under one backend contract. The
+dispatch kind, and proof/result ownership under one backend contract. It now
+also owns explicit prepared-finish and prepared tree-decommit boundaries above
+that sampled-values runtime. The
 remaining debt is that the vendored PCS quotient/FRI finishing path and the
 following tree-decommit generation still provide the implementation behind that runtime
 boundary, so the generated prove path cannot yet stay on the V1/overlay
 contract end to end. The monolithic `commitment_scheme.prove_values(...)`
 call is no longer the live authority in the generated row; it has been split
-into a prepared sampled-values phase and a later prepared-finish phase.
+into a prepared sampled-values phase, a later prepared-finish phase, and a
+final prepared tree-decommit phase.
 
 Current containment:
 

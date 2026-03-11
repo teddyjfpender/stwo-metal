@@ -18,7 +18,8 @@ use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
 use stwo::prover::{
     AccumulationOps, CommitmentSchemeProver, CommitmentTreeProver, ComponentProver,
     ComponentProvers, DomainEvaluationAccumulator, PreparedCommitmentSchemeFinish,
-    PreparedCommitmentSchemeProveValues, ProvingError, Trace,
+    PreparedCommitmentSchemeProveValues, PreparedCommitmentSchemeTreeDecommit, ProvingError,
+    Trace,
 };
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
@@ -278,6 +279,14 @@ struct MetalBenchmarkPostCompositionRuntime<'a> {
 struct MetalBenchmarkPostCompositionFinishRuntime<'a> {
     prepared_finish:
         PreparedCommitmentSchemeFinish<'a, super::MetalBackend, Blake2sMerkleChannel>,
+    sampled_values: MetalBenchmarkPostCompositionSampledValuesV1,
+    post_composition_eval: SecureField,
+    sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
+}
+
+struct MetalBenchmarkPostCompositionTreeDecommitRuntime<'a> {
+    prepared_tree_decommit:
+        PreparedCommitmentSchemeTreeDecommit<'a, super::MetalBackend, Blake2sMerkleChannel>,
     sampled_values: MetalBenchmarkPostCompositionSampledValuesV1,
     post_composition_eval: SecureField,
     sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
@@ -712,7 +721,28 @@ impl MetalWideFibonacciBenchmarkBoundary {
         &self,
         runtime: MetalBenchmarkPostCompositionFinishRuntime<'_>,
     ) -> MetalBenchmarkProveValuesResult {
-        let commitment_scheme_proof = runtime.prepared_finish.finish();
+        let tree_decommit_runtime = self.prepare_post_composition_tree_decommit_runtime(runtime);
+        self.execute_post_composition_tree_decommit_runtime(tree_decommit_runtime)
+    }
+
+    fn prepare_post_composition_tree_decommit_runtime<'a>(
+        &self,
+        runtime: MetalBenchmarkPostCompositionFinishRuntime<'a>,
+    ) -> MetalBenchmarkPostCompositionTreeDecommitRuntime<'a> {
+        let prepared_tree_decommit = runtime.prepared_finish.prepare_tree_decommit();
+        MetalBenchmarkPostCompositionTreeDecommitRuntime {
+            prepared_tree_decommit,
+            sampled_values: runtime.sampled_values,
+            post_composition_eval: runtime.post_composition_eval,
+            sampled_values_dispatch: runtime.sampled_values_dispatch,
+        }
+    }
+
+    fn execute_post_composition_tree_decommit_runtime(
+        &self,
+        runtime: MetalBenchmarkPostCompositionTreeDecommitRuntime<'_>,
+    ) -> MetalBenchmarkProveValuesResult {
+        let commitment_scheme_proof = runtime.prepared_tree_decommit.finish();
         let proof = StarkProof(commitment_scheme_proof.proof);
         MetalBenchmarkProveValuesResult {
             proof,

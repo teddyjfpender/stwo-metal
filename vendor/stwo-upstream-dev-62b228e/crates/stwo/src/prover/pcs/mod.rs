@@ -55,6 +55,16 @@ pub struct PreparedCommitmentSchemeFinish<'a, B: BackendForChannel<MC>, MC: Merk
     tree_query_positions: Vec<Vec<usize>>,
 }
 
+pub struct PreparedCommitmentSchemeTreeDecommit<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
+    commitment_scheme: CommitmentSchemeProver<'a, B, MC>,
+    sampled_values: TreeVec<Vec<Vec<SecureField>>>,
+    commitments: TreeVec<<MC::H as MerkleHasherLifted>::Hash>,
+    proof_of_work: u64,
+    fri_proof: ExtendedFriProof<MC::H>,
+    unsorted_query_locations: Vec<usize>,
+    tree_query_positions: Vec<Vec<usize>>,
+}
+
 impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel>
     PreparedCommitmentSchemeProveValues<'a, B, MC>
 {
@@ -185,6 +195,24 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel>
 }
 
 impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> PreparedCommitmentSchemeFinish<'a, B, MC> {
+    pub fn prepare_tree_decommit(self) -> PreparedCommitmentSchemeTreeDecommit<'a, B, MC> {
+        PreparedCommitmentSchemeTreeDecommit {
+            commitment_scheme: self.commitment_scheme,
+            sampled_values: self.sampled_values,
+            commitments: self.commitments,
+            proof_of_work: self.proof_of_work,
+            fri_proof: self.fri_proof,
+            unsorted_query_locations: self.unsorted_query_locations,
+            tree_query_positions: self.tree_query_positions,
+        }
+    }
+
+    pub fn finish(self) -> ExtendedCommitmentSchemeProof<MC::H> {
+        self.prepare_tree_decommit().finish()
+    }
+}
+
+impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> PreparedCommitmentSchemeTreeDecommit<'a, B, MC> {
     pub fn finish(mut self) -> ExtendedCommitmentSchemeProof<MC::H> {
         let debug_prove_values = std::env::var_os("STWO_CUDA_DEBUG_PROVE_VALUES").is_some();
         let profile_prove_values = std::env::var_os("STWO_METAL_PROFILE_PROVE_VALUES").is_some();
