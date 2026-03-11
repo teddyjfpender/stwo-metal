@@ -177,6 +177,7 @@ struct ProveBreakdownSampleTimings {
     trace_commit_extension_ms: Vec<f64>,
     trace_commit_merkle_ms: Vec<f64>,
     prove_core_ms: Vec<f64>,
+    prove_core_evaluation_program_v1_ms: Vec<f64>,
     prove_core_composition_generation_ms: Vec<f64>,
     prove_core_composition_commit_ms: Vec<f64>,
     prove_core_prove_values_ms: Vec<f64>,
@@ -192,6 +193,7 @@ struct ProveBreakdownSummaryTimings {
     trace_commit_extension_ms: SummaryStats,
     trace_commit_merkle_ms: SummaryStats,
     prove_core_ms: SummaryStats,
+    prove_core_evaluation_program_v1_ms: SummaryStats,
     prove_core_composition_generation_ms: SummaryStats,
     prove_core_composition_commit_ms: SummaryStats,
     prove_core_prove_values_ms: SummaryStats,
@@ -207,6 +209,7 @@ struct SingleProveBreakdownTimings {
     trace_commit_extension_ms: f64,
     trace_commit_merkle_ms: f64,
     prove_core_ms: f64,
+    prove_core_evaluation_program_v1_ms: f64,
     prove_core_composition_generation_ms: f64,
     prove_core_composition_commit_ms: f64,
     prove_core_prove_values_ms: f64,
@@ -293,6 +296,10 @@ fn prove_breakdown_samples_from_samples(samples: &[ProveBreakdown]) -> ProveBrea
         .iter()
         .map(|sample| sample.prove_core_ms)
         .collect::<Vec<_>>();
+    let prove_core_evaluation_program_v1_ms = samples
+        .iter()
+        .map(|sample| sample.prove_core_evaluation_program_v1_ms)
+        .collect::<Vec<_>>();
     let prove_core_composition_generation_ms = samples
         .iter()
         .map(|sample| sample.prove_core_composition_generation_ms)
@@ -318,6 +325,7 @@ fn prove_breakdown_samples_from_samples(samples: &[ProveBreakdown]) -> ProveBrea
         trace_commit_extension_ms,
         trace_commit_merkle_ms,
         prove_core_ms,
+        prove_core_evaluation_program_v1_ms,
         prove_core_composition_generation_ms,
         prove_core_composition_commit_ms,
         prove_core_prove_values_ms,
@@ -372,6 +380,12 @@ fn prove_breakdown_summary_from_samples(
                 .map(|sample| sample.prove_core_ms)
                 .collect::<Vec<_>>(),
         ),
+        prove_core_evaluation_program_v1_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.prove_core_evaluation_program_v1_ms)
+                .collect::<Vec<_>>(),
+        ),
         prove_core_composition_generation_ms: summarize(
             &samples
                 .iter()
@@ -411,6 +425,7 @@ fn single_prove_breakdown_timings_from_sample(
         trace_commit_extension_ms: sample.trace_commit_extension_ms,
         trace_commit_merkle_ms: sample.trace_commit_merkle_ms,
         prove_core_ms: sample.prove_core_ms,
+        prove_core_evaluation_program_v1_ms: sample.prove_core_evaluation_program_v1_ms,
         prove_core_composition_generation_ms: sample.prove_core_composition_generation_ms,
         prove_core_composition_commit_ms: sample.prove_core_composition_commit_ms,
         prove_core_prove_values_ms: sample.prove_core_prove_values_ms,
@@ -939,6 +954,7 @@ fn run_one_generic_sample(
             trace_commit_extension_ms: 0.0,
             trace_commit_merkle_ms: 0.0,
             prove_core_ms: prove_elapsed_ms,
+            prove_core_evaluation_program_v1_ms: 0.0,
             prove_core_composition_generation_ms: 0.0,
             prove_core_composition_commit_ms: 0.0,
             prove_core_prove_values_ms: 0.0,
@@ -959,6 +975,7 @@ struct ProveBreakdown {
     trace_commit_extension_ms: f64,
     trace_commit_merkle_ms: f64,
     prove_core_ms: f64,
+    prove_core_evaluation_program_v1_ms: f64,
     prove_core_composition_generation_ms: f64,
     prove_core_composition_commit_ms: f64,
     prove_core_prove_values_ms: f64,
@@ -1011,7 +1028,7 @@ fn prove_wide_fibonacci_blake(
     let setup_and_preprocessed_commit_ms = setup_start.elapsed().as_secs_f64() * 1000.0;
 
     let trace_generation_start = Instant::now();
-    let (trace, sentinel) = generate_wide_fibonacci_trace_evaluations(
+    let (native_trace, trace, sentinel) = generate_wide_fibonacci_trace_evaluations(
         &benchmark_boundary,
         input_a_host,
         input_b_host,
@@ -1028,6 +1045,7 @@ fn prove_wide_fibonacci_blake(
     let component = WideFibonacciBenchmarkComponent::new(log_n_instances, n_columns);
     let prove_core_start = Instant::now();
     let (proof, prove_core_breakdown) = benchmark_boundary.execute_prove_core(
+        &native_trace,
         &[&component],
         prover_channel,
         commitment_scheme,
@@ -1047,6 +1065,7 @@ fn prove_wide_fibonacci_blake(
             trace_commit_extension_ms: trace_commit_breakdown.extension_ms,
             trace_commit_merkle_ms: trace_commit_breakdown.merkle_ms,
             prove_core_ms,
+            prove_core_evaluation_program_v1_ms: prove_core_breakdown.evaluation_program_v1_ms,
             prove_core_composition_generation_ms: prove_core_breakdown.composition_generation_ms,
             prove_core_composition_commit_ms: prove_core_breakdown.composition_commit_ms,
             prove_core_prove_values_ms: prove_core_breakdown.prove_values_ms,
@@ -1318,6 +1337,7 @@ fn generate_wide_fibonacci_trace_evaluations(
     log_n_instances: u32,
     n_columns: usize,
 ) -> (
+    MetalWideFibonacciTrace,
     Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
     WideFibonacciSentinel,
 ) {
@@ -1330,10 +1350,9 @@ fn generate_wide_fibonacci_trace_evaluations(
         .generate_trace()
         .expect("wide-fibonacci prove benchmark should generate the trace through Metal");
     let sentinel = sentinel_from_metal_trace(&trace, input_len, n_columns);
+    let trace_evaluations = trace.to_metal_evaluations();
 
-    let trace = trace.to_metal_evaluations();
-
-    (trace, sentinel)
+    (trace, trace_evaluations, sentinel)
 }
 
 #[cfg(feature = "metal-runtime")]

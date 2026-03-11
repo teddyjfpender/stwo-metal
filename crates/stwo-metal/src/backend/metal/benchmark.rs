@@ -6,7 +6,7 @@ use stwo::core::pcs::utils::get_lifting_log_size;
 use stwo::core::pcs::TreeVec;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-use stwo::prover::{CommitmentSchemeProver, ComponentProvers, ProvingError};
+use stwo::prover::{AccumulationOps, CommitmentSchemeProver, ComponentProvers, ProvingError};
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
 use super::eval_program_v1::{
@@ -99,6 +99,8 @@ pub struct MetalBenchmarkProveValuesStaging {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MetalBenchmarkProveCoreBreakdown {
+    pub evaluation_program_v1_ms: f64,
+    pub evaluation_program_v1_dispatch: MetalEvaluationProgramDispatchKindV1,
     pub composition_generation_ms: f64,
     pub composition_commit_ms: f64,
     pub prove_values_ms: f64,
@@ -128,6 +130,29 @@ pub enum MetalBenchmarkLaneError {
 }
 
 impl MetalWideFibonacciBenchmarkBoundary {
+    fn execute_selected_evaluation_program_v1_for_prove_core(
+        &self,
+        trace: &MetalWideFibonacciTrace,
+        random_coeff: SecureField,
+    ) -> Result<
+        (MetalEvaluationProgramDispatchKindV1, f64),
+        MetalBenchmarkProgramExecutionError,
+    > {
+        let program = self.evaluation_program_v1().map_err(|source| {
+            MetalBenchmarkProgramExecutionError::ProgramContract { source }
+        })?;
+        let random_coeff_powers =
+            <super::MetalBackend as AccumulationOps>::generate_secure_powers(
+                random_coeff,
+                program.header().n_constraints as usize,
+            );
+        let runtime_start = std::time::Instant::now();
+        let (_, dispatch) =
+            self.execute_selected_evaluation_program_v1_on_trace(trace, &random_coeff_powers)?;
+        let runtime_ms = runtime_start.elapsed().as_secs_f64() * 1000.0;
+        Ok((dispatch, runtime_ms))
+    }
+
     pub fn workload_boundary(&self) -> &MetalWorkloadBoundary {
         &self.workload_boundary
     }
@@ -254,6 +279,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
 
     pub fn execute_prove_core(
         &self,
+        generated_trace: &MetalWideFibonacciTrace,
         components: &[&dyn stwo::prover::ComponentProver<super::MetalBackend>],
         channel: &mut Blake2sChannel,
         mut commitment_scheme: CommitmentSchemeProver<'_, super::MetalBackend, Blake2sMerkleChannel>,
@@ -262,7 +288,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
             StarkProof<Blake2sMerkleHasher>,
             MetalBenchmarkProveCoreBreakdown,
         ),
-        ProvingError,
+        MetalBenchmarkProveCoreError,
     > {
         let n_preprocessed_columns = commitment_scheme.trees[stwo::core::verifier::PREPROCESSED_TRACE_IDX]
             .polynomials
@@ -274,6 +300,12 @@ impl MetalWideFibonacciBenchmarkBoundary {
         let trace = commitment_scheme.trace();
 
         let random_coeff = channel.draw_secure_felt();
+        let (evaluation_program_v1_dispatch, evaluation_program_v1_ms) = self
+            .execute_selected_evaluation_program_v1_for_prove_core(
+                generated_trace,
+                random_coeff,
+            )
+            .map_err(|source| MetalBenchmarkProveCoreError::ProgramExecution { source })?;
 
         let composition_generation_start = std::time::Instant::now();
         let composition_poly =
@@ -298,11 +330,14 @@ impl MetalWideFibonacciBenchmarkBoundary {
             channel,
             commitment_scheme,
             prove_values_stage,
-        )?;
+        )
+        .map_err(MetalBenchmarkProveCoreError::from)?;
 
         Ok((
             proof,
             MetalBenchmarkProveCoreBreakdown {
+                evaluation_program_v1_ms,
+                evaluation_program_v1_dispatch,
                 composition_generation_ms,
                 composition_commit_ms,
                 prove_values_ms: prove_values_breakdown.prove_values_ms,
@@ -589,6 +624,22 @@ pub enum MetalBenchmarkProgramExecutionError {
     Execution {
         source: MetalEvaluationProgramExecutionError,
     },
+}
+
+#[derive(Debug)]
+pub enum MetalBenchmarkProveCoreError {
+    ProgramExecution {
+        source: MetalBenchmarkProgramExecutionError,
+    },
+    Proving {
+        source: ProvingError,
+    },
+}
+
+impl From<ProvingError> for MetalBenchmarkProveCoreError {
+    fn from(source: ProvingError) -> Self {
+        Self::Proving { source }
+    }
 }
 
 fn extract_composition_oods_eval(

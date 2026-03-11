@@ -116,6 +116,44 @@ Impact:
 - the next honest G10 work is broader prove-path migration onto that selected
   V1 runtime contract, not “attach the first overlay”
 
+### DEC-0162: Generated prove core must fail closed on selected V1 runtime execution before it continues
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+Once the generated benchmark row has a selected `MetalEvaluationProgramV1`
+runtime with a real overlay registration, backend-owned prove core must execute
+that selected runtime on the live generated trace as a fail-closed preflight
+before composition generation and prove-values continue.
+
+Context:
+
+After `DEC-0161`, the generated benchmark row had a real overlay-aware V1
+runtime contract, but the actual prove core could still proceed without the
+selected runtime being available or correct. That would keep V1 execution as a
+side lane and leave the migrated prove path benchmark-shaped in substance.
+
+Alternatives rejected:
+
+- keep selected V1 execution as benchmark-only side instrumentation
+- delay prove-core integration until a later end-to-end V1 proof path exists
+- claim broader G10 completion while prove core still ignores selected V1
+  runtime availability
+
+Impact:
+
+- generated prove core now fails closed if the selected V1 runtime cannot
+  execute on the live generated trace
+- benchmark reporting now records the selected V1 preflight cost inside prove
+  core
+- the next honest G10 work is the next live prove boundary after prove core,
+  not another selector-only or overlay-only slice
+
 ### DEC-0159: Generated prove-values execution for `wide_fibonacci` now belongs to `stwo-metal`
 
 - Date: `2026-03-11`

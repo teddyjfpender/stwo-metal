@@ -145,7 +145,8 @@ The next active work is:
 - keep the remaining fixture shims as non-authoritative wrappers once the same
   benchmark law exists inside `stwo-metal`
 - expand the live generated benchmark row from “selected V1 side execution plus
-  backend-owned prove core” toward end-to-end selected V1 runtime ownership
+  backend-owned prove core” toward end-to-end selected V1 runtime ownership;
+  prove core is now selected-runtime-gated rather than selected-runtime-blind
 - widen the first generated overlay registration into a durable overlay law
   instead of leaving it as one benchmark-shape registration
 - keep examples as the acceptance matrix for the generic and generated lanes

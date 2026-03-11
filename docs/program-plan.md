@@ -208,6 +208,16 @@ The fourth G10 slice is now landed in code:
   runtime contract for live generated-trace program execution, even though the
   full prove path is not yet selected-runtime-owned end to end
 
+The fifth G10 slice is now landed in code:
+
+- backend-owned generated prove core now requires selected
+  `MetalEvaluationProgramV1` execution on the live generated trace before it
+  continues with composition generation and prove-values
+- that selected-runtime execution is now a fail-closed prove-core preflight
+  instead of a side benchmark API
+- benchmark reporting now records explicit `prove_core_evaluation_program_v1_ms`
+  so the migrated prove-core contract is visible in the live row
+
 ## Current implementation obligations under G3
 
 - preserve the non-public bridge laws from
@@ -594,9 +604,9 @@ The current G10 prove-path migration state is:
   live generated traces through that selected V1 runtime contract
   with one real generated overlay registration
 - the next honest G10 work is the next live prove boundary after
-  benchmark-boundary-owned prove core, so the selected V1 runtime contract
-  owns more of the live generated proof than just side execution of the
-  lowered program
+  selected-runtime-gated prove core, so the selected V1 runtime contract owns
+  more of the live generated proof than preflight authority plus side
+  execution of the lowered program
 
 The twenty-seventh G5 slice is now landed:
 
