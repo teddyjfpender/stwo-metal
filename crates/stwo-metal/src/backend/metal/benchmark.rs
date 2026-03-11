@@ -7,7 +7,7 @@ use stwo::core::fields::FieldExpOps;
 use stwo::core::pcs::utils::get_lifting_log_size;
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
-use stwo::core::proof::StarkProof;
+use stwo::core::proof::{StarkProof, StarkProofSizeBreakdown};
 use stwo::core::utils::MaybeOwned;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::verifier::{verify, VerificationError, PREPROCESSED_TRACE_IDX};
@@ -155,6 +155,10 @@ impl MetalGeneratedWideFibonacciBenchmarkSample {
         &self.prove_values_result
     }
 
+    pub fn proof_metadata(&self) -> MetalBenchmarkProofMetadata {
+        self.prove_values_result.proof_metadata()
+    }
+
     pub fn proof(&self) -> &StarkProof<Blake2sMerkleHasher> {
         self.prove_values_result.proof()
     }
@@ -223,6 +227,37 @@ pub struct MetalBenchmarkProveValuesBreakdown {
     pub sanity_check_ms: f64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MetalBenchmarkProofSizeBreakdown {
+    pub oods_samples: usize,
+    pub queries_values: usize,
+    pub fri_samples: usize,
+    pub fri_decommitments: usize,
+    pub trace_decommitments: usize,
+}
+
+impl From<StarkProofSizeBreakdown> for MetalBenchmarkProofSizeBreakdown {
+    fn from(value: StarkProofSizeBreakdown) -> Self {
+        Self {
+            oods_samples: value.oods_samples,
+            queries_values: value.queries_values,
+            fri_samples: value.fri_samples,
+            fri_decommitments: value.fri_decommitments,
+            trace_decommitments: value.trace_decommitments,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MetalBenchmarkProofMetadata {
+    pub size_estimate_bytes: usize,
+    pub commitments: usize,
+    pub security_bits: u32,
+    pub fri_queries: usize,
+    pub pow_bits: u32,
+    pub size_breakdown_bytes: MetalBenchmarkProofSizeBreakdown,
+}
+
 #[derive(Clone, Debug)]
 pub struct MetalBenchmarkProveValuesResult {
     proof: StarkProof<Blake2sMerkleHasher>,
@@ -234,6 +269,18 @@ pub struct MetalBenchmarkProveValuesResult {
 impl MetalBenchmarkProveValuesResult {
     pub fn proof(&self) -> &StarkProof<Blake2sMerkleHasher> {
         &self.proof
+    }
+
+    pub fn proof_metadata(&self) -> MetalBenchmarkProofMetadata {
+        let size_breakdown = self.proof.size_breakdown_estimate();
+        MetalBenchmarkProofMetadata {
+            size_estimate_bytes: self.proof.size_estimate(),
+            commitments: self.proof.commitments.len(),
+            security_bits: self.proof.config.security_bits(),
+            fri_queries: self.proof.config.fri_config.n_queries,
+            pow_bits: self.proof.config.pow_bits,
+            size_breakdown_bytes: size_breakdown.into(),
+        }
     }
 
     pub fn sampled_values(&self) -> &MetalBenchmarkPostCompositionSampledValuesV1 {

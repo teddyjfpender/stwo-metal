@@ -33,6 +33,7 @@ pub use backend::MetalBackend;
 pub use benchmark::{
     declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError, MetalBenchmarkLaneError,
     MetalBenchmarkOperation, MetalBenchmarkProgramError, MetalBenchmarkProgramExecutionError,
+    MetalBenchmarkProofMetadata, MetalBenchmarkProofSizeBreakdown,
     MetalBenchmarkProveCoreBreakdown, MetalBenchmarkProveCoreError,
     MetalBenchmarkProveValuesBreakdown, MetalBenchmarkProveValuesResult,
     MetalBenchmarkProveValuesStaging,

@@ -42,6 +42,8 @@ use stwo_examples::wide_fibonacci::{
 use stwo_metal::{
     declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
     MetalBackend, MetalBenchmarkOperation, MetalBenchmarkReferencePlatform,
+    MetalBenchmarkProofMetadata as BackendProofMetadata,
+    MetalBenchmarkProofSizeBreakdown as BackendProofSizeBreakdown,
     MetalBenchmarkTarget, MetalExecutionIntent, MetalGeneratedWideFibonacciBenchmarkIteration,
     MetalGeneratedWideFibonacciBenchmarkRun,
     MetalGeneratedWideFibonacciBenchmarkSample,
@@ -709,7 +711,7 @@ fn run_one_generated_sample(
         .run_generated_blake2s_iteration(input_a_host, input_b_host, config)
         .expect("wide fibonacci prove should succeed");
 
-    let proof_metadata = proof_metadata(iteration.sample.proof());
+    let proof_metadata = generated_proof_metadata(&iteration.sample);
 
     SampleResult {
         total_elapsed_ms: iteration.prove_elapsed_ms + iteration.verify_elapsed_ms,
@@ -871,7 +873,7 @@ fn prove_breakdown_from_generated_iteration(
 fn sample_result_from_generated_iteration(
     iteration: &MetalGeneratedWideFibonacciBenchmarkIteration,
 ) -> SampleResult {
-    let proof_metadata = proof_metadata(iteration.sample.proof());
+    let proof_metadata = generated_proof_metadata(&iteration.sample);
 
     SampleResult {
         total_elapsed_ms: iteration.prove_elapsed_ms + iteration.verify_elapsed_ms,
@@ -1004,6 +1006,38 @@ fn proof_metadata(proof: &StarkProof<Blake2sMerkleHasher>) -> ProofMetadata {
         fri_queries: proof.config.fri_config.n_queries,
         pow_bits: proof.config.pow_bits,
         size_breakdown_bytes: ProofSizeBreakdownMetadata::from(size_breakdown),
+    }
+}
+
+#[cfg(feature = "metal-runtime")]
+fn generated_proof_metadata(sample: &MetalGeneratedWideFibonacciBenchmarkSample) -> ProofMetadata {
+    sample.proof_metadata().into()
+}
+
+#[cfg(feature = "metal-runtime")]
+impl From<BackendProofMetadata> for ProofMetadata {
+    fn from(value: BackendProofMetadata) -> Self {
+        Self {
+            size_estimate_bytes: value.size_estimate_bytes,
+            commitments: value.commitments,
+            security_bits: value.security_bits,
+            fri_queries: value.fri_queries,
+            pow_bits: value.pow_bits,
+            size_breakdown_bytes: value.size_breakdown_bytes.into(),
+        }
+    }
+}
+
+#[cfg(feature = "metal-runtime")]
+impl From<BackendProofSizeBreakdown> for ProofSizeBreakdownMetadata {
+    fn from(value: BackendProofSizeBreakdown) -> Self {
+        Self {
+            oods_samples: value.oods_samples,
+            queries_values: value.queries_values,
+            fri_samples: value.fri_samples,
+            fri_decommitments: value.fri_decommitments,
+            trace_decommitments: value.trace_decommitments,
+        }
     }
 }
 

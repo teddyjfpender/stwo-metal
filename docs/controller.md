@@ -74,9 +74,9 @@ Invariants:
   no longer “missing ABI” or “missing device execution”; the active blocker is
   that the generated row still retains legacy `commitment_scheme.prove_values`
   and decommit ownership on top of that ABI, even though `stwo-metal` now owns
-  the post-composition sampled-values result contract and post-composition
-  sanity checking belongs entirely to the sampled-values ABI family rather than
-  legacy proof extraction
+  the post-composition sampled-values result contract, generated-lane proof
+  reporting metadata, and post-composition sanity checking entirely inside the
+  sampled-values ABI family rather than legacy proof extraction
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
   row still does not prove through that V1 runtime contract

@@ -28,6 +28,44 @@ Superseded by:
 
 ## Entries
 
+### DEC-0172: Generated-lane proof reporting above post-composition now belongs to the backend-owned result boundary
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
+
+Decision:
+
+The generated benchmark lane must obtain proof reporting metadata from the
+backend-owned post-composition prove-values result boundary rather than by
+inspecting raw legacy proof internals in the benchmark binary.
+
+Context:
+
+After `DEC-0171`, `stwo-metal` already owned the post-composition prove-values
+result object itself. Leaving raw proof-size introspection in the benchmark
+binary would keep a smaller but still unnecessary legacy ownership seam above
+that result boundary.
+
+Alternatives rejected:
+
+- keep raw proof metadata extraction in the benchmark binary for convenience
+- defer metadata ownership cleanup until legacy
+  `commitment_scheme.prove_values` and decommit migration is complete
+
+Impact:
+
+- the generated benchmark caller now consumes backend-owned proof metadata
+- the remaining G10 blocker is narrowed further to legacy
+  `commitment_scheme.prove_values` and decommit generation above the result
+  boundary
+
+Superseded by:
+
+- none
+
 ### DEC-0171: Post-composition prove-values results now belong to the sampled-values ABI family
 
 - Date: `2026-03-11`

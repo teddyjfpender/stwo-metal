@@ -14,6 +14,7 @@ use stwo_metal::{
     BaseFieldVec, CudaBackend, CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent,
     CudaExecutionPlan, MetalBackend, MetalBaseFieldColumnBatch, MetalBaseFieldVec,
     MetalBenchmarkInputError, MetalBenchmarkProgramError, MetalBenchmarkProgramExecutionError,
+    MetalBenchmarkProofMetadata, MetalBenchmarkProofSizeBreakdown,
     MetalBenchmarkProveCoreBreakdown, MetalBenchmarkProveCoreError,
     MetalBenchmarkProveValuesBreakdown, MetalBenchmarkProveValuesResult,
     MetalBenchmarkProveValuesStaging, MetalBenchmarkTarget, MetalBenchmarkTraceShapeError,
@@ -252,6 +253,8 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
     .unwrap();
     let _ = std::mem::size_of::<MetalBenchmarkProgramError>();
     let _ = std::mem::size_of::<MetalBenchmarkProgramExecutionError>();
+    let _ = std::mem::size_of::<MetalBenchmarkProofMetadata>();
+    let _ = std::mem::size_of::<MetalBenchmarkProofSizeBreakdown>();
     let _ = std::mem::size_of::<MetalBenchmarkProveCoreBreakdown>();
     let _ = std::mem::size_of::<MetalBenchmarkProveCoreError>();
     let _ = std::mem::size_of::<MetalBenchmarkProveValuesBreakdown>();
