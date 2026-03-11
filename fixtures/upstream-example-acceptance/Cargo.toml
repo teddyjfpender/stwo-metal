@@ -12,7 +12,7 @@ stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo", package = 
 stwo-examples = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/examples", default-features = false }
 stwo-constraint-framework = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/constraint-framework" }
 stwo-metal = { path = "../../crates/stwo-metal", features = ["prover"] }
-stwo-metal-upstream-bridge = { path = "../../support/stwo-metal-upstream-bridge" }
+stwo-metal-fixture-shims = { path = "../stwo-metal-fixture-shims" }
 
 [patch.crates-io]
 stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo" }

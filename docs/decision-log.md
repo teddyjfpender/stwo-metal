@@ -28,6 +28,90 @@ Superseded by:
 
 ## Entries
 
+### DEC-0117: G7 is complete once the remaining compatibility bridges are fixture-owned rather than architecture-adjacent support crates
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0003-acceptance-bridge-law-and-ownership.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0003-acceptance-bridge-law-and-ownership.md)
+
+Decision:
+
+G7 is complete now that the remaining compatibility bridges live in one
+fixture-owned shim crate under `fixtures/` rather than in private crates under
+`support/`.
+
+Context:
+
+The purpose of G7 was not to pretend the framework-backed and SIMD-backed
+bridges had become native Metal paths. It was to stop letting temporary
+compatibility code sit next to the architecture surface. The new
+`fixtures/stwo-metal-fixture-shims` crate keeps those adapters explicitly in
+fixture ownership while preserving the same proving semantics and acceptance
+coverage.
+
+Alternatives rejected:
+
+- leave the compatibility bridges in `support/` and still call them
+  non-architectural
+- move the bridges into the public `stwo-metal` API surface
+- block G7 on retiring the deeper CPU-domain bridge logic, which is a
+  different debt than fixture ownership
+
+Impact:
+
+- G7 is complete
+- the remaining bridge debt is now about semantics and CPU-domain fallback, not
+  about architecture ownership
+- G8 becomes the active milestone
+
+Superseded by:
+
+- none
+
+### DEC-0116: G6 is complete once the benchmark contract has separate lanes, separate artifacts, and one dual-lane report
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+G6 is complete now that the benchmark contract has explicit generated and
+generic lanes, deterministic per-lane artifact generation, and one dual-lane
+report surface that keeps the active optimization target explicit.
+
+Context:
+
+The earlier G6 slices added lane identity, a generated full-range sweep, a
+bounded generic row, and a dual-lane report. The final missing piece was one
+deterministic runner that produces both lanes and the combined report together.
+That runner now exists, and the milestone exit condition is satisfied without
+pretending the generic lane has the same execution envelope as the generated
+lane.
+
+Alternatives rejected:
+
+- keep G6 open for more generated-lane optimization after the benchmark
+  contract is already stable
+- declare G6 complete without a single dual-lane runner
+- force the generic lane into the same default sweep range as the generated
+  lane despite the measured cost gap
+
+Impact:
+
+- G6 is complete
+- G7 becomes the active milestone
+- the generated lane remains the optimization target, but that is now a
+  post-G6 performance decision rather than a benchmark-contract gap
+
+Superseded by:
+
+- none
+
 ### DEC-0115: Once both lanes exist, G6 optimization should target the generated lane and keep the generic lane bounded
 
 - Date: `2026-03-11`
@@ -1443,7 +1527,8 @@ Context:
 The acceptance harness had already collapsed ad hoc bridge construction behind
 one checked registered catalog, and the bridge laws were frozen. The remaining
 G3 ownership gap was that the implementations still lived inside the acceptance
-harness crate itself. Moving them into `support/stwo-metal-upstream-bridge`
+ harness crate itself. Moving them into a private shared bridge first, and
+ later into `fixtures/stwo-metal-fixture-shims`
 creates a durable shared internal home without widening the public `stwo-metal`
 API and without reintroducing the vendored nested-workspace conflict that
 blocked a direct move into the main crate.

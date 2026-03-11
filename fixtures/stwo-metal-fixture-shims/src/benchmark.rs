@@ -5,8 +5,8 @@ use stwo::core::pcs::TreeVec;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::{CommitmentSchemeProver, ComponentProver, ComponentProvers};
 use stwo_metal::{
-    MetalBackend, MetalBenchmarkLaneError, MetalExecutionPlan,
-    MetalWideFibonacciBenchmarkBoundary, MetalWorkloadStage,
+    MetalBackend, MetalBenchmarkLaneError, MetalExecutionPlan, MetalWideFibonacciBenchmarkBoundary,
+    MetalWorkloadStage,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -119,9 +119,7 @@ pub fn stage_wide_fibonacci_prove_values(
 mod tests {
     use stwo_metal::{MetalExecutionIntent, MetalExecutionPlan};
 
-    use super::{
-        registered_wide_fibonacci_prove_values_lane, WideFibonacciProveValuesLaneError,
-    };
+    use super::{registered_wide_fibonacci_prove_values_lane, WideFibonacciProveValuesLaneError};
 
     #[test]
     fn registered_benchmark_boundary_satisfies_prove_values_staging_contract() {

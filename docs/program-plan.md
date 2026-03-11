@@ -49,9 +49,9 @@ The superseded `T0` through `T8` sequence now lives in:
 | G3 | Move acceptance coverage onto the stable generic path | `completed` | acceptance coverage no longer depends on architecture-local example shims where shared backend boundaries should exist |
 | G4 | Land generated fast-path registration and ABI inventory | `completed` | generated artifacts register component identity, ABI, build inventory, and specialization keys through a stable surface |
 | G5 | Lower generated artifacts into Metal runtime execution plans | `completed` | generated components drive trace, evaluation, lookup, quotient, FRI, and commitment scheduling through backend planning surfaces |
-| G6 | Separate benchmark lanes and optimize the right rows | `in_progress` | generic and generated benchmark rows are measured independently and optimization work targets the generated lane explicitly |
-| G7 | Retire temporary compatibility shims | `planned` | acceptance-local adapters and example-specific wrappers are removed or clearly reduced to non-architectural fixtures |
-| G8 | Harden the contract against `stark-v` workloads | `planned` | `stark-v` uses the same generic/generated backend contract successfully |
+| G6 | Separate benchmark lanes and optimize the right rows | `completed` | generic and generated benchmark rows are measured independently and optimization work targets the generated lane explicitly |
+| G7 | Retire temporary compatibility shims | `completed` | acceptance-local adapters and example-specific wrappers are removed or clearly reduced to non-architectural fixtures |
+| G8 | Harden the contract against `stark-v` workloads | `in_progress` | `stark-v` uses the same generic/generated backend contract successfully |
 
 ## Immediate sequencing rules
 
@@ -66,8 +66,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G6 fourth slice: optimize the generated lane against the dual-lane report
-while keeping the generic lane bounded as a correctness-and-coverage row`
+`G8 first slice: pin one real stark-v hardening input and validate the same
+contract shape against it`
 
 The active formal basis is:
 
@@ -293,13 +293,30 @@ The third G6 slice is now landed:
   while continuing to optimize the generated lane against the current scaling
   deficit from `log_size = 19` onward
 
-The next honest G6 work is:
+The fourth G6 slice is now landed:
 
-- keep optimization work explicitly pointed at the generated lane
-- use the dual-lane report to drive the next high-log generated-lane
-  optimization tranche
-- treat the generic lane as a correctness-and-coverage benchmark row rather
-  than the current optimization target
+- one dual-lane runner now emits generated, generic, and combined wide-fibonacci
+  benchmark artifacts in one deterministic command
+- the benchmark contract is now complete enough to treat G6 as done: the lanes
+  are separate in schema, separate in artifacts, and explicit in the report
+- the generated lane remains the active optimization target, while the generic
+  lane remains a bounded correctness-and-coverage benchmark row
+
+The first G7 slice is now landed:
+
+- the former private support bridges now live in one fixture-owned shim crate
+  under `fixtures/stwo-metal-fixture-shims`
+- the acceptance harness and standalone benchmark fixture both consume that
+  fixture-owned shim crate
+- the old `support/` bridge crates are retired from the live dependency graph
+
+The next honest G8 work is:
+
+- pin one real `stark-v` input surface locally
+- validate the existing generic/generated contract vocabulary against that
+  downstream consumer
+- keep the public backend API unchanged while the first downstream hardening
+  slice lands
 
 The sixteenth G5 slice is now landed:
 

@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G6 fourth slice: optimize the generated lane against the dual-lane report
-  while keeping the generic lane bounded as a correctness-and-coverage row`
+  `G8 first slice: pin one real stark-v hardening input and validate the same
+  contract shape against it`
 - Objective:
   re-center `stwo-metal` on the correct long-term architecture: examples as the
   acceptance matrix, generic backend substitution as the correctness lane, and
@@ -87,11 +87,10 @@ Invariants:
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
 - benchmark work remains important, but it must now follow the generic and
-  generated contract instead of driving it; G5 is now complete, the first
-  generated-metal sweep and comparison table are landed, the first
-  `generic-metal` row is landed at `log_size = 16`, the first dual-lane report
-  now exists from live artifacts, and the next work is generated-lane
-  optimization under G6
+  generated contract instead of driving it; G5 is now complete, G6 is now
+  complete with a dual-lane report surface, and G7 is now complete because the
+  remaining compatibility bridges are fixture-owned rather than
+  architecture-adjacent support crates
 - superseded milestone history has to stay out of the active control surface so
   the new sequence remains legible
 - the current acceptance rows now all consume registered workload lanes and one
@@ -107,11 +106,12 @@ Invariants:
 
 ## Next three deliverables
 
-1. Use the dual-lane report to pick the next generated-lane optimization target
-   at `log_size = 19..23`, where the current scaling deficit remains explicit.
-2. Keep the generic lane bounded to the executable range while its cost stays
-   far above the generated row.
-3. Preserve the dual-lane report surface as the measurement contract before G7.
+1. Pin one real `stark-v` input surface locally so G8 is grounded in a real
+   downstream workload rather than a placeholder.
+2. Validate that the same generic/generated contract vocabulary applies to that
+   downstream input without widening the public backend API.
+3. Keep the dual-lane benchmark contract stable while the downstream hardening
+   tranche lands.
 
 ## Explicitly not doing now
 

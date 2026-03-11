@@ -870,10 +870,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "stwo-metal-benchmark-bridge"
+name = "stwo-metal-fixture-shims"
 version = "0.1.0"
 dependencies = [
  "stwo",
+ "stwo-constraint-framework",
  "stwo-metal",
 ]
 
@@ -889,8 +890,7 @@ dependencies = [
  "stwo-constraint-framework",
  "stwo-examples",
  "stwo-metal",
- "stwo-metal-benchmark-bridge",
- "stwo-metal-upstream-bridge",
+ "stwo-metal-fixture-shims",
 ]
 
 [[package]]
@@ -899,15 +899,6 @@ version = "0.1.1"
 dependencies = [
  "cc",
  "cmake",
-]
-
-[[package]]
-name = "stwo-metal-upstream-bridge"
-version = "0.1.0"
-dependencies = [
- "stwo",
- "stwo-constraint-framework",
- "stwo-metal",
 ]
 
 [[package]]

@@ -15,7 +15,7 @@ use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver, ProvingError};
 use stwo_metal::{MetalBackend, MetalBaseFieldVec};
-pub use stwo_metal_upstream_bridge::acceptance_bridge_catalog;
+pub use stwo_metal_fixture_shims::acceptance_bridge_catalog;
 
 #[derive(Debug)]
 pub enum SingleTraceCpuBridgeError {

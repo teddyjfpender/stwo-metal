@@ -121,9 +121,9 @@ The superseded `T0` through `T8` sequence now lives in:
 | G3 | Move acceptance coverage onto the stable generic path | `completed` | example-backed support no longer depends on architecture-local example shims where shared backend boundaries should exist |
 | G4 | Land the generated fast-path registration and ABI inventory | `completed` | generated artifacts can register component identity, ABI, build inventory, and specialization keys through a stable surface |
 | G5 | Lower generated artifacts into Metal runtime execution plans | `completed` | generated proving components drive Metal trace, evaluation, lookup, quotient, FRI, and commitment scheduling through the stable planning boundary |
-| G6 | Separate benchmark lanes and optimize against the right target | `in_progress` | generic and generated benchmark rows are measured separately and optimization work no longer conflates them |
-| G7 | Retire temporary compatibility shims | `planned` | acceptance-local adapters and example-specific wrappers are removed or reduced to non-architectural fixtures |
-| G8 | Harden the contract against `stark-v` workloads | `planned` | a real downstream Stwo consumer uses the same generic/generated contract successfully |
+| G6 | Separate benchmark lanes and optimize against the right target | `completed` | generic and generated benchmark rows are measured separately and optimization work no longer conflates them |
+| G7 | Retire temporary compatibility shims | `completed` | acceptance-local adapters and example-specific wrappers are removed or reduced to non-architectural fixtures |
+| G8 | Harden the contract against `stark-v` workloads | `in_progress` | a real downstream Stwo consumer uses the same generic/generated contract successfully |
 
 ## Active work definition
 
@@ -132,20 +132,11 @@ not “more benchmark-local seams.”
 
 The next active work is:
 
-- keep benchmark lanes explicit in benchmark output so generic and generated
-  rows cannot be conflated by convention alone
-- keep the deterministic sweep/report path for wide-fibonacci over
-  `log_n_instances = 16..23`
-- keep the first `generic-metal` wide-fibonacci row live, but bound its default
-  sweep to the executable range while it remains far slower than the generated
-  lane
-- keep generated and generic rows in distinct comparison tables and JSON
-  artifacts
-- keep one dual-lane report surface that records both tables together so the
-  optimization target stays explicit
-- make optimization work name the lane it is improving before changing the
-  benchmark harness
-- keep examples only as validation and benchmark inputs
+- pin one real `stark-v` hardening input locally
+- validate the current generic/generated contract vocabulary against that
+  downstream input
+- keep the dual-lane benchmark contract stable while downstream hardening
+  proceeds
 
 ## Native runtime direction
 

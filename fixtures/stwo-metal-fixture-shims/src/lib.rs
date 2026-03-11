@@ -24,6 +24,13 @@ use stwo_metal::{
     MetalWorkloadBoundary,
 };
 
+pub mod benchmark;
+pub use benchmark::{
+    registered_wide_fibonacci_prove_values_lane, stage_wide_fibonacci_prove_values,
+    WideFibonacciProveValuesLane, WideFibonacciProveValuesLaneError,
+    WideFibonacciProveValuesStaging,
+};
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum AcceptanceMetalLaneError {
     PlanNotMetalCapable {

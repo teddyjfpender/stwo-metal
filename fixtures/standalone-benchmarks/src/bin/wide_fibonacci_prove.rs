@@ -58,7 +58,9 @@ use stwo_metal::{
     MetalWideFibonacciTrace,
 };
 #[cfg(feature = "metal-runtime")]
-use stwo_metal_benchmark_bridge::{
+use stwo_metal_fixture_shims::acceptance_bridge_catalog;
+#[cfg(feature = "metal-runtime")]
+use stwo_metal_fixture_shims::{
     registered_wide_fibonacci_prove_values_lane, stage_wide_fibonacci_prove_values,
 };
 #[cfg(feature = "metal-runtime")]
@@ -67,8 +69,6 @@ use stwo_metal_standalone_benchmarks::support::{
     enforce_metal_benchmark_contract, env_flag, env_or, env_u32, env_usize, epoch_ms,
     required_env_path, runner_metadata, write_json, RunnerMetadata, SummaryStats,
 };
-#[cfg(feature = "metal-runtime")]
-use stwo_metal_upstream_bridge::acceptance_bridge_catalog;
 
 const BENCHMARK_ID: &str = "wide_fibonacci_prove_verify_v1";
 const RESULT_SCHEMA_VERSION: u32 = 1;

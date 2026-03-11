@@ -767,7 +767,7 @@ Why it exists now:
 
 The first direct `MetalBackend` upstream-example proofs now use a privately
 shared adapter around vendored `FrameworkComponent` in
-`support/stwo-metal-upstream-bridge`. That remains the smallest safe step
+`fixtures/stwo-metal-fixture-shims`. That remains the smallest safe step
 because it avoids a nested-workspace dependency conflict in the main
 `stwo-metal` crate and keeps the remaining CPU-domain quotient path explicit.
 The framework-backed rows still consume one registered acceptance bridge
@@ -776,7 +776,7 @@ non-public and still CPU-domain backed.
 
 Current containment:
 
-- `support/stwo-metal-upstream-bridge/src/lib.rs`
+- `fixtures/stwo-metal-fixture-shims/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/state_machine_prove_verify.rs`
 - `fixtures/upstream-example-acceptance/tests/blake_prove_verify.rs`
 
@@ -816,7 +816,7 @@ compatibility boundary rather than a stable generated or native path.
 
 Current containment:
 
-- `support/stwo-metal-upstream-bridge/src/lib.rs`
+- `fixtures/stwo-metal-fixture-shims/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/xor_mle_eval_prove_verify.rs`
 
 Risk if left in place:
@@ -854,7 +854,7 @@ a cleaner shared internal proving surface.
 
 Current containment:
 
-- `support/stwo-metal-upstream-bridge/src/lib.rs`
+- `fixtures/stwo-metal-fixture-shims/src/lib.rs`
 - `fixtures/upstream-example-acceptance/tests/wide_fibonacci_prove_verify.rs`
 - `fixtures/upstream-example-acceptance/tests/state_machine_prove_verify.rs`
 - `fixtures/upstream-example-acceptance/tests/blake_prove_verify.rs`
