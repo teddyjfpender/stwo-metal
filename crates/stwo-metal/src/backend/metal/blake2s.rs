@@ -119,6 +119,85 @@ fn build_next_layer_native_standard(prev_layer: &[Blake2sHash]) -> Option<Vec<Bl
     ))
 }
 
+fn build_leaves_native_standard_packed(
+    columns: &[&MetalBaseFieldVec],
+    lifting_log_size: u32,
+) -> Option<U32Buffer> {
+    if columns.is_empty() || lifting_log_size < 18 || columns.len() > 8 {
+        return None;
+    }
+
+    let total_len = columns.iter().map(|column| column.len()).sum::<usize>();
+    let mut flat_columns = U32Buffer::uninitialized(total_len).ok()?;
+    let mut column_offsets = Vec::with_capacity(columns.len());
+    let mut column_log_sizes = Vec::with_capacity(columns.len());
+    let mut offset = 0usize;
+    for column in columns {
+        column_offsets.push(offset.try_into().ok()?);
+        column_log_sizes.push(column.len().ilog2());
+        flat_columns
+            .copy_range_from(&column.buffer, 0, column.len(), offset)
+            .ok()?;
+        offset += column.len();
+    }
+
+    let column_offsets = U32Buffer::from_slice(&column_offsets).ok()?;
+    let column_log_sizes = U32Buffer::from_slice(&column_log_sizes).ok()?;
+    U32Buffer::blake2s_build_leaves_lifted(
+        &flat_columns,
+        &column_offsets,
+        &column_log_sizes,
+        lifting_log_size,
+    )
+    .ok()
+}
+
+fn build_leaves_native_wide_packed(
+    columns: &[&MetalBaseFieldVec],
+    lifting_log_size: u32,
+) -> Option<U32Buffer> {
+    if columns.is_empty() {
+        return None;
+    }
+
+    let column_buffers = columns.iter().map(|column| &column.buffer).collect_vec();
+    let column_log_sizes = columns
+        .iter()
+        .map(|column| column.len().ilog2())
+        .collect_vec();
+    U32Buffer::blake2s_build_leaves_lifted_wide(&column_buffers, &column_log_sizes, lifting_log_size)
+        .ok()
+}
+
+fn decode_packed_blake2s_layer(buffer: &U32Buffer) -> Option<Vec<Blake2sHash>> {
+    Some(decode_packed_blake2s_hashes(buffer.to_vec().ok()?))
+}
+
+fn build_merkle_layers_native_standard(
+    columns: &[&MetalBaseFieldVec],
+    lifting_log_size: u32,
+) -> Option<Vec<Vec<Blake2sHash>>> {
+    let mut packed_layer = if columns.len() > 8 {
+        build_leaves_native_wide_packed(columns, lifting_log_size)?
+    } else {
+        build_leaves_native_standard_packed(columns, lifting_log_size)?
+    };
+
+    let mut packed_layers = Vec::with_capacity((lifting_log_size + 1) as usize);
+    packed_layers.push(packed_layer);
+    for _ in 0..lifting_log_size {
+        packed_layer = U32Buffer::blake2s_build_next_layer(packed_layers.last().unwrap()).ok()?;
+        packed_layers.push(packed_layer);
+    }
+
+    let mut layers = packed_layers
+        .iter()
+        .map(decode_packed_blake2s_layer)
+        .collect::<Option<Vec<_>>>()?;
+    layers.reverse();
+    Some(layers)
+}
+
 impl ColumnOps<Blake2sHash> for MetalBackend {
     type Column = Vec<Blake2sHash>;
 
@@ -263,6 +342,52 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
             );
         }
         next
+    }
+
+    fn build_merkle_layers(
+        columns: Vec<&MetalBaseFieldVec>,
+        lifting_log_size: u32,
+    ) -> Vec<Vec<Blake2sHash>> {
+        let profile_merkle = std::env::var_os("STWO_METAL_PROFILE_MERKLE").is_some();
+        let build_tree_start = Instant::now();
+        let sorted_columns = columns.into_iter().sorted_by_key(|c| c.len()).collect_vec();
+        if !IS_M31_OUTPUT {
+            if let Some(layers) = build_merkle_layers_native_standard(&sorted_columns, lifting_log_size) {
+                if profile_merkle {
+                    eprintln!(
+                        "metal_merkle_timing phase=build_merkle_layers columns={} lifting_log_size={} ms={}",
+                        sorted_columns.len(),
+                        lifting_log_size,
+                        build_tree_start.elapsed().as_secs_f64() * 1000.0
+                    );
+                }
+                return layers;
+            }
+        }
+
+        let mut layers = vec![
+            <Self as MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>>::build_leaves(
+                &sorted_columns,
+                lifting_log_size,
+            ),
+        ];
+        for _ in 0..lifting_log_size {
+            let next =
+                <Self as MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>>::build_next_layer(
+                    layers.last().unwrap(),
+                );
+            layers.push(next);
+        }
+        layers.reverse();
+        if profile_merkle {
+            eprintln!(
+                "metal_merkle_timing phase=build_merkle_layers columns={} lifting_log_size={} ms={}",
+                sorted_columns.len(),
+                lifting_log_size,
+                build_tree_start.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        layers
     }
 }
 

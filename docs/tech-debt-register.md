@@ -70,6 +70,46 @@ Target retirement point:
 
 - `generated-lane performance follow-up`
 
+### TD-0034: Quotient combination and early FRI fold rounds are now the dominant generated-lane hot path
+
+- Status: `active`
+- Category: `measured performance hotspot`
+- Introduced: `2026-03-11`
+- Owner area: `generated-lane performance`
+
+Why it exists now:
+
+After batching full Blake2s parent-layer construction for the generic Metal
+Merkle path, the measured `wide_fibonacci` `log20` generated-lane profile no
+longer points at repeated parent-layer host re-encoding as the dominant FRI
+commit cost. The remaining dominant subphases are now:
+
+- `compute_quotients_and_combine`
+- the first few generic Metal FRI fold rounds
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/quotient.rs`
+- `crates/stwo-metal-sys/metal/quotients.metal`
+- `vendor/stwo-upstream-dev-62b228e/crates/stwo/src/prover/fri.rs`
+- `crates/stwo-metal/src/backend/metal/fri.rs`
+
+Risk if left in place:
+
+The generated lane may remain around SIMD-parity territory instead of reaching
+clear GPU-class speedups, even after the Merkle path is substantially more
+native.
+
+Exit condition:
+
+Measured evidence shows the quotient-combine phase and early FRI fold rounds
+are no longer dominant on the target rows, or those phases are replaced by a
+meaningfully more GPU-shaped execution path.
+
+Target retirement point:
+
+- `generated-lane performance follow-up`
+
 ### TD-0032: Standard Blake2s Merkle layers still round-trip through host hash columns between native layers
 
 - Status: `active`

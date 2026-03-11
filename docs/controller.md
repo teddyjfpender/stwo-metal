@@ -144,6 +144,11 @@ Invariants:
 - the explicit CPU line handoff now adapts onto a canonical native Metal line
   evaluation/commitment path, so the next ownership/performance wall is the
   shared PCS/FRI proving pipeline above that thinner bridge layer
+- the generic Blake2s lifted Merkle path can now batch full Metal parent-layer
+  construction from one packed leaf buffer, which materially reduces early FRI
+  commit cost for the generated lane; the next dominant subphases are now
+  quotient combination and the first Metal FRI fold rounds rather than repeated
+  host re-encoding of parent layers
 
 ## Next three deliverables
 
@@ -151,8 +156,9 @@ Invariants:
    wide-fibonacci lane now that workload ingress, the final FRI last-layer
    interpolation, and the bounded FRI commitment slice no longer route through
    `CpuBackend`.
-2. Reduce the remaining prove-values grouping and quotient/decommit staging in
-   the PCS prover above the now-native workload and FRI path.
+2. Reduce the remaining `prove_values` wall in the PCS prover, with the next
+   measured targets being `compute_quotients_and_combine` and the first FRI
+   fold rounds.
 3. Keep downstream `stark-v` hardening iced unless an external support signal
    appears.
 

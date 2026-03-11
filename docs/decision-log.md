@@ -236,6 +236,49 @@ Superseded by:
 
 - none
 
+### DEC-0138: Metal Blake2s lifted commitments may batch full parent-layer construction
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+`MetalBackend` may build a full Blake2s lifted Merkle tree layer chain from
+one packed Metal leaf buffer before decoding the verifier-visible hash layers.
+This batched parent-layer construction is now the canonical Metal
+implementation behind the generic `MerkleOpsLifted` contract when the native
+standard Blake2s path is available.
+
+Context:
+
+Deep profiling of the generated `wide_fibonacci` `log20` row showed that the
+early generic FRI commitment rounds still spent substantial time in parent-layer
+Merkle construction. The previous Metal path already hashed parent layers
+natively, but it rebuilt each parent layer from host `Vec<Blake2sHash>` values,
+re-encoding and re-uploading every intermediate layer.
+
+Alternatives rejected:
+
+- keep the old one-layer-at-a-time parent hashing path even though the full
+  layer chain is known eagerly at commitment time
+- special-case only the benchmark fixture instead of improving the shared
+  `MerkleOpsLifted` contract
+- keep the quotient micro-optimization experiment that regressed the measured
+  quotient phase
+
+Impact:
+
+- the generic Metal Blake2s Merkle path now builds the full parent-layer chain
+  from one packed leaf buffer before decoding host-visible layers
+- early FRI commit rounds for the generated lane are materially cheaper
+- the next dominant measured subphases are now
+  `compute_quotients_and_combine` and the first FRI fold rounds
+
+Superseded by:
+
+- none
+
 ### DEC-0132: Build proof-facing sampled values alongside samples and reuse prepared query buffers before widening prove-values interfaces
 
 - Date: `2026-03-11`
