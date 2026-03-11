@@ -1,17 +1,18 @@
 use std::collections::BTreeMap;
-use std::iter::zip;
 use std::time::Instant;
 
 use itertools::Itertools;
+use num_traits::One;
 use tracing::{span, Level};
 
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{
-    build_samples_with_randomness_and_periodicity, ColumnSampleBatch, PointSample,
+    ColumnSampleBatch, PointSample,
 };
 use crate::core::pcs::TreeVec;
+use crate::core::poly::circle::CanonicCoset;
 use crate::prover::backend::ColumnOps;
 use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::prover::poly::BitReversedOrder;
@@ -72,6 +73,64 @@ pub struct AccumulatedNumerators<B: ColumnOps<BaseField>> {
     pub first_linear_term_acc: SecureField,
 }
 
+struct GroupedColumnSamples<'a, B: QuotientOps> {
+    columns: Vec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    samples_with_randomness: Vec<Vec<(PointSample, SecureField)>>,
+}
+
+fn group_columns_and_samples_by_log_size<'a, B: QuotientOps>(
+    columns: &'a TreeVec<Vec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
+    samples: &'a TreeVec<Vec<Vec<PointSample>>>,
+    lifting_log_size: u32,
+    random_coeff: SecureField,
+) -> BTreeMap<u32, GroupedColumnSamples<'a, B>> {
+    let mut random_pows = (0..).scan(SecureField::one(), |acc, _| {
+        let curr = *acc;
+        *acc *= random_coeff;
+        Some(curr)
+    });
+    let lifting_domain_generator = CanonicCoset::new(lifting_log_size).step();
+    let mut grouped_by_log_size = BTreeMap::<u32, GroupedColumnSamples<'a, B>>::new();
+
+    for (columns_per_tree, samples_per_tree) in columns.iter().zip(samples.iter()) {
+        for (column, samples_per_col) in columns_per_tree.iter().zip(samples_per_tree.iter()) {
+            let log_size = column.domain.log_size();
+            let group = grouped_by_log_size
+                .entry(log_size)
+                .or_insert_with(|| GroupedColumnSamples {
+                    columns: Vec::new(),
+                    samples_with_randomness: Vec::new(),
+                });
+            group.columns.push(*column);
+
+            if samples_per_col.is_empty() {
+                group.samples_with_randomness.push(Vec::new());
+                continue;
+            }
+
+            let mut new_samples = Vec::with_capacity(samples_per_col.len() + 1);
+            // Keep the same periodicity and random-coefficient order as the original
+            // tree-shaped staging helper.
+            if let [_prev_point_sample, point_sample] = &samples_per_col[..] {
+                let period_generator = lifting_domain_generator.repeated_double(log_size);
+                new_samples.push((
+                    PointSample {
+                        point: point_sample.point + period_generator.into_ef(),
+                        value: point_sample.value,
+                    },
+                    random_pows.next().unwrap(),
+                ));
+            }
+            for sample in samples_per_col.iter() {
+                new_samples.push((sample.clone(), random_pows.next().unwrap()));
+            }
+            group.samples_with_randomness.push(new_samples);
+        }
+    }
+
+    grouped_by_log_size
+}
+
 pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     columns: &TreeVec<Vec<&CircleEvaluation<B, BaseField, BitReversedOrder>>>,
     samples: &TreeVec<Vec<Vec<PointSample>>>,
@@ -88,13 +147,9 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     };
     let mut accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = vec![];
     let samples_with_randomness_start = Instant::now();
-    let samples_with_randomness = build_samples_with_randomness_and_periodicity(
+    let grouped_by_log_size = group_columns_and_samples_by_log_size(
+        columns,
         samples,
-        columns
-            .0
-            .iter()
-            .map(|x| x.iter().map(|c| c.domain.log_size()))
-            .collect(),
         lifting_log_size,
         random_coeff,
     );
@@ -109,26 +164,14 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     //   ∑_k (# of distinct sample points per log size k).
     //
     let accumulate_numerators_start = Instant::now();
-    let mut grouped_by_log_size: BTreeMap<
-        u32,
-        (
-            Vec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
-            Vec<&Vec<(PointSample, SecureField)>>,
-        ),
-    > = BTreeMap::new();
-    for (column, samples_with_randomness) in zip(
-        columns.iter().flatten(),
-        samples_with_randomness.iter().flatten(),
-    ) {
-        let entry = grouped_by_log_size
-            .entry(column.domain.log_size())
-            .or_insert_with(|| (Vec::new(), Vec::new()));
-        entry.0.push(column);
-        entry.1.push(samples_with_randomness);
-    }
-    for (_, (columns, samples_with_randomness)) in grouped_by_log_size {
-        let sample_batches = ColumnSampleBatch::new_vec(&samples_with_randomness);
-        B::accumulate_numerators(&columns, &sample_batches, &mut accumulated_numerators_vec);
+    for (_, grouped) in grouped_by_log_size {
+        let sample_refs = grouped.samples_with_randomness.iter().collect_vec();
+        let sample_batches = ColumnSampleBatch::new_vec(&sample_refs);
+        B::accumulate_numerators(
+            &grouped.columns,
+            &sample_batches,
+            &mut accumulated_numerators_vec,
+        );
     }
     emit_timing(
         "accumulate_numerators",

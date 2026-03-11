@@ -119,7 +119,9 @@ Invariants:
   vectors and ordered quotient accumulations without post-sort regrouping, and
   the next materialization slice now builds proof-facing `sampled_values`
   alongside `samples` while reusing prepared tree-query buffers without
-  per-tree cloning, but the Merkle contract still materializes host
+  per-tree cloning, and the next quotient-feed slice now stages grouped sample
+  randomness directly by log-size without a full intermediate tree-shaped
+  regroup pass, but the Merkle contract still materializes host
   `Vec<Blake2sHash>` layers for the committed tree and `prove_values` still
   dominates the benchmark row
 - the current wide-fibonacci generated benchmark still trails SIMD from
@@ -131,7 +133,8 @@ Invariants:
 1. Lower the remaining prove-values grouping overhead above the generated
    wide-fibonacci lane now that repeated tree-decommit staging, one quotient
    regrouping pass, and one proof-facing sample materialization pass have been
-   reduced.
+   reduced, and the direct grouped quotient feed path now avoids one full
+   intermediate tree-shaped regroup pass.
 2. Measure whether the next benchmark-critical host-owned cost is the
    remaining higher-level sample grouping or quotient/decommit staging in the
    PCS prover.

@@ -1092,7 +1092,12 @@ came in at `prove_ms mean = 1152.4745003333335`,
 `prove_ms median = 942.208834`, `prove_core_prove_values_ms mean = 563.6594163333333`,
 and `trace_commit_merkle_ms mean = 77.41322233333334`. That is a
 semantics-preserving staging cleanup, but not a material movement of the
-dominant wall.
+dominant wall. After feeding quotient accumulation directly from grouped
+sampled-randomness by log size, the next `log_n_instances = 20` production
+rerun came in at `prove_ms mean = 1152.5688746666667`,
+`prove_ms median = 952.858083`, `prove_core_prove_values_ms mean = 560.2786666666667`,
+and `trace_commit_merkle_ms mean = 74.00340233333333`. That again confirms
+the remaining wall is higher-level prove-values work, not this regroup pass.
 
 Current containment:
 
@@ -1131,7 +1136,9 @@ parent-layer hashing, native trace-tree residency, repeated
 tree-decommit/query-preparation staging reductions, and the first grouped
 point-eval/quotient-regroup reduction are now landed, so the next expected
 structural retirements are the remaining higher-level prove-values grouping
-work above that lane and the upper commitment/hash path.
+work above that lane and the upper commitment/hash path. The direct grouped
+quotient-feed path is now landed as well, so the remaining hot work is not the
+obvious tree-shaped regrouping layer anymore.
 
 Target retirement point:
 

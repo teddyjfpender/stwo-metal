@@ -28,6 +28,49 @@ Superseded by:
 
 ## Entries
 
+### DEC-0133: Feed quotient accumulation from direct log-size groups before changing higher-level prove-values laws
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The next semantics-preserving reduction after proof-facing sample
+materialization cleanup should be to feed quotient accumulation directly from
+log-size-grouped sampled columns with randomness and periodicity, instead of
+building a full tree-shaped sampled-randomness structure and then regrouping it
+by log size.
+
+Context:
+
+`prove_values` still dominated the generated wide-fibonacci benchmark after the
+earlier grouping and materialization slices. The next remaining host-shaped
+pass was inside quotient staging: sampled points were first expanded into a
+full tree-shaped randomness structure and only afterward regrouped by log size
+for `ColumnSampleBatch` creation.
+
+Alternatives rejected:
+
+- widen the quotient interface before removing the intermediate regroup pass
+- change verifier-visible sample structure first
+- treat the remaining wall as purely lower-level arithmetic without removing
+  this higher-level feed duplication
+
+Impact:
+
+- quotient staging now constructs grouped sampled-randomness directly in
+  log-size order
+- one full intermediate tree-shaped regroup pass is removed from the hot path
+- the next optimization slice can focus on the remaining higher-level grouping
+  and later decommit staging
+
+Superseded by:
+
+- none
+
 ### DEC-0132: Build proof-facing sampled values alongside samples and reuse prepared query buffers before widening prove-values interfaces
 
 - Date: `2026-03-11`
