@@ -30,12 +30,10 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G8 eighth slice: freeze the support-promotion gate for the vendored stark-v
-  row`
+  `benchmark CPU-dependence retirement: native Blake2s parent-layer hashing`
 - Objective:
-  re-center `stwo-metal` on the correct long-term architecture: examples as the
-  acceptance matrix, generic backend substitution as the correctness lane, and
-  generated proving artifacts as the production lane
+  reduce benchmark-critical CPU ownership on the generated Metal lane without
+  widening public contracts or changing proving semantics
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
   and
@@ -51,7 +49,7 @@ Invariants:
   and
   [`dn-0007-stark-v-support-promotion-gate.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0007-stark-v-support-promotion-gate.md)
 - Current owner area:
-  `acceptance integration against the stable planning seam`
+  `generated-lane performance and CPU-dependence retirement`
 
 ## Current blockers
 
@@ -111,22 +109,22 @@ Invariants:
 - the next decision is about how much ABI, specialization, and generated build
   inventory belongs in the stable internal artifact registry before lowering
   starts in earnest
-- `stark-v` is now pinned as the first real G8 downstream input, and the
-  current snapshot is now classified as `generic_lane = unsupported`,
-  `generated_lane = required`, `status = fail_closed`; it is still not
-  executed through `stwo-metal`; the pinned checkout is now vendored locally,
-  the minimum generated subset for the first supported downstream row is now
-  frozen, but no compatible artifact exists yet and the current checkout
-  exposes no machine-readable generated artifact signal
+- the wide-fibonacci generated lane now uses native Metal Blake2s leaf hashing
+  and native parent-layer hashing for standard Blake2s Merkle trees, but the
+  Merkle hash-column representation still round-trips through host
+  `Vec<Blake2sHash>` values between layers
+- the current wide-fibonacci generated benchmark still trails SIMD from
+  `log_size = 19` onward, so remaining prove-values and commitment staging
+  costs must stay explicit and measured
 
 ## Next three deliverables
 
-1. Keep one deterministic local fail-closed row for the vendored `stark-v`
-   input.
-2. Keep one frozen promotion gate that prevents support claims without an
-   actual downstream support signal.
-3. Wait for or integrate one real downstream support signal:
-   backend-parametric proving or a generated artifact satisfying `DN-0006`.
+1. Verify the native Metal Blake2s parent-layer path against the vendored CPU
+   oracle and on the generated wide-fibonacci benchmark row.
+2. Identify the next benchmark-critical host-owned staging step above the
+   native Merkle path and lower it by one semantics-preserving step.
+3. Keep downstream `stark-v` hardening iced unless an external support signal
+   appears.
 
 ## Explicitly not doing now
 

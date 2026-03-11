@@ -37,6 +37,18 @@ fn decode_packed_blake2s_hashes(words: Vec<u32>) -> Vec<Blake2sHash> {
         .collect()
 }
 
+fn encode_packed_blake2s_hashes(hashes: &[Blake2sHash]) -> Vec<u32> {
+    let mut words = Vec::with_capacity(hashes.len() * 8);
+    for hash in hashes {
+        for chunk in hash.0.chunks_exact(4) {
+            words.push(u32::from_le_bytes(
+                chunk.try_into().expect("Blake2s hash words are 4 bytes"),
+            ));
+        }
+    }
+    words
+}
+
 fn build_leaves_native_standard(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
@@ -91,6 +103,20 @@ fn build_leaves_native_wide(
     )
     .ok()?;
     Some(decode_packed_blake2s_hashes(packed_hashes.to_vec().ok()?))
+}
+
+fn build_next_layer_native_standard(prev_layer: &[Blake2sHash]) -> Option<Vec<Blake2sHash>> {
+    if prev_layer.is_empty() || !prev_layer.len().is_power_of_two() || prev_layer.len() < (1 << 12)
+    {
+        return None;
+    }
+
+    let packed_prev_layer = encode_packed_blake2s_hashes(prev_layer);
+    let packed_prev_layer = U32Buffer::from_slice(&packed_prev_layer).ok()?;
+    let packed_next_layer = U32Buffer::blake2s_build_next_layer(&packed_prev_layer).ok()?;
+    Some(decode_packed_blake2s_hashes(
+        packed_next_layer.to_vec().ok()?,
+    ))
 }
 
 impl ColumnOps<Blake2sHash> for MetalBackend {
@@ -206,19 +232,33 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
     fn build_next_layer(prev_layer: &Vec<Blake2sHash>) -> Vec<Blake2sHash> {
         let profile_merkle = std::env::var_os("STWO_METAL_PROFILE_MERKLE").is_some();
         let build_next_layer_start = Instant::now();
-        let log_size: u32 = prev_layer.len().ilog2() - 1;
-        let next = stwo::parallel_iter!(0..(1 << log_size))
-            .map(|i| {
-                Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::hash_children((
-                    prev_layer[2 * i],
-                    prev_layer[2 * i + 1],
-                ))
+        let next = if !IS_M31_OUTPUT {
+            build_next_layer_native_standard(prev_layer).unwrap_or_else(|| {
+                let log_size: u32 = prev_layer.len().ilog2() - 1;
+                stwo::parallel_iter!(0..(1 << log_size))
+                    .map(|i| {
+                        Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::hash_children((
+                            prev_layer[2 * i],
+                            prev_layer[2 * i + 1],
+                        ))
+                    })
+                    .collect()
             })
-            .collect();
+        } else {
+            let log_size: u32 = prev_layer.len().ilog2() - 1;
+            stwo::parallel_iter!(0..(1 << log_size))
+                .map(|i| {
+                    Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::hash_children((
+                        prev_layer[2 * i],
+                        prev_layer[2 * i + 1],
+                    ))
+                })
+                .collect()
+        };
         if profile_merkle {
             eprintln!(
                 "metal_merkle_timing phase=build_next_layer log_size={} ms={}",
-                log_size,
+                prev_layer.len().ilog2() - 1,
                 build_next_layer_start.elapsed().as_secs_f64() * 1000.0
             );
         }

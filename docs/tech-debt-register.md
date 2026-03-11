@@ -28,6 +28,44 @@ Target retirement point:
 
 ## Active debt
 
+### TD-0032: Standard Blake2s Merkle layers still round-trip through host hash columns between native layers
+
+- Status: `active`
+- Category: `benchmark staging overhead`
+- Introduced: `2026-03-11`
+- Owner area: `generated-lane performance`
+
+Why it exists now:
+
+`stwo-metal` now supports native Metal Blake2s leaf hashing and native
+standard Blake2s parent-layer hashing, but the `MerkleOpsLifted` contract
+still materializes `Vec<Blake2sHash>` between layers. That means the generated
+wide-fibonacci benchmark still uploads and downloads packed hash layers around
+the new native parent kernel instead of keeping the whole Merkle tree
+GPU-resident.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/blake2s.rs`
+- `crates/stwo-metal-sys/metal/blake2s.metal`
+- `crates/stwo-metal/tests/metal_blake2s_channel_cpu_bridge.rs`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
+
+Risk if left in place:
+
+The benchmark may continue to trail SIMD even after more arithmetic kernels are
+native, because Merkle commitment still pays host staging costs between layers.
+
+Exit condition:
+
+The benchmark-critical Merkle path keeps hash layers GPU-resident across the
+large standard Blake2s tree, or measured evidence shows that further staging
+elimination is no longer material.
+
+Target retirement point:
+
+- `generated-lane performance follow-up`
+
 ### TD-0030: The pinned `stark-v` snapshot is still SIMD-shaped and therefore unsupported on the generic lane
 
 - Status: `active`

@@ -28,6 +28,48 @@ Superseded by:
 
 ## Entries
 
+### DEC-0127: Standard Blake2s Merkle parent hashing should move onto Metal before broader prove-values rewrites
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
+
+Decision:
+
+The next benchmark-focused CPU-dependence retirement step should be native
+Metal parent-layer hashing for standard Blake2s Merkle trees, while keeping
+M31-output rows and unsupported leaf shapes on the existing host path.
+
+Context:
+
+The generated wide-fibonacci lane already uses native Metal arithmetic and
+native Blake2s leaf hashing on the large trace tree, but `build_next_layer`
+still hashed all Merkle parents on the host. That is on the benchmark-critical
+path and can be replaced without widening the public Merkle contract because
+the packed eight-word Blake2s representation is already stable inside
+`stwo-metal-sys`.
+
+Alternatives rejected:
+
+- jump straight to a broader prove-values rewrite before removing this simpler
+  host-owned Merkle hotspot
+- widen the public API around a GPU-resident Blake2s hash-column type first
+- force the native path for M31-output rows before parity coverage exists
+
+Impact:
+
+- standard Blake2s Merkle trees can retire one more benchmark-critical host
+  hashing step
+- the remaining Merkle bottleneck is now the host-owned hash-column
+  representation and staging, not parent hashing itself
+- the public backend contract remains unchanged
+
+Superseded by:
+
+- none
+
 ### DEC-0126: The vendored stark-v row cannot promote beyond fail-closed without an external support signal
 
 - Date: `2026-03-11`

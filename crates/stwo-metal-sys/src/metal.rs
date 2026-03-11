@@ -1306,6 +1306,28 @@ impl U32Buffer {
 
         Ok(dst)
     }
+
+    pub fn blake2s_build_next_layer(prev_layer: &Self) -> Result<Self, MetalError> {
+        assert!(
+            prev_layer.len.is_multiple_of(16),
+            "packed Blake2s next-layer hashing expects pairs of eight-word child hashes"
+        );
+        let next_hash_count = prev_layer.len / 16;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(next_hash_count * 8)?;
+        unsafe {
+            ffi::blake2s_build_next_layer_u32(
+                runtime.raw.as_ptr(),
+                prev_layer.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                next_hash_count
+                    .try_into()
+                    .expect("Blake2s next-layer parent count should fit in u32"),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
 }
 
 impl Clone for U32Buffer {
@@ -1791,6 +1813,14 @@ mod ffi {
             processed_bytes_before: u32,
             is_first_chunk: u32,
             is_final_chunk: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_blake2s_build_next_layer_u32(
+            runtime: *mut c_void,
+            prev_layer: *mut c_void,
+            dst: *mut c_void,
+            next_len: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -2829,6 +2859,28 @@ mod ffi {
             processed_bytes_before,
             is_first_chunk as u32,
             is_final_chunk as u32,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn blake2s_build_next_layer_u32(
+        runtime: *mut c_void,
+        prev_layer: *mut c_void,
+        dst: *mut c_void,
+        next_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_blake2s_build_next_layer_u32(
+            runtime,
+            prev_layer,
+            dst,
+            next_len,
             error_ptr(&mut error),
             error.len(),
         ) {

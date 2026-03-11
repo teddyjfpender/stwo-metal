@@ -2874,6 +2874,62 @@ bool stwo_metal_blake2s_build_leaves_lifted_wide_chunk_u32(
     }
 }
 
+bool stwo_metal_blake2s_build_next_layer_u32(
+    void *runtime_ptr,
+    void *prev_layer_ptr,
+    void *dst_ptr,
+    uint32_t next_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *prev_layer = stwo_metal_buffer_box(prev_layer_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        if (prev_layer.len != ((NSUInteger)next_len) * 16u || dst.len != ((NSUInteger)next_len) * 8u) {
+            stwo_metal_write_error(error_message, error_message_len, @"Blake2s next-layer hashing expects sixteen packed words per parent input row and eight packed words per output row.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, @"blake2s_build_next_layer_u32", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:prev_layer.buffer offset:0 atIndex:0];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:1];
+        [encoder setBytes:&next_len length:sizeof(next_len) atIndex:2];
+
+        MTLSize grid_size = MTLSizeMake(next_len, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_generate_wide_fibonacci_trace_u32(
     void *runtime_ptr,
     void *input_a_ptr,

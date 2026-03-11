@@ -84,6 +84,31 @@ fn metal_blake2s_merkle_native_wide_leaf_path_matches_cpu() {
 }
 
 #[test]
+fn metal_blake2s_merkle_native_next_layer_matches_cpu_on_large_standard_layer() {
+    require_metal_runtime();
+
+    let prev_layer = (0..(1 << 12))
+        .map(|index| {
+            let mut bytes = [0u8; 32];
+            for (word_index, chunk) in bytes.chunks_exact_mut(4).enumerate() {
+                let value = (index as u32)
+                    .wrapping_mul(17)
+                    .wrapping_add((word_index as u32).wrapping_mul(257));
+                chunk.copy_from_slice(&value.to_le_bytes());
+            }
+            Blake2sHash(bytes)
+        })
+        .collect::<Vec<_>>();
+
+    let expected =
+        <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_next_layer(&prev_layer);
+    let actual =
+        <MetalBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_next_layer(&prev_layer);
+
+    assert_eq!(actual, expected);
+}
+
+#[test]
 fn metal_blake2s_grind_cpu_bridge_matches_cpu() {
     require_metal_runtime();
 

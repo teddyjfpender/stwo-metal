@@ -194,7 +194,7 @@ pub const fn metal_backend_surface_detail(surface: MetalBackendSurface) -> &'sta
             "Legacy capability name retained for API stability: `ColumnOps<Blake2sHash>` is now supported directly with host-owned Blake2s hash columns and no `CpuBackend` dependency."
         }
         MetalBackendSurface::Blake2sMerkleOpsLiftedCpuBridge => {
-            "Legacy capability name retained for API stability: the lifted Blake2s Merkle boundary is now supported directly over Metal-owned base-field columns with host-side Blake2s hashing and no `CpuBackend` dependency."
+            "Legacy capability name retained for API stability: the lifted Blake2s Merkle boundary is now supported directly over Metal-owned base-field columns with native standard Blake2s leaf and parent-layer hashing on supported rows, host fallback for unsupported or M31-output rows, and no `CpuBackend` dependency."
         }
         MetalBackendSurface::Blake2sGrindCpuBridge => {
             "Legacy capability name retained for API stability: the Blake2s proof-of-work boundary is now supported directly through the channel's nonce verification loop and no `CpuBackend` dependency."
