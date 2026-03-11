@@ -449,9 +449,9 @@ The next honest G8 work is:
 
 The sixteenth G5 slice is now landed:
 
-- the benchmark prove-values bridge now validates one workspace-private
-  `WideFibonacciProveValuesLane` contract and stages from that lower contract
-  instead of consuming `MetalExecutionAuthority` directly
+- the benchmark prove-values bridge now validates one workspace-private lane
+  contract and stages from that lower contract instead of consuming
+  `MetalExecutionAuthority` directly
 - the wide-fibonacci benchmark row now constructs that private lane contract at
   the edge and hands the live helper only the validated support-bridge seam it
   actually needs
@@ -568,6 +568,17 @@ The twenty-sixth G5 slice is now landed:
   re-checks workload plan law on its own
 - the next honest G5 work is to lower the next workload-side staging or
   error-mapping rule that still duplicates generated seed law above the
+
+The current G10 prove-path migration state is:
+
+- `MetalWideFibonacciBenchmarkBoundary` now owns prove-values staging,
+  prove-values execution, and the composition/prove-core law for the generated
+  benchmark row
+- the old prove-values helper module under
+  `fixtures/stwo-metal-fixture-shims/src/benchmark.rs` is retired because the
+  generated benchmark no longer depends on it
+- the next honest G10 work is the next live prove boundary after
+  benchmark-boundary-owned prove core
   boundary surface
 
 The twenty-seventh G5 slice is now landed:

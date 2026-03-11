@@ -1,4 +1,4 @@
-use stwo::core::channel::Blake2sChannel;
+use stwo::core::channel::{Blake2sChannel, Channel};
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::fields::qm31::SECURE_EXTENSION_DEGREE;
@@ -94,6 +94,14 @@ pub struct MetalBenchmarkProveValuesStaging {
     pub oods_point: stwo::core::circle::CirclePoint<SecureField>,
     pub max_log_degree_bound: u32,
     pub sample_points: TreeVec<Vec<Vec<stwo::core::circle::CirclePoint<SecureField>>>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MetalBenchmarkProveCoreBreakdown {
+    pub composition_generation_ms: f64,
+    pub composition_commit_ms: f64,
+    pub prove_values_ms: f64,
+    pub sanity_check_ms: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -239,6 +247,65 @@ impl MetalWideFibonacciBenchmarkBoundary {
             MetalBenchmarkProveValuesBreakdown {
                 prove_values_ms,
                 sanity_check_ms,
+            },
+        ))
+    }
+
+    pub fn execute_prove_core(
+        &self,
+        components: &[&dyn stwo::prover::ComponentProver<super::MetalBackend>],
+        channel: &mut Blake2sChannel,
+        mut commitment_scheme: CommitmentSchemeProver<'_, super::MetalBackend, Blake2sMerkleChannel>,
+    ) -> Result<
+        (
+            StarkProof<Blake2sMerkleHasher>,
+            MetalBenchmarkProveCoreBreakdown,
+        ),
+        ProvingError,
+    > {
+        let n_preprocessed_columns = commitment_scheme.trees[stwo::core::verifier::PREPROCESSED_TRACE_IDX]
+            .polynomials
+            .len();
+        let component_provers = ComponentProvers {
+            components: components.to_vec(),
+            n_preprocessed_columns,
+        };
+        let trace = commitment_scheme.trace();
+
+        let random_coeff = channel.draw_secure_felt();
+
+        let composition_generation_start = std::time::Instant::now();
+        let composition_poly =
+            component_provers.compute_composition_polynomial(random_coeff, &trace);
+        let composition_generation_ms =
+            composition_generation_start.elapsed().as_secs_f64() * 1000.0;
+
+        let composition_commit_start = std::time::Instant::now();
+        let mut tree_builder = commitment_scheme.tree_builder();
+        let (left_comp_poly_half, right_comp_poly_half) = composition_poly.split_at_mid();
+        tree_builder.extend_polys(left_comp_poly_half.into_coordinate_polys());
+        tree_builder.extend_polys(right_comp_poly_half.into_coordinate_polys());
+        tree_builder.commit(channel);
+        let composition_commit_ms = composition_commit_start.elapsed().as_secs_f64() * 1000.0;
+
+        let prove_values_stage =
+            self.stage_prove_values(&component_provers, channel, &commitment_scheme)
+                .expect("registered benchmark boundary must satisfy the prove-values lane contract");
+        let (proof, prove_values_breakdown) = self.execute_prove_values(
+            &component_provers,
+            random_coeff,
+            channel,
+            commitment_scheme,
+            prove_values_stage,
+        )?;
+
+        Ok((
+            proof,
+            MetalBenchmarkProveCoreBreakdown {
+                composition_generation_ms,
+                composition_commit_ms,
+                prove_values_ms: prove_values_breakdown.prove_values_ms,
+                sanity_check_ms: prove_values_breakdown.sanity_check_ms,
             },
         ))
     }

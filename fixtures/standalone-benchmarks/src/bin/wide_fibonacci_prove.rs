@@ -7,7 +7,7 @@ use stwo::core::air::accumulation::PointEvaluationAccumulator;
 #[cfg(feature = "metal-runtime")]
 use stwo::core::air::Component;
 #[cfg(feature = "metal-runtime")]
-use stwo::core::channel::{Blake2sChannel, Channel};
+use stwo::core::channel::Blake2sChannel;
 #[cfg(feature = "metal-runtime")]
 use stwo::core::constraints::coset_vanishing;
 #[cfg(feature = "metal-runtime")]
@@ -42,7 +42,7 @@ use stwo::prover::vcs_lifted::ops::MerkleOpsLifted;
 use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
 #[cfg(feature = "metal-runtime")]
 use stwo::prover::{
-    prove, CommitmentSchemeProver, CommitmentTreeProver, ComponentProver, ComponentProvers,
+    prove, CommitmentSchemeProver, CommitmentTreeProver, ComponentProver,
     DomainEvaluationAccumulator, ProvingError, Trace,
 };
 #[cfg(feature = "metal-runtime")]
@@ -966,15 +966,6 @@ struct ProveBreakdown {
 }
 
 #[cfg(feature = "metal-runtime")]
-#[derive(Clone, Copy)]
-struct ProveCoreBreakdown {
-    composition_generation_ms: f64,
-    composition_commit_ms: f64,
-    prove_values_ms: f64,
-    sanity_check_ms: f64,
-}
-
-#[cfg(feature = "metal-runtime")]
 fn prove_wide_fibonacci_blake(
     input_a_host: &[BaseField],
     input_b_host: &[BaseField],
@@ -1036,8 +1027,7 @@ fn prove_wide_fibonacci_blake(
 
     let component = WideFibonacciBenchmarkComponent::new(log_n_instances, n_columns);
     let prove_core_start = Instant::now();
-    let (proof, prove_core_breakdown) = prove_with_breakdown(
-        &benchmark_boundary,
+    let (proof, prove_core_breakdown) = benchmark_boundary.execute_prove_core(
         &[&component],
         prover_channel,
         commitment_scheme,
@@ -1116,58 +1106,6 @@ where
         commitment_scheme,
         proof.clone(),
     )
-}
-
-#[cfg(feature = "metal-runtime")]
-fn prove_with_breakdown(
-    benchmark_boundary: &MetalWideFibonacciBenchmarkBoundary,
-    components: &[&dyn ComponentProver<MetalBackend>],
-    channel: &mut Blake2sChannel,
-    mut commitment_scheme: CommitmentSchemeProver<'_, MetalBackend, Blake2sMerkleChannel>,
-) -> Result<(StarkProof<Blake2sMerkleHasher>, ProveCoreBreakdown), ProvingError> {
-    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
-        .polynomials
-        .len();
-    let component_provers = ComponentProvers {
-        components: components.to_vec(),
-        n_preprocessed_columns,
-    };
-    let trace = commitment_scheme.trace();
-
-    let random_coeff = channel.draw_secure_felt();
-
-    let composition_generation_start = Instant::now();
-    let composition_poly = component_provers.compute_composition_polynomial(random_coeff, &trace);
-    let composition_generation_ms = composition_generation_start.elapsed().as_secs_f64() * 1000.0;
-
-    let composition_commit_start = Instant::now();
-    let mut tree_builder = commitment_scheme.tree_builder();
-    let (left_comp_poly_half, right_comp_poly_half) = composition_poly.split_at_mid();
-    tree_builder.extend_polys(left_comp_poly_half.into_coordinate_polys());
-    tree_builder.extend_polys(right_comp_poly_half.into_coordinate_polys());
-    tree_builder.commit(channel);
-    let composition_commit_ms = composition_commit_start.elapsed().as_secs_f64() * 1000.0;
-
-    let prove_values_stage = benchmark_boundary
-        .stage_prove_values(&component_provers, channel, &commitment_scheme)
-        .expect("registered benchmark boundary must satisfy the prove-values lane contract");
-    let (proof, prove_values_breakdown) = benchmark_boundary.execute_prove_values(
-        &component_provers,
-        random_coeff,
-        channel,
-        commitment_scheme,
-        prove_values_stage,
-    )?;
-
-    Ok((
-        proof,
-        ProveCoreBreakdown {
-            composition_generation_ms,
-            composition_commit_ms,
-            prove_values_ms: prove_values_breakdown.prove_values_ms,
-            sanity_check_ms: prove_values_breakdown.sanity_check_ms,
-        },
-    ))
 }
 
 #[cfg(feature = "metal-runtime")]

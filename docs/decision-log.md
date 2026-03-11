@@ -158,6 +158,47 @@ Superseded by:
 
 - none
 
+### DEC-0159: Generated `wide_fibonacci` prove core now belongs to `stwo-metal`
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+The generated `wide_fibonacci` benchmark row now delegates composition
+generation, composition commit, prove-values staging, and prove-values
+execution to `MetalWideFibonacciBenchmarkBoundary` inside `stwo-metal`.
+Benchmark fixtures may still time or verify that prove core, but they must not
+define its live law once the backend crate owns it.
+
+Context:
+
+After `DEC-0158`, the generated benchmark row already depended on
+`MetalWideFibonacciBenchmarkBoundary` for prove-values staging and execution.
+The remaining benchmark-local prove law was the composition/prove-core shell
+around those calls. Leaving that shell in the fixture would have preserved a
+benchmark-specific proving contract even though it depends only on backend
+types already known inside `stwo-metal`.
+
+Alternatives rejected:
+
+- keep the benchmark binary responsible for composition generation and commit
+- preserve the old fixture prove-values shim module as an active dependency
+
+Impact:
+
+- the generated benchmark row now calls one backend-owned prove-core boundary
+- the old fixture benchmark shim module is retired
+- the next honest migration target is the next prove boundary beyond
+  benchmark-boundary-owned prove core
+
+Superseded by:
+
+- none
+
 ### DEC-0157: The first G10 migration step is live-trace V1 execution, not a fake full prove-path claim
 
 - Date: `2026-03-11`
