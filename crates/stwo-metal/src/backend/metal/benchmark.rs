@@ -1,30 +1,50 @@
+use stwo::core::air::Component;
 use stwo::core::channel::{Blake2sChannel, Channel};
+use stwo::core::constraints::coset_vanishing;
 use stwo::core::fields::m31::BaseField;
-use stwo::core::fields::qm31::SecureField;
-use stwo::core::fields::qm31::SECURE_EXTENSION_DEGREE;
+use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::fields::FieldExpOps;
 use stwo::core::pcs::utils::get_lifting_log_size;
-use stwo::core::pcs::TreeVec;
+use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
+use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
+use stwo::core::utils::MaybeOwned;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-use stwo::prover::{AccumulationOps, CommitmentSchemeProver, ComponentProvers, ProvingError};
+use stwo::core::verifier::{verify, VerificationError, PREPROCESSED_TRACE_IDX};
+use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::vcs_lifted::ops::MerkleOpsLifted;
+use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
+use stwo::prover::{
+    AccumulationOps, CommitmentSchemeProver, CommitmentTreeProver, ComponentProver,
+    ComponentProvers, DomainEvaluationAccumulator, ProvingError, Trace,
+};
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
 use super::eval_program_v1::{
     execute_selected_metal_evaluation_program_v1_on_metal, interpret_metal_evaluation_program_v1,
-    lower_registered_metal_evaluation_program_v1, MetalEvaluationProgramBudgetV1,
-    MetalEvaluationProgramCapabilityProfileV1, MetalEvaluationProgramDispatchKindV1,
-    MetalEvaluationProgramExecutionError, MetalEvaluationProgramInterpreterError,
-    MetalEvaluationProgramLoweringError, MetalEvaluationProgramRuntimeInputsV1,
-    MetalEvaluationProgramSpecializationV1, MetalEvaluationProgramTraceViewV1,
-    OwnedMetalEvaluationProgramV1, select_metal_evaluation_program_dispatch_v1,
+    lower_registered_metal_evaluation_program_v1, select_metal_evaluation_program_dispatch_v1,
+    MetalEvaluationProgramBudgetV1, MetalEvaluationProgramCapabilityProfileV1,
+    MetalEvaluationProgramDispatchKindV1, MetalEvaluationProgramExecutionError,
+    MetalEvaluationProgramInterpreterError, MetalEvaluationProgramLoweringError,
+    MetalEvaluationProgramRuntimeInputsV1, MetalEvaluationProgramSpecializationV1,
+    MetalEvaluationProgramTraceViewV1, OwnedMetalEvaluationProgramV1,
 };
 use super::execution_plan::{
     registered_execution_binding, registered_execution_seed, RegisteredMetalExecutionSeed,
 };
 use super::planner::{MetalExecutionIntent, MetalPlannerError};
+use super::poly::evaluate_polys_on_domain_batch;
+use super::quotient::{
+    accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
+    MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciQuotientRequest,
+};
 use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload::{declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary};
 use super::workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
+use super::MetalBackend;
+
+const MAIN_TRACE_IDX: usize = 1;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalBenchmarkOperation {
@@ -107,6 +127,37 @@ pub struct MetalBenchmarkProveCoreBreakdown {
     pub sanity_check_ms: f64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MetalWideFibonacciSentinel {
+    pub first_column_first_value: u32,
+    pub second_column_first_value: u32,
+    pub last_column_first_value: u32,
+    pub last_column_last_value: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct MetalGeneratedWideFibonacciBenchmarkSample {
+    pub proof: StarkProof<Blake2sMerkleHasher>,
+    pub sentinel: MetalWideFibonacciSentinel,
+    pub breakdown: MetalGeneratedWideFibonacciBenchmarkBreakdown,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MetalGeneratedWideFibonacciBenchmarkBreakdown {
+    pub setup_and_preprocessed_commit_ms: f64,
+    pub trace_generation_ms: f64,
+    pub trace_commit_ms: f64,
+    pub trace_commit_interpolation_ms: f64,
+    pub trace_commit_extension_ms: f64,
+    pub trace_commit_merkle_ms: f64,
+    pub prove_core_ms: f64,
+    pub prove_core_evaluation_program_v1_ms: f64,
+    pub prove_core_composition_generation_ms: f64,
+    pub prove_core_composition_commit_ms: f64,
+    pub prove_core_prove_values_ms: f64,
+    pub prove_core_sanity_check_ms: f64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MetalBenchmarkProveValuesBreakdown {
     pub prove_values_ms: f64,
@@ -134,18 +185,15 @@ impl MetalWideFibonacciBenchmarkBoundary {
         &self,
         trace: &MetalWideFibonacciTrace,
         random_coeff: SecureField,
-    ) -> Result<
-        (MetalEvaluationProgramDispatchKindV1, f64),
-        MetalBenchmarkProgramExecutionError,
-    > {
-        let program = self.evaluation_program_v1().map_err(|source| {
-            MetalBenchmarkProgramExecutionError::ProgramContract { source }
-        })?;
-        let random_coeff_powers =
-            <super::MetalBackend as AccumulationOps>::generate_secure_powers(
-                random_coeff,
-                program.header().n_constraints as usize,
-            );
+    ) -> Result<(MetalEvaluationProgramDispatchKindV1, f64), MetalBenchmarkProgramExecutionError>
+    {
+        let program = self
+            .evaluation_program_v1()
+            .map_err(|source| MetalBenchmarkProgramExecutionError::ProgramContract { source })?;
+        let random_coeff_powers = <super::MetalBackend as AccumulationOps>::generate_secure_powers(
+            random_coeff,
+            program.header().n_constraints as usize,
+        );
         let runtime_start = std::time::Instant::now();
         let (_, dispatch) =
             self.execute_selected_evaluation_program_v1_on_trace(trace, &random_coeff_powers)?;
@@ -282,7 +330,11 @@ impl MetalWideFibonacciBenchmarkBoundary {
         generated_trace: &MetalWideFibonacciTrace,
         components: &[&dyn stwo::prover::ComponentProver<super::MetalBackend>],
         channel: &mut Blake2sChannel,
-        mut commitment_scheme: CommitmentSchemeProver<'_, super::MetalBackend, Blake2sMerkleChannel>,
+        mut commitment_scheme: CommitmentSchemeProver<
+            '_,
+            super::MetalBackend,
+            Blake2sMerkleChannel,
+        >,
     ) -> Result<
         (
             StarkProof<Blake2sMerkleHasher>,
@@ -290,7 +342,8 @@ impl MetalWideFibonacciBenchmarkBoundary {
         ),
         MetalBenchmarkProveCoreError,
     > {
-        let n_preprocessed_columns = commitment_scheme.trees[stwo::core::verifier::PREPROCESSED_TRACE_IDX]
+        let n_preprocessed_columns = commitment_scheme.trees
+            [stwo::core::verifier::PREPROCESSED_TRACE_IDX]
             .polynomials
             .len();
         let component_provers = ComponentProvers {
@@ -301,10 +354,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
 
         let random_coeff = channel.draw_secure_felt();
         let (evaluation_program_v1_dispatch, evaluation_program_v1_ms) = self
-            .execute_selected_evaluation_program_v1_for_prove_core(
-                generated_trace,
-                random_coeff,
-            )
+            .execute_selected_evaluation_program_v1_for_prove_core(generated_trace, random_coeff)
             .map_err(|source| MetalBenchmarkProveCoreError::ProgramExecution { source })?;
 
         let composition_generation_start = std::time::Instant::now();
@@ -321,17 +371,18 @@ impl MetalWideFibonacciBenchmarkBoundary {
         tree_builder.commit(channel);
         let composition_commit_ms = composition_commit_start.elapsed().as_secs_f64() * 1000.0;
 
-        let prove_values_stage =
-            self.stage_prove_values(&component_provers, channel, &commitment_scheme)
-                .expect("registered benchmark boundary must satisfy the prove-values lane contract");
-        let (proof, prove_values_breakdown) = self.execute_prove_values(
-            &component_provers,
-            random_coeff,
-            channel,
-            commitment_scheme,
-            prove_values_stage,
-        )
-        .map_err(MetalBenchmarkProveCoreError::from)?;
+        let prove_values_stage = self
+            .stage_prove_values(&component_provers, channel, &commitment_scheme)
+            .expect("registered benchmark boundary must satisfy the prove-values lane contract");
+        let (proof, prove_values_breakdown) = self
+            .execute_prove_values(
+                &component_provers,
+                random_coeff,
+                channel,
+                commitment_scheme,
+                prove_values_stage,
+            )
+            .map_err(MetalBenchmarkProveCoreError::from)?;
 
         Ok((
             proof,
@@ -463,10 +514,8 @@ impl MetalWideFibonacciBenchmarkBoundary {
         trace: &MetalWideFibonacciTrace,
         random_coeff_powers: &[SecureField],
     ) -> Result<Vec<SecureField>, MetalBenchmarkProgramExecutionError> {
-        let (row_res, _) = self.execute_selected_evaluation_program_v1_on_trace(
-            trace,
-            random_coeff_powers,
-        )?;
+        let (row_res, _) =
+            self.execute_selected_evaluation_program_v1_on_trace(trace, random_coeff_powers)?;
         Ok(row_res)
     }
 
@@ -566,6 +615,100 @@ impl MetalWideFibonacciBenchmarkBoundary {
             .map(|column_index| trace.column_values(column_index))
             .collect())
     }
+
+    pub fn run_generated_blake2s_sample(
+        &self,
+        input_a: &[BaseField],
+        input_b: &[BaseField],
+        config: PcsConfig,
+    ) -> Result<MetalGeneratedWideFibonacciBenchmarkSample, MetalGeneratedWideFibonacciBenchmarkError>
+    {
+        let setup_start = std::time::Instant::now();
+        let twiddles = MetalBackend::precompute_twiddles(
+            CanonicCoset::new(
+                self.target.log_n_instances + 1 + config.fri_config.log_blowup_factor,
+            )
+            .circle_domain()
+            .half_coset,
+        );
+
+        let prover_channel = &mut Blake2sChannel::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<MetalBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(vec![]);
+        tree_builder.commit(prover_channel);
+
+        commitment_scheme.set_store_polynomials_coefficients();
+        let setup_and_preprocessed_commit_ms = setup_start.elapsed().as_secs_f64() * 1000.0;
+
+        let trace_generation_start = std::time::Instant::now();
+        let witness_inputs = self
+            .ingest_cpu_witness_inputs(input_a, input_b)
+            .map_err(|source| MetalGeneratedWideFibonacciBenchmarkError::Input { source })?;
+        let native_trace = witness_inputs.generate_trace().map_err(|source| {
+            MetalGeneratedWideFibonacciBenchmarkError::TraceGeneration { source }
+        })?;
+        let sentinel = sentinel_from_metal_trace(
+            &native_trace,
+            1usize << self.target.log_n_instances,
+            self.target.n_columns as usize,
+        );
+        let trace = native_trace.to_metal_evaluations();
+        let trace_generation_ms = trace_generation_start.elapsed().as_secs_f64() * 1000.0;
+
+        let trace_commit_start = std::time::Instant::now();
+        let trace_commit_breakdown =
+            commit_trace_with_breakdown(&mut commitment_scheme, prover_channel, trace, &twiddles);
+        let trace_commit_ms = trace_commit_start.elapsed().as_secs_f64() * 1000.0;
+
+        let component = WideFibonacciBenchmarkComponent::new(
+            self.target.log_n_instances,
+            self.target.n_columns as usize,
+        );
+        let prove_core_start = std::time::Instant::now();
+        let (proof, prove_core_breakdown) = self
+            .execute_prove_core(
+                &native_trace,
+                &[&component],
+                prover_channel,
+                commitment_scheme,
+            )
+            .map_err(|source| MetalGeneratedWideFibonacciBenchmarkError::ProveCore { source })?;
+        let prove_core_ms = prove_core_start.elapsed().as_secs_f64() * 1000.0;
+
+        Ok(MetalGeneratedWideFibonacciBenchmarkSample {
+            proof,
+            sentinel,
+            breakdown: MetalGeneratedWideFibonacciBenchmarkBreakdown {
+                setup_and_preprocessed_commit_ms,
+                trace_generation_ms,
+                trace_commit_ms,
+                trace_commit_interpolation_ms: trace_commit_breakdown.interpolation_ms,
+                trace_commit_extension_ms: trace_commit_breakdown.extension_ms,
+                trace_commit_merkle_ms: trace_commit_breakdown.merkle_ms,
+                prove_core_ms,
+                prove_core_evaluation_program_v1_ms: prove_core_breakdown.evaluation_program_v1_ms,
+                prove_core_composition_generation_ms: prove_core_breakdown
+                    .composition_generation_ms,
+                prove_core_composition_commit_ms: prove_core_breakdown.composition_commit_ms,
+                prove_core_prove_values_ms: prove_core_breakdown.prove_values_ms,
+                prove_core_sanity_check_ms: prove_core_breakdown.sanity_check_ms,
+            },
+        })
+    }
+
+    pub fn verify_generated_blake2s_sample(
+        &self,
+        sample: &MetalGeneratedWideFibonacciBenchmarkSample,
+    ) -> Result<(), VerificationError> {
+        let component = WideFibonacciBenchmarkComponent::new(
+            self.target.log_n_instances,
+            self.target.n_columns as usize,
+        );
+        verify_wide_fibonacci_blake(&component, &sample.proof)
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -642,6 +785,22 @@ impl From<ProvingError> for MetalBenchmarkProveCoreError {
     }
 }
 
+#[derive(Debug)]
+pub enum MetalGeneratedWideFibonacciBenchmarkError {
+    Input {
+        source: MetalBenchmarkInputError,
+    },
+    TraceGeneration {
+        source: MetalWideFibonacciTraceError,
+    },
+    Program {
+        source: MetalBenchmarkProgramExecutionError,
+    },
+    ProveCore {
+        source: MetalBenchmarkProveCoreError,
+    },
+}
+
 fn extract_composition_oods_eval(
     proof: &StarkProof<Blake2sMerkleHasher>,
     oods_point: stwo::core::circle::CirclePoint<SecureField>,
@@ -668,6 +827,288 @@ fn extract_composition_oods_eval(
     let left_eval = SecureField::from_partial_evals(left_coordinate_evals.try_into().ok()?);
     let right_eval = SecureField::from_partial_evals(right_coordinate_evals.try_into().ok()?);
     Some(left_eval + oods_point.repeated_double(max_log_degree_bound - 1).x * right_eval)
+}
+
+#[derive(Clone)]
+struct WideFibonacciBenchmarkComponent {
+    log_n_rows: u32,
+    n_columns: usize,
+}
+
+impl WideFibonacciBenchmarkComponent {
+    fn new(log_n_rows: u32, n_columns: usize) -> Self {
+        assert!(
+            n_columns >= 3,
+            "wide fibonacci benchmark requires at least 3 columns"
+        );
+        Self {
+            log_n_rows,
+            n_columns,
+        }
+    }
+
+    fn denom_inverse(&self, point: stwo::core::circle::CirclePoint<SecureField>) -> SecureField {
+        coset_vanishing(CanonicCoset::new(self.log_n_rows).coset(), point).inverse()
+    }
+}
+
+impl stwo::core::air::Component for WideFibonacciBenchmarkComponent {
+    fn n_constraints(&self) -> usize {
+        self.n_columns - 2
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.log_n_rows + 1
+    }
+
+    fn trace_log_degree_bounds(&self) -> TreeVec<Vec<u32>> {
+        TreeVec::new(vec![vec![], vec![self.log_n_rows; self.n_columns]])
+    }
+
+    fn mask_points(
+        &self,
+        point: stwo::core::circle::CirclePoint<SecureField>,
+        _max_log_degree_bound: u32,
+    ) -> TreeVec<Vec<Vec<stwo::core::circle::CirclePoint<SecureField>>>> {
+        TreeVec::new(vec![
+            vec![],
+            (0..self.n_columns).map(|_| vec![point]).collect(),
+        ])
+    }
+
+    fn preprocessed_column_indices(&self) -> Vec<usize> {
+        vec![]
+    }
+
+    fn evaluate_constraint_quotients_at_point(
+        &self,
+        point: stwo::core::circle::CirclePoint<SecureField>,
+        mask: &TreeVec<Vec<Vec<SecureField>>>,
+        evaluation_accumulator: &mut stwo::core::air::accumulation::PointEvaluationAccumulator,
+        _max_log_degree_bound: u32,
+    ) {
+        let trace_mask = &mask[MAIN_TRACE_IDX];
+        assert_eq!(trace_mask.len(), self.n_columns);
+
+        let denom_inverse = self.denom_inverse(point);
+        let mut a = trace_mask[0][0];
+        let mut b = trace_mask[1][0];
+        for column in trace_mask.iter().skip(2) {
+            let c = column[0];
+            evaluation_accumulator.accumulate(denom_inverse * (c - (a.square() + b.square())));
+            a = b;
+            b = c;
+        }
+    }
+}
+
+impl ComponentProver<MetalBackend> for WideFibonacciBenchmarkComponent {
+    fn evaluate_constraint_quotients_on_domain(
+        &self,
+        trace: &Trace<'_, MetalBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<MetalBackend>,
+    ) {
+        if self.n_constraints() == 0 {
+            return;
+        }
+
+        let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
+        let trace_domain = CanonicCoset::new(self.log_n_rows);
+        let trace_columns = &trace.polys[MAIN_TRACE_IDX];
+        assert_eq!(trace_columns.len(), self.n_columns);
+
+        if trace_columns.iter().any(|poly| poly.coeffs.is_none())
+            && trace_columns
+                .iter()
+                .any(|poly| poly.evals.domain != eval_domain)
+        {
+            panic!("wide fibonacci benchmark requires stored trace coefficients for eval-domain extension");
+        }
+
+        let log_expand = eval_domain.log_size() - trace_domain.log_size();
+        let mut denominator_inverses = (0..(1 << log_expand))
+            .map(|index| coset_vanishing(trace_domain.coset(), eval_domain.at(index)).inverse())
+            .collect::<Vec<_>>();
+        stwo::core::utils::bit_reverse(&mut denominator_inverses);
+
+        let [mut accum] =
+            evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
+        accum.random_coeff_powers.reverse();
+        let quotients = if trace_columns
+            .iter()
+            .all(|poly| poly.evals.domain == eval_domain)
+        {
+            let trace1_evaluation_refs = trace_columns
+                .iter()
+                .map(|poly| &poly.evals.values)
+                .collect::<Vec<_>>();
+            accumulate_wide_fibonacci_quotients(MetalWideFibonacciQuotientRequest {
+                trace_evaluations: &trace1_evaluation_refs,
+                random_coeff_powers: &accum.random_coeff_powers,
+                denominator_inverses: &denominator_inverses,
+                domain_log_size: trace_domain.log_size(),
+                eval_domain_log_size: eval_domain.log_size(),
+            })
+        } else {
+            let twiddles = MetalBackend::precompute_twiddles(eval_domain.half_coset);
+            let coeffs = trace_columns
+                .iter()
+                .map(|poly| {
+                    poly.coeffs.as_ref().expect(
+                        "wide fibonacci benchmark requires stored trace coefficients for eval-domain extension",
+                    )
+                })
+                .collect::<Vec<_>>();
+            let trace_batch = evaluate_polys_on_domain_batch(&coeffs, eval_domain, &twiddles)
+                .expect("wide-fibonacci trace batch evaluation should stay on Metal");
+            accumulate_wide_fibonacci_quotients_from_batch(MetalWideFibonacciBatchQuotientRequest {
+                trace_evaluations: &trace_batch,
+                random_coeff_powers: &accum.random_coeff_powers,
+                denominator_inverses: &denominator_inverses,
+                domain_log_size: trace_domain.log_size(),
+                eval_domain_log_size: eval_domain.log_size(),
+            })
+        }
+        .expect("wide-fibonacci quotient accumulation should succeed through the native Metal path");
+        let quotient_columns = quotients.into_coordinate_base_columns();
+        for (dst, src) in accum.col.columns.iter_mut().zip(quotient_columns) {
+            *dst = src;
+        }
+    }
+}
+
+struct TraceCommitBreakdown {
+    interpolation_ms: f64,
+    extension_ms: f64,
+    merkle_ms: f64,
+}
+
+fn build_native_standard_blake2s_merkle_prover(
+    columns: Vec<&crate::stwo_metal::base_field_vec::BaseFieldVec>,
+    lifting_log_size: u32,
+) -> Option<MerkleProverLifted<MetalBackend, Blake2sMerkleHasher>> {
+    if columns.is_empty() {
+        return Some(
+            MerkleProverLifted::<MetalBackend, Blake2sMerkleHasher>::commit(
+                Vec::new(),
+                lifting_log_size,
+            ),
+        );
+    }
+
+    let leaves = <MetalBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(
+        &columns.iter().copied().collect::<Vec<_>>(),
+        lifting_log_size,
+    );
+    let mut layers = vec![leaves.clone()];
+    while layers.last()?.len() > 1 {
+        let next = <MetalBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_next_layer(
+            layers.last().expect("Merkle layers should be non-empty"),
+        );
+        layers.push(next);
+    }
+    layers.reverse();
+    Some(MerkleProverLifted { layers })
+}
+
+fn commit_trace_with_breakdown(
+    commitment_scheme: &mut CommitmentSchemeProver<'_, MetalBackend, Blake2sMerkleChannel>,
+    prover_channel: &mut Blake2sChannel,
+    trace: Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
+    twiddles: &stwo::prover::poly::twiddles::TwiddleTree<MetalBackend>,
+) -> TraceCommitBreakdown {
+    let interpolation_start = std::time::Instant::now();
+    let trace_polynomials = MetalBackend::interpolate_columns(trace, twiddles);
+    let interpolation_ms = interpolation_start.elapsed().as_secs_f64() * 1000.0;
+
+    let extension_start = std::time::Instant::now();
+    let trace_polynomials = MetalBackend::evaluate_polynomials(
+        trace_polynomials,
+        commitment_scheme.config.fri_config.log_blowup_factor,
+        twiddles,
+        commitment_scheme.store_polynomials_coefficients,
+        &commitment_scheme.base_column_pool,
+    );
+    let extension_ms = extension_start.elapsed().as_secs_f64() * 1000.0;
+
+    let merkle_start = std::time::Instant::now();
+    let max_log_domain_size = trace_polynomials
+        .iter()
+        .map(|poly| poly.evals.domain.log_size())
+        .max()
+        .unwrap_or_default();
+    let lifting_log_size = commitment_scheme
+        .config
+        .lifting_log_size
+        .unwrap_or(max_log_domain_size);
+    let commitment = build_native_standard_blake2s_merkle_prover(
+        trace_polynomials
+            .iter()
+            .map(|poly| &poly.evals.values)
+            .collect(),
+        lifting_log_size,
+    )
+    .unwrap_or_else(|| {
+        MerkleProverLifted::<MetalBackend, Blake2sMerkleHasher>::commit(
+            trace_polynomials
+                .iter()
+                .map(|poly| &poly.evals.values)
+                .collect(),
+            lifting_log_size,
+        )
+    });
+    let merkle_ms = merkle_start.elapsed().as_secs_f64() * 1000.0;
+
+    let tree = CommitmentTreeProver {
+        polynomials: trace_polynomials,
+        commitment,
+    };
+    commitment_scheme.commit_tree(MaybeOwned::Owned(tree), prover_channel);
+
+    TraceCommitBreakdown {
+        interpolation_ms,
+        extension_ms,
+        merkle_ms,
+    }
+}
+
+fn sentinel_from_metal_trace(
+    trace: &MetalWideFibonacciTrace,
+    input_len: usize,
+    n_columns: usize,
+) -> MetalWideFibonacciSentinel {
+    MetalWideFibonacciSentinel {
+        first_column_first_value: trace.value(0, 0).0,
+        second_column_first_value: trace.value(1, 0).0,
+        last_column_first_value: trace.value(n_columns - 1, 0).0,
+        last_column_last_value: trace.value(n_columns - 1, input_len - 1).0,
+    }
+}
+
+fn verify_wide_fibonacci_blake(
+    component: &WideFibonacciBenchmarkComponent,
+    proof: &StarkProof<Blake2sMerkleHasher>,
+) -> Result<(), VerificationError> {
+    let verifier_channel = &mut Blake2sChannel::default();
+    let commitment_scheme =
+        &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+    let sizes = component.trace_log_degree_bounds();
+    commitment_scheme.commit(
+        proof.commitments[PREPROCESSED_TRACE_IDX],
+        &sizes[PREPROCESSED_TRACE_IDX],
+        verifier_channel,
+    );
+    commitment_scheme.commit(
+        proof.commitments[MAIN_TRACE_IDX],
+        &sizes[MAIN_TRACE_IDX],
+        verifier_channel,
+    );
+    verify(
+        &[component as &dyn stwo::core::air::Component],
+        verifier_channel,
+        commitment_scheme,
+        proof.clone(),
+    )
 }
 
 pub const WIDE_FIBONACCI_TRACE_LOG20_TARGET: MetalBenchmarkTarget = MetalBenchmarkTarget {
@@ -917,7 +1358,10 @@ mod tests {
             .execute_selected_evaluation_program_v1_on_trace(&trace, &random_coeff_powers)
             .unwrap();
 
-        assert_eq!(dispatch, MetalEvaluationProgramDispatchKindV1::GenericMetalInterpreter);
+        assert_eq!(
+            dispatch,
+            MetalEvaluationProgramDispatchKindV1::GenericMetalInterpreter
+        );
         assert_eq!(selected_dispatch, dispatch);
         assert_eq!(device, reference);
     }

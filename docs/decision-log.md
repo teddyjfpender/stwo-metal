@@ -28,6 +28,53 @@ Superseded by:
 
 ## Entries
 
+### DEC-0164: Generated wide-fibonacci sample orchestration now belongs to `stwo-metal`
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+The live generated `wide_fibonacci` benchmark row must enter backend-owned
+sample execution through `MetalWideFibonacciBenchmarkBoundary`. The benchmark
+binary may still time and report that row, but it must not remain the main
+authority for generated trace generation, trace commit, prove core, and proof
+verification once those laws exist inside `stwo-metal`.
+
+Context:
+
+After `DEC-0162` and `DEC-0163`, the generated row already depended on
+selected `MetalEvaluationProgramV1` execution inside prove core, but
+`wide_fibonacci_prove.rs` still composed the live generated sample around that
+boundary. That left the binary as the effective authority for generated-row
+sample orchestration even though the backend crate already owned most of the
+inner prove law.
+
+Alternatives rejected:
+
+- keep the benchmark binary as the owner of generated sample orchestration
+- move only reporting metadata into `stwo-metal` while leaving the live sample
+  path benchmark-local
+- claim broader G10 completion before the generated row enters one
+  backend-owned sample boundary
+
+Impact:
+
+- the generated `wide_fibonacci` row now enters backend-owned generated sample
+  execution through `MetalWideFibonacciBenchmarkBoundary`
+- `wide_fibonacci_prove.rs` is thinner and no longer the main semantic
+  authority for live generated-row sample execution
+- the next honest G10 work is the remaining prove-path and runtime ownership
+  after that backend-owned sample boundary, especially broader selected-runtime
+  ownership beyond the current prove-core gate
+
+Superseded by:
+
+- none
+
 ### DEC-0156: The first Metal device interpreter for MetalEvaluationProgramV1 must be a fail-closed subset lane over the same lowered contract as the Rust reference interpreter
 
 - Date: `2026-03-11`

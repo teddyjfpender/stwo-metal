@@ -221,6 +221,18 @@ The fifth G10 slice is now landed in code:
   honest G10 work must keep migrating prove-path ownership while driving that
   selected-runtime preflight cost down
 
+The sixth G10 slice is now landed in code:
+
+- the generated `wide_fibonacci` benchmark row now enters backend-owned
+  generated sample execution through `MetalWideFibonacciBenchmarkBoundary`
+  instead of locally composing trace generation, trace commit, prove core, and
+  proof verification inside `wide_fibonacci_prove.rs`
+- the benchmark binary is now a thinner reporter for the generated lane rather
+  than the main authority for live generated-row sample orchestration
+- the next honest G10 work is the remaining orchestration boundary after that
+  backend-owned generated sample flow, together with broader selected-runtime
+  ownership beyond the current prove-core gate
+
 ## Current implementation obligations under G3
 
 - preserve the non-public bridge laws from

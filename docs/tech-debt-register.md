@@ -38,12 +38,12 @@ Target retirement point:
 Why it exists now:
 
 `dn-0008-metal-evaluation-program-v1.md` now freezes the intended host/device
-and runtime contract for generic and generated Metal execution, but the live
-generated `wide_fibonacci` benchmark row still uses older benchmark-specialized
-runtime glue rather than executing through the validated
-`MetalEvaluationProgramV1` artifact and first attached interpreter lanes it can
-now lower, validate, and execute on the live generated trace for the currently
-supported subset.
+and runtime contract for generic and generated Metal execution, and the live
+generated `wide_fibonacci` benchmark row now lowers, validates, executes, and
+records that V1 contract through backend-owned generated sample flow. The
+remaining debt is that the row still does not prove end to end through the
+selected V1 runtime contract; broad prove-path ownership still sits partly in
+the older prove pipeline around the migrated selected-runtime gate.
 
 The runtime contract now includes an explicit capability-profile and
 semantic-hash-based selector with one real generated overlay registration, but
@@ -53,9 +53,10 @@ logic beyond the migrated prove-core boundary.
 Current containment:
 
 - `docs/dn-0008-metal-evaluation-program-v1.md`
-- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
 - `crates/stwo-metal/src/backend/metal/benchmark.rs`
 - `crates/stwo-metal/src/backend/metal/execution_plan.rs`
+- `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
 
 Risk if left in place:
 
@@ -65,11 +66,11 @@ downstream work tied to benchmark-local behavior.
 
 Exit condition:
 
-The active generated lane consumes a validated `MetalEvaluationProgramV1`
-artifact for at least one live prove-phase boundary, and the generic
-interpreter lane and generated overlay lane share that same contract with at
-least one real overlay registration and more of the live prove path migrated
-onto the selected V1 runtime law.
+The active generated lane proves through a selected `MetalEvaluationProgramV1`
+contract for the remaining live prove path rather than using it as a migrated
+gate beside older prove orchestration, and the generic interpreter lane and
+generated overlay lane share that same contract with at least one real overlay
+registration.
 
 Target retirement point:
 

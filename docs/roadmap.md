@@ -145,8 +145,10 @@ The next active work is:
 - keep the remaining fixture shims as non-authoritative wrappers once the same
   benchmark law exists inside `stwo-metal`
 - expand the live generated benchmark row from “selected V1 side execution plus
-  backend-owned prove core” toward end-to-end selected V1 runtime ownership;
-  prove core is now selected-runtime-gated rather than selected-runtime-blind
+  backend-owned prove core and backend-owned generated sample orchestration”
+  toward end-to-end selected V1 runtime ownership; prove core is now
+  selected-runtime-gated rather than selected-runtime-blind, and the binary is
+  no longer the main generated-sample authority
 - keep the migrated selected-runtime authority measurable and optimize it once
   it becomes part of the live prove path, instead of treating V1 as a free side
   check
