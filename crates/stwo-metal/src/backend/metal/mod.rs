@@ -42,12 +42,14 @@ pub use capability::{
 };
 pub use commitment_slice::MetalFriCommitmentSlice;
 pub use eval_program_v1::{
-    lower_registered_metal_evaluation_program_v1, lower_wide_fibonacci_evaluation_program_v1,
-    metal_evaluation_program_semantic_hash_v1, validate_metal_evaluation_program_v1,
-    MetalEvaluationProgramBaseInstV1, MetalEvaluationProgramBaseOpcodeV1,
-    MetalEvaluationProgramBudgetV1, MetalEvaluationProgramHeaderV1,
+    interpret_metal_evaluation_program_v1, lower_registered_metal_evaluation_program_v1,
+    lower_wide_fibonacci_evaluation_program_v1, metal_evaluation_program_semantic_hash_v1,
+    validate_metal_evaluation_program_v1, MetalEvaluationProgramBaseInstV1,
+    MetalEvaluationProgramBaseOpcodeV1, MetalEvaluationProgramBudgetV1,
+    MetalEvaluationProgramHeaderV1, MetalEvaluationProgramInterpreterError,
     MetalEvaluationProgramLoweringError, MetalEvaluationProgramSpecializationV1,
     MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
+    MetalEvaluationProgramRuntimeInputsV1, MetalEvaluationProgramTraceViewV1,
     MetalEvaluationProgramV1, MetalEvaluationProgramValidationError,
     MetalEvaluationProgramExtInstV1, MetalEvaluationProgramExtOpcodeV1,
     OwnedMetalEvaluationProgramV1,

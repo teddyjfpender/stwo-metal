@@ -139,8 +139,9 @@ program contract is still unimplemented.
 
 The next active work is:
 
-- bring up one generic interpreter lane for the first lowered
-  `MetalEvaluationProgramV1` component on Metal
+- bring up one generic Metal `.metal` interpreter lane for the first lowered
+  `MetalEvaluationProgramV1` component on top of the new reference
+  interpreter
 - define the overlay lookup law keyed by semantic hash and capability profile
 - migrate the active generated benchmark row onto the same program contract
 - keep examples as the acceptance matrix for the generic and generated lanes

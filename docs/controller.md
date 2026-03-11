@@ -30,7 +30,7 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G9 second slice: lower the first generated component onto MetalEvaluationProgramV1`
+  `G9 third slice: attach first execution semantics to MetalEvaluationProgramV1`
 - Objective:
   move `stwo-metal` from a benchmark-specialized generated path to one stable
   lowered-program contract that both the generic interpreter lane and the
@@ -47,14 +47,16 @@ Invariants:
 ## Current blockers
 
 - the repository now has a minimal `MetalEvaluationProgramV1` ABI module,
-  validator, and first generated `fibonacci_example` lowering, but no live
-  generated or generic proving row consumes that contract yet
+  validator, first generated `fibonacci_example` lowering, and a deterministic
+  reference interpreter, but no live Metal `.metal` execution lane consumes
+  that contract yet
 - the active generated `wide_fibonacci` row can now lower its benchmark target
   into a validated V1 program, but it is still driven at runtime by pre-V1
   benchmark-specialized lowering rather than a stable lowered-program contract
-- the generic interpreter lane for the V1 program does not exist yet, so the
-  generated overlay lane has no program-level semantic baseline inside the new
-  contract
+- the V1 contract now has a correctness-first reference interpreter lane, but
+  the first real generic Metal `.metal` interpreter lane still does not exist,
+  so the generated overlay lane has no device-level semantic baseline inside
+  the new contract
 - the current acceptance matrix still proves backend viability, but it does not
   yet validate one shared lowered-program contract across generic and generated
   execution modes
@@ -69,9 +71,9 @@ Invariants:
 
 ## Next three deliverables
 
-1. Lower the first live generated benchmark row onto
-   `MetalEvaluationProgramV1` and prove the V1 contract can drive one generic
-   interpreter lane on Metal without changing proof semantics.
+1. Bring up the first live Metal `.metal` interpreter lane on top of
+   `MetalEvaluationProgramV1` and prove it matches the new reference
+   interpreter without changing proof semantics.
 2. Define the overlay lookup law keyed by semantic hash and capability profile,
    then migrate the active generated benchmark row onto that same contract
    instead of benchmark-local lowering.

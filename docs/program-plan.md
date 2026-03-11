@@ -69,8 +69,8 @@ The superseded `T0` through `T8` sequence now lives in:
 
 The active tranche is:
 
-`G9 second slice: lower the first generated component onto the V1
-lowered-program contract`
+`G9 third slice: attach first execution semantics to the V1 lowered-program
+contract`
 
 The active formal basis is:
 
@@ -132,9 +132,22 @@ The third G9 slice is now landed in code:
   as an `OwnedMetalEvaluationProgramV1`
 - public-surface coverage now exercises the first live lowering path through
   the benchmark boundary
-- the next honest G9 work is to bring up the first generic interpreter lane on
-  top of that V1 contract and then migrate the live generated benchmark row
-  onto the same runtime contract
+
+The fourth G9 slice is now landed in code:
+
+- `MetalEvaluationProgramV1` now has a deterministic reference interpreter in
+  `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
+- the interpreter executes one lowered `fibonacci_example` row program against
+  explicit trace interactions, parameter slots, and ordered
+  `random_coeff_powers`
+- the reference lane rejects unsupported nonzero trace offsets and other
+  out-of-range runtime conditions through a fail-closed interpreter error
+  surface
+- public-surface coverage now exercises the first live execution semantics on
+  top of the lowered-program contract
+- the next honest G9 work is to bring up the first generic Metal `.metal`
+  interpreter lane on top of that V1 contract and then migrate the live
+  generated benchmark row onto the same runtime contract
 
 ## Current implementation obligations under G3
 

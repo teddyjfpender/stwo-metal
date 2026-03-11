@@ -13,9 +13,11 @@ use stwo_metal::{
     MetalBenchmarkProgramError, MetalBenchmarkTarget, MetalCpuQuotientEvaluationInput,
     MetalCpuWideFibonacciWitnessInput, MetalEvaluationProgramBaseInstV1,
     MetalEvaluationProgramBudgetV1, MetalEvaluationProgramExtInstV1,
-    MetalEvaluationProgramHeaderV1, MetalEvaluationProgramLoweringError,
+    MetalEvaluationProgramHeaderV1, MetalEvaluationProgramInterpreterError,
+    MetalEvaluationProgramLoweringError, MetalEvaluationProgramRuntimeInputsV1,
     MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
-    MetalEvaluationProgramSpecializationV1, MetalEvaluationProgramValidationError,
+    MetalEvaluationProgramSpecializationV1, MetalEvaluationProgramTraceViewV1,
+    MetalEvaluationProgramValidationError,
     MetalExecutionIntent, MetalExecutionPlan, MetalFriBlake2sSubpath, MetalFriFirstLayer,
     MetalFriInnerLayerRow, MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice,
     MetalFriProver, MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment,
@@ -228,18 +230,26 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
     let _ = std::mem::size_of::<MetalBenchmarkProgramError>();
     let _ = std::mem::size_of::<MetalEvaluationProgramBaseInstV1>();
     let _ = std::mem::size_of::<MetalEvaluationProgramExtInstV1>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramInterpreterError>();
     let _ = std::mem::size_of::<MetalEvaluationProgramLoweringError>();
     let _ = std::mem::size_of::<MetalEvaluationProgramHeaderV1>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramRuntimeInputsV1<'static>>();
     let _ = std::mem::size_of::<MetalEvaluationProgramSpecializationV1>();
     let _ = std::mem::size_of::<MetalEvaluationProgramSectionDescV1>();
+    let _ = std::mem::size_of::<MetalEvaluationProgramTraceViewV1<'static>>();
     let _ = std::mem::size_of::<MetalEvaluationProgramValidationError>();
     let _ = std::mem::size_of::<OwnedMetalEvaluationProgramV1>();
     assert_eq!(lowered.header().n_constraints, 98);
-    assert_eq!(lowered.base_insts().len(), 98 * 7);
+    assert_eq!(lowered.base_insts().len(), 1 + 98 * 7);
     assert_eq!(lowered.ext_insts().len(), 98);
     let _ = lower_registered_metal_evaluation_program_v1
         as fn(
             &'static str,
             MetalEvaluationProgramSpecializationV1,
         ) -> Result<OwnedMetalEvaluationProgramV1, MetalEvaluationProgramLoweringError>;
+    let _ = stwo_metal::interpret_metal_evaluation_program_v1
+        as fn(
+            &OwnedMetalEvaluationProgramV1,
+            MetalEvaluationProgramRuntimeInputsV1<'_>,
+        ) -> Result<Vec<stwo::core::fields::qm31::SecureField>, MetalEvaluationProgramInterpreterError>;
 }

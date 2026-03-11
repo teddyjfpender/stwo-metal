@@ -28,6 +28,53 @@ Superseded by:
 
 ## Entries
 
+### DEC-0155: The first execution semantics for MetalEvaluationProgramV1 must be a deterministic reference interpreter before any Metal device interpreter widens the runtime
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+The first live execution semantics attached to `MetalEvaluationProgramV1` must
+be a deterministic reference interpreter in Rust. It exists to pin row
+semantics, ordered constraint accumulation, runtime error law, and trace/param
+boundary behavior before the repository widens into a Metal `.metal`
+interpreter or generated overlay runtime.
+
+Context:
+
+After the first concrete lowering for `fibonacci_example` landed, the next
+architecture risk was letting the first device interpreter define execution law
+implicitly. A reference interpreter gives the V1 contract a semantic oracle
+inside `stwo-metal` itself, so later Metal runtime work can be validated
+against one checked execution baseline instead of only against benchmark-local
+behavior.
+
+Alternatives rejected:
+
+- bring up the first Metal `.metal` interpreter before any in-repo execution
+  oracle exists for the lowered V1 contract
+- let the active generated benchmark row act as the de facto execution oracle
+  for V1 semantics
+- skip a reference interpreter and validate later runtime work only against the
+  wider prover path
+
+Impact:
+
+- `MetalEvaluationProgramV1` now owns both a lowered artifact contract and one
+  deterministic execution semantics inside `stwo-metal`
+- the next G9 work is the first Metal `.metal` interpreter lane, not another
+  round of schema-only widening
+- later overlay and benchmark migration work can compare against a program
+  interpreter that shares the same public V1 boundary
+
+Superseded by:
+
+- none
+
 ### DEC-0154: The first live MetalEvaluationProgramV1 lowering must attach to an existing generated workload before any interpreter work widens the runtime
 
 - Date: `2026-03-11`

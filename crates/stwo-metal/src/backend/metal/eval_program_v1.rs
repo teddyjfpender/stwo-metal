@@ -1,5 +1,9 @@
 use std::vec::Vec;
 
+use ark_std::Zero;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
+
 pub const STWO_METAL_EVAL_PROGRAM_MAGIC_V1: u32 = u32::from_le_bytes(*b"STP1");
 pub const STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1: u16 = 1;
 pub const STWO_METAL_EVAL_PROGRAM_ABI_MINOR_V1: u16 = 0;
@@ -27,6 +31,23 @@ pub enum MetalEvaluationProgramBaseOpcodeV1 {
     Inv = 8,
 }
 
+impl MetalEvaluationProgramBaseOpcodeV1 {
+    pub const fn from_raw(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::TraceCol),
+            1 => Some(Self::PreprocessedCol),
+            2 => Some(Self::Param),
+            3 => Some(Self::Const),
+            4 => Some(Self::Add),
+            5 => Some(Self::Sub),
+            6 => Some(Self::Mul),
+            7 => Some(Self::Neg),
+            8 => Some(Self::Inv),
+            _ => None,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct MetalEvaluationProgramBaseInstV1 {
@@ -47,6 +68,17 @@ impl MetalEvaluationProgramBaseInstV1 {
             a: column,
             b: 0,
             imm: offset,
+        }
+    }
+
+    pub const fn const_value(dst: u16, value: u32) -> Self {
+        Self {
+            op: MetalEvaluationProgramBaseOpcodeV1::Const as u8,
+            interaction: 0,
+            dst,
+            a: value,
+            b: 0,
+            imm: 0,
         }
     }
 
@@ -72,6 +104,21 @@ pub enum MetalEvaluationProgramExtOpcodeV1 {
     Sub = 4,
     Mul = 5,
     Neg = 6,
+}
+
+impl MetalEvaluationProgramExtOpcodeV1 {
+    pub const fn from_raw(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::SecureCol),
+            1 => Some(Self::Param),
+            2 => Some(Self::Const),
+            3 => Some(Self::Add),
+            4 => Some(Self::Sub),
+            5 => Some(Self::Mul),
+            6 => Some(Self::Neg),
+            _ => None,
+        }
+    }
 }
 
 #[repr(C)]
@@ -300,6 +347,79 @@ pub enum MetalEvaluationProgramLoweringError {
         n_columns: u32,
     },
     RegisterBudgetOverflow,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MetalEvaluationProgramTraceViewV1<'a> {
+    pub trace_interactions: &'a [&'a [&'a [BaseField]]],
+    pub preprocessed_columns: &'a [&'a [BaseField]],
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MetalEvaluationProgramRuntimeInputsV1<'a> {
+    pub trace: MetalEvaluationProgramTraceViewV1<'a>,
+    pub base_params: &'a [BaseField],
+    pub ext_params: &'a [SecureField],
+    pub random_coeff_powers: &'a [SecureField],
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalEvaluationProgramInterpreterError {
+    EmptyTrace,
+    InconsistentTraceColumnLength {
+        expected_len: usize,
+        actual_len: usize,
+    },
+    InconsistentPreprocessedColumnLength {
+        expected_len: usize,
+        actual_len: usize,
+    },
+    TraceInteractionOutOfRange {
+        interaction: usize,
+        available: usize,
+    },
+    TraceColumnOutOfRange {
+        interaction: usize,
+        column: usize,
+        available: usize,
+    },
+    PreprocessedColumnOutOfRange {
+        column: usize,
+        available: usize,
+    },
+    BaseParamOutOfRange {
+        slot: usize,
+        available: usize,
+    },
+    ExtParamOutOfRange {
+        slot: usize,
+        available: usize,
+    },
+    BaseRegisterOutOfRange {
+        register: usize,
+        available: usize,
+    },
+    ExtRegisterOutOfRange {
+        register: usize,
+        available: usize,
+    },
+    ConstraintRootOutOfRange {
+        root: usize,
+        available: usize,
+    },
+    RandomCoeffCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    NonZeroTraceOffsetUnsupported {
+        offset: i32,
+    },
+    UnsupportedBaseOpcode {
+        opcode: u8,
+    },
+    UnsupportedExtOpcode {
+        opcode: u8,
+    },
 }
 
 impl MetalEvaluationProgramBudgetV1 {
@@ -626,8 +746,11 @@ pub fn lower_wide_fibonacci_evaluation_program_v1(
     }
 
     let n_constraints = specialization.n_columns - 2;
-    let base_regs_required = n_constraints
+    let base_regs_required = 1u32
+        .checked_add(
+            n_constraints
         .checked_mul(7)
+        .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?)
         .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
     let ext_regs_required = n_constraints;
 
@@ -635,7 +758,10 @@ pub fn lower_wide_fibonacci_evaluation_program_v1(
     let mut ext_insts = Vec::with_capacity(ext_regs_required as usize);
     let mut constraint_roots = Vec::with_capacity(n_constraints as usize);
 
-    let mut next_base_reg = 0u16;
+    let zero_reg = 0u16;
+    base_insts.push(MetalEvaluationProgramBaseInstV1::const_value(zero_reg, 0));
+
+    let mut next_base_reg = 1u16;
     let mut next_ext_reg = 0u16;
     for column in 2..specialization.n_columns {
         let reg_a = next_base_reg;
@@ -719,9 +845,9 @@ pub fn lower_wide_fibonacci_evaluation_program_v1(
         ext_insts.push(MetalEvaluationProgramExtInstV1::secure_col(
             ext_reg,
             reg_constraint as u32,
-            0,
-            0,
-            0,
+            zero_reg as u32,
+            zero_reg as u32,
+            zero_reg as u32,
         ));
         constraint_roots.push(ext_reg as u32);
     }
@@ -743,23 +869,310 @@ pub fn lower_wide_fibonacci_evaluation_program_v1(
     ))
 }
 
+pub fn interpret_metal_evaluation_program_v1(
+    program: &OwnedMetalEvaluationProgramV1,
+    runtime: MetalEvaluationProgramRuntimeInputsV1<'_>,
+) -> Result<Vec<SecureField>, MetalEvaluationProgramInterpreterError> {
+    let n_rows = runtime
+        .trace
+        .trace_interactions
+        .first()
+        .and_then(|interaction| interaction.first().map(|column| column.len()))
+        .or_else(|| {
+            runtime
+                .trace
+                .trace_interactions
+                .iter()
+                .find_map(|interaction| interaction.first().map(|column| column.len()))
+        })
+        .ok_or(MetalEvaluationProgramInterpreterError::EmptyTrace)?;
+    for interaction in runtime.trace.trace_interactions {
+        for column in *interaction {
+            if column.len() != n_rows {
+                return Err(
+                    MetalEvaluationProgramInterpreterError::InconsistentTraceColumnLength {
+                        expected_len: n_rows,
+                        actual_len: column.len(),
+                    },
+                );
+            }
+        }
+    }
+    for column in runtime.trace.preprocessed_columns {
+        if column.len() != n_rows {
+            return Err(MetalEvaluationProgramInterpreterError::InconsistentPreprocessedColumnLength {
+                expected_len: n_rows,
+                actual_len: column.len(),
+            });
+        }
+    }
+    if runtime.random_coeff_powers.len() != program.constraint_roots().len() {
+        return Err(
+            MetalEvaluationProgramInterpreterError::RandomCoeffCountMismatch {
+                expected: program.constraint_roots().len(),
+                actual: runtime.random_coeff_powers.len(),
+            },
+        );
+    }
+
+    let interactions = runtime.trace.trace_interactions;
+    if interactions.len() != program.header().n_interactions as usize {
+        return Err(MetalEvaluationProgramInterpreterError::TraceInteractionOutOfRange {
+            interaction: program.header().n_interactions.saturating_sub(1) as usize,
+            available: interactions.len(),
+        });
+    }
+    let mut row_res = Vec::with_capacity(n_rows);
+    let max_base_regs = program.header().max_base_regs as usize;
+    let max_ext_regs = program.header().max_ext_regs as usize;
+    for row in 0..n_rows {
+        let mut base_regs = vec![BaseField::zero(); max_base_regs];
+        let mut ext_regs = vec![SecureField::zero(); max_ext_regs];
+
+        for inst in program.base_insts() {
+            let dst = inst.dst as usize;
+            if dst >= max_base_regs {
+                return Err(MetalEvaluationProgramInterpreterError::BaseRegisterOutOfRange {
+                    register: dst,
+                    available: max_base_regs,
+                });
+            }
+            base_regs[dst] = interpret_base_inst(
+                *inst,
+                row,
+                interactions,
+                runtime.trace.preprocessed_columns,
+                runtime.base_params,
+                &base_regs,
+            )?;
+        }
+
+        for inst in program.ext_insts() {
+            let dst = inst.dst as usize;
+            if dst >= max_ext_regs {
+                return Err(MetalEvaluationProgramInterpreterError::ExtRegisterOutOfRange {
+                    register: dst,
+                    available: max_ext_regs,
+                });
+            }
+            ext_regs[dst] = interpret_ext_inst(*inst, runtime.ext_params, &base_regs, &ext_regs)?;
+        }
+
+        let mut acc = SecureField::zero();
+        for (constraint_index, root) in program.constraint_roots().iter().enumerate() {
+            let root = *root as usize;
+            if root >= max_ext_regs {
+                return Err(
+                    MetalEvaluationProgramInterpreterError::ConstraintRootOutOfRange {
+                        root,
+                        available: max_ext_regs,
+                    },
+                );
+            }
+            acc += runtime.random_coeff_powers[constraint_index] * ext_regs[root];
+        }
+        row_res.push(acc);
+    }
+
+    Ok(row_res)
+}
+fn interpret_base_inst(
+    inst: MetalEvaluationProgramBaseInstV1,
+    row: usize,
+    interactions: &[&[&[BaseField]]],
+    preprocessed_columns: &[&[BaseField]],
+    base_params: &[BaseField],
+    base_regs: &[BaseField],
+) -> Result<BaseField, MetalEvaluationProgramInterpreterError> {
+    Ok(match MetalEvaluationProgramBaseOpcodeV1::from_raw(inst.op)
+        .ok_or(MetalEvaluationProgramInterpreterError::UnsupportedBaseOpcode { opcode: inst.op })? {
+        MetalEvaluationProgramBaseOpcodeV1::TraceCol => {
+            if inst.imm != 0 {
+                return Err(MetalEvaluationProgramInterpreterError::NonZeroTraceOffsetUnsupported {
+                    offset: inst.imm,
+                });
+            }
+            let interaction = inst.interaction as usize;
+            let columns = interactions.get(interaction).ok_or(
+                MetalEvaluationProgramInterpreterError::TraceInteractionOutOfRange {
+                    interaction,
+                    available: interactions.len(),
+                },
+            )?;
+            let column = inst.a as usize;
+            let values = columns.get(column).ok_or(
+                MetalEvaluationProgramInterpreterError::TraceColumnOutOfRange {
+                    interaction,
+                    column,
+                    available: columns.len(),
+                },
+            )?;
+            values[row]
+        }
+        MetalEvaluationProgramBaseOpcodeV1::PreprocessedCol => {
+            let column = inst.a as usize;
+            let values = preprocessed_columns.get(column).ok_or(
+                MetalEvaluationProgramInterpreterError::PreprocessedColumnOutOfRange {
+                    column,
+                    available: preprocessed_columns.len(),
+                },
+            )?;
+            values[row]
+        }
+        MetalEvaluationProgramBaseOpcodeV1::Param => {
+            let slot = inst.a as usize;
+            *base_params.get(slot).ok_or(
+                MetalEvaluationProgramInterpreterError::BaseParamOutOfRange {
+                    slot,
+                    available: base_params.len(),
+                },
+            )?
+        }
+        MetalEvaluationProgramBaseOpcodeV1::Const => BaseField::from_u32_unchecked(inst.a),
+        MetalEvaluationProgramBaseOpcodeV1::Add => {
+            read_base_reg(base_regs, inst.a as usize)? + read_base_reg(base_regs, inst.b as usize)?
+        }
+        MetalEvaluationProgramBaseOpcodeV1::Sub => {
+            read_base_reg(base_regs, inst.a as usize)? - read_base_reg(base_regs, inst.b as usize)?
+        }
+        MetalEvaluationProgramBaseOpcodeV1::Mul => {
+            read_base_reg(base_regs, inst.a as usize)? * read_base_reg(base_regs, inst.b as usize)?
+        }
+        MetalEvaluationProgramBaseOpcodeV1::Neg => -read_base_reg(base_regs, inst.a as usize)?,
+        MetalEvaluationProgramBaseOpcodeV1::Inv => read_base_reg(base_regs, inst.a as usize)?.inverse(),
+    })
+}
+
+fn interpret_ext_inst(
+    inst: MetalEvaluationProgramExtInstV1,
+    ext_params: &[SecureField],
+    base_regs: &[BaseField],
+    ext_regs: &[SecureField],
+) -> Result<SecureField, MetalEvaluationProgramInterpreterError> {
+    Ok(match MetalEvaluationProgramExtOpcodeV1::from_raw(inst.op)
+        .ok_or(MetalEvaluationProgramInterpreterError::UnsupportedExtOpcode { opcode: inst.op })? {
+        MetalEvaluationProgramExtOpcodeV1::SecureCol => SecureField::from_partial_evals([
+            SecureField::from(read_base_reg(base_regs, inst.a as usize)?),
+            SecureField::from(read_base_reg(base_regs, inst.b as usize)?),
+            SecureField::from(read_base_reg(base_regs, inst.c as usize)?),
+            SecureField::from(read_base_reg(base_regs, inst.d as usize)?),
+        ]),
+        MetalEvaluationProgramExtOpcodeV1::Param => {
+            let slot = inst.a as usize;
+            *ext_params.get(slot).ok_or(
+                MetalEvaluationProgramInterpreterError::ExtParamOutOfRange {
+                    slot,
+                    available: ext_params.len(),
+                },
+            )?
+        }
+        MetalEvaluationProgramExtOpcodeV1::Const => {
+            SecureField::from_u32_unchecked(inst.a, inst.b, inst.c, inst.d)
+        }
+        MetalEvaluationProgramExtOpcodeV1::Add => {
+            read_ext_reg(ext_regs, inst.a as usize)? + read_ext_reg(ext_regs, inst.b as usize)?
+        }
+        MetalEvaluationProgramExtOpcodeV1::Sub => {
+            read_ext_reg(ext_regs, inst.a as usize)? - read_ext_reg(ext_regs, inst.b as usize)?
+        }
+        MetalEvaluationProgramExtOpcodeV1::Mul => {
+            read_ext_reg(ext_regs, inst.a as usize)? * read_ext_reg(ext_regs, inst.b as usize)?
+        }
+        MetalEvaluationProgramExtOpcodeV1::Neg => -read_ext_reg(ext_regs, inst.a as usize)?,
+    })
+}
+
+fn read_base_reg(
+    base_regs: &[BaseField],
+    register: usize,
+) -> Result<BaseField, MetalEvaluationProgramInterpreterError> {
+    base_regs.get(register).copied().ok_or(
+        MetalEvaluationProgramInterpreterError::BaseRegisterOutOfRange {
+            register,
+            available: base_regs.len(),
+        },
+    )
+}
+
+fn read_ext_reg(
+    ext_regs: &[SecureField],
+    register: usize,
+) -> Result<SecureField, MetalEvaluationProgramInterpreterError> {
+    ext_regs.get(register).copied().ok_or(
+        MetalEvaluationProgramInterpreterError::ExtRegisterOutOfRange {
+            register,
+            available: ext_regs.len(),
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use core::mem::{align_of, offset_of, size_of};
 
+    use ark_std::Zero;
+    use stwo::core::fields::m31::BaseField;
+    use stwo::core::fields::qm31::SecureField;
+    use stwo::core::fields::FieldExpOps;
+
     use super::{
+        interpret_metal_evaluation_program_v1,
         lower_registered_metal_evaluation_program_v1, lower_wide_fibonacci_evaluation_program_v1,
         metal_evaluation_program_semantic_hash_v1, validate_metal_evaluation_program_v1,
         MetalEvaluationProgramBaseOpcodeV1, MetalEvaluationProgramBudgetV1,
         MetalEvaluationProgramHeaderV1, MetalEvaluationProgramLoweringError,
+        MetalEvaluationProgramInterpreterError, MetalEvaluationProgramRuntimeInputsV1,
         MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
-        MetalEvaluationProgramSpecializationV1,
+        MetalEvaluationProgramSpecializationV1, MetalEvaluationProgramTraceViewV1,
         MetalEvaluationProgramValidationError, STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1,
         STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1, STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1,
         STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
         STWO_METAL_EVAL_PROGRAM_FLAG_PREFINALIZED_LOGUP_V1,
         STWO_METAL_EVAL_PROGRAM_MAGIC_V1, STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1,
     };
+
+    fn wide_fibonacci_trace(n_rows: usize, n_columns: usize) -> Vec<Vec<BaseField>> {
+        let mut columns = vec![vec![BaseField::zero(); n_rows]; n_columns];
+        for row in 0..n_rows {
+            let mut a = BaseField::from_u32_unchecked(1);
+            let mut b = BaseField::from_u32_unchecked((row as u32) + 2);
+            columns[0][row] = a;
+            columns[1][row] = b;
+            for column in columns.iter_mut().skip(2) {
+                let next = a.square() + b.square();
+                column[row] = next;
+                a = b;
+                b = next;
+            }
+        }
+        columns
+    }
+
+    fn wide_fibonacci_row_residues(
+        columns: &[Vec<BaseField>],
+        random_coeff_powers: &[SecureField],
+    ) -> Vec<SecureField> {
+        let n_rows = columns[0].len();
+        let n_constraints = columns.len() - 2;
+        (0..n_rows)
+            .map(|row| {
+                let mut acc = SecureField::zero();
+                for constraint in 0..n_constraints {
+                    let a = columns[constraint][row];
+                    let b = columns[constraint + 1][row];
+                    let c = columns[constraint + 2][row];
+                    let residue = c - (a.square() + b.square());
+                    acc += SecureField::from_partial_evals([
+                        SecureField::from(residue),
+                        SecureField::zero(),
+                        SecureField::zero(),
+                        SecureField::zero(),
+                    ]) * random_coeff_powers[constraint];
+                }
+                acc
+            })
+            .collect()
+    }
 
     fn valid_header() -> MetalEvaluationProgramHeaderV1 {
         let semantic_hash = metal_evaluation_program_semantic_hash_v1(&[b"base", b"ext"]);
@@ -985,15 +1398,22 @@ mod tests {
 
         assert_eq!(program.header().n_interactions, 2);
         assert_eq!(program.header().n_constraints, 98);
-        assert_eq!(program.header().max_base_regs, 98 * 7);
+        assert_eq!(program.header().max_base_regs, 1 + 98 * 7);
         assert_eq!(program.header().max_ext_regs, 98);
         assert!(program.base_consts().is_empty());
         assert!(program.ext_consts().is_empty());
-        assert_eq!(program.base_insts().len(), 98 * 7);
+        assert_eq!(program.base_insts().len(), 1 + 98 * 7);
         assert_eq!(program.ext_insts().len(), 98);
         assert_eq!(program.constraint_roots().len(), 98);
 
-        let first_trace = &program.base_insts()[0];
+        let first_const = &program.base_insts()[0];
+        assert_eq!(
+            first_const.op,
+            MetalEvaluationProgramBaseOpcodeV1::Const as u8
+        );
+        assert_eq!(first_const.a, 0);
+
+        let first_trace = &program.base_insts()[1];
         assert_eq!(
             first_trace.op,
             MetalEvaluationProgramBaseOpcodeV1::TraceCol as u8
@@ -1035,6 +1455,116 @@ mod tests {
             Err(MetalEvaluationProgramLoweringError::UnsupportedComponent {
                 component_name: "poseidon_example",
             })
+        );
+    }
+
+    #[test]
+    fn wide_fibonacci_interpreter_matches_manual_row_residues() {
+        let columns = wide_fibonacci_trace(8, 6);
+        let trace_columns = columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let trace_interactions = [&[][..], trace_columns.as_slice()];
+        let random_coeff_powers = (0..4)
+            .map(|i| SecureField::from(BaseField::from_u32_unchecked((i + 1) as u32)))
+            .collect::<Vec<_>>();
+        let program = lower_wide_fibonacci_evaluation_program_v1(
+            MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 3,
+                n_columns: 6,
+            },
+        )
+        .unwrap();
+
+        let interpreted = interpret_metal_evaluation_program_v1(
+            &program,
+            MetalEvaluationProgramRuntimeInputsV1 {
+                trace: MetalEvaluationProgramTraceViewV1 {
+                    trace_interactions: &trace_interactions,
+                    preprocessed_columns: &[],
+                },
+                base_params: &[],
+                ext_params: &[],
+                random_coeff_powers: &random_coeff_powers,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            interpreted,
+            wide_fibonacci_row_residues(&columns, &random_coeff_powers)
+        );
+        assert!(interpreted.iter().all(SecureField::is_zero));
+    }
+
+    #[test]
+    fn wide_fibonacci_interpreter_detects_tampered_trace_rows() {
+        let mut columns = wide_fibonacci_trace(8, 6);
+        columns[4][3] += BaseField::from_u32_unchecked(7);
+        let trace_columns = columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let trace_interactions = [&[][..], trace_columns.as_slice()];
+        let random_coeff_powers = (0..4)
+            .map(|i| SecureField::from(BaseField::from_u32_unchecked((i + 3) as u32)))
+            .collect::<Vec<_>>();
+        let program = lower_wide_fibonacci_evaluation_program_v1(
+            MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 3,
+                n_columns: 6,
+            },
+        )
+        .unwrap();
+
+        let interpreted = interpret_metal_evaluation_program_v1(
+            &program,
+            MetalEvaluationProgramRuntimeInputsV1 {
+                trace: MetalEvaluationProgramTraceViewV1 {
+                    trace_interactions: &trace_interactions,
+                    preprocessed_columns: &[],
+                },
+                base_params: &[],
+                ext_params: &[],
+                random_coeff_powers: &random_coeff_powers,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            interpreted,
+            wide_fibonacci_row_residues(&columns, &random_coeff_powers)
+        );
+        assert!(interpreted.iter().any(|value| !value.is_zero()));
+    }
+
+    #[test]
+    fn interpreter_rejects_non_zero_trace_offsets_for_v1_reference_lane() {
+        let mut program = lower_wide_fibonacci_evaluation_program_v1(
+            MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 3,
+                n_columns: 3,
+            },
+        )
+        .unwrap();
+        // Slot 0 is the explicit zero constant for SecureCol padding. Mutate
+        // the first trace read so the interpreter must reject nonzero offsets.
+        program.base_insts[1].imm = 1;
+        let columns = wide_fibonacci_trace(8, 3);
+        let trace_columns = columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let trace_interactions = [&[][..], trace_columns.as_slice()];
+        let error = interpret_metal_evaluation_program_v1(
+            &program,
+            MetalEvaluationProgramRuntimeInputsV1 {
+                trace: MetalEvaluationProgramTraceViewV1 {
+                    trace_interactions: &trace_interactions,
+                    preprocessed_columns: &[],
+                },
+                base_params: &[],
+                ext_params: &[],
+                random_coeff_powers: &[SecureField::from(BaseField::from_u32_unchecked(1))],
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            MetalEvaluationProgramInterpreterError::NonZeroTraceOffsetUnsupported { offset: 1 }
         );
     }
 }
