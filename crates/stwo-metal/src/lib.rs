@@ -37,8 +37,8 @@ pub mod capability {
 pub mod benchmark {
     pub use crate::backend::metal::{
         declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError,
-        MetalBenchmarkOperation, MetalBenchmarkReferencePlatform, MetalBenchmarkTarget,
-        MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
+        MetalBenchmarkLaneError, MetalBenchmarkOperation, MetalBenchmarkReferencePlatform,
+        MetalBenchmarkTarget, MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
         WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
     };
 }
@@ -99,10 +99,10 @@ pub use abi::{
 };
 #[cfg(feature = "prover")]
 pub use benchmark::{
-    declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError, MetalBenchmarkOperation,
-    MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalWideFibonacciBenchmarkBoundary,
-    MetalWideFibonacciWitnessInputs, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
-    WIDE_FIBONACCI_TRACE_LOG20_TARGET,
+    declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError, MetalBenchmarkLaneError,
+    MetalBenchmarkOperation, MetalBenchmarkReferencePlatform, MetalBenchmarkTarget,
+    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
+    WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
 };
 #[cfg(feature = "prover")]
 pub use capability::{

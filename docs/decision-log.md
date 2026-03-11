@@ -28,6 +28,49 @@ Superseded by:
 
 ## Entries
 
+### DEC-0109: Benchmark prove-values lane law should live in `stwo-metal`, not in the private bridge crate
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+The wide-fibonacci benchmark prove-values lane law should be validated by
+`MetalWideFibonacciBenchmarkBoundary` from its generated execution seed, and
+the private benchmark bridge should consume that validated result instead of
+re-checking plan and stage ownership itself.
+
+Context:
+
+After the witness-shape law moved onto the generated execution seed in
+`DEC-0108`, the next duplicated runtime rule was the benchmark prove-values
+lane. The private support bridge was still checking whether the benchmark lane
+was Metal-capable and whether witness/FRI ownership matched the intended
+hybrid route. Those are route facts already implied by the generated execution
+seed behind the benchmark declaration, so leaving them in the bridge would
+make the bridge a second policy owner.
+
+Alternatives rejected:
+
+- keep the prove-values lane checks in the private bridge crate
+- widen the public benchmark API with another richer execution-authority type
+- move benchmark-specific target policy into the generated seed together with
+  the shared prove-values route law
+
+Impact:
+
+- benchmark prove-values validation now lives in `stwo-metal`
+- the private benchmark bridge is narrowed to a consumer-only support layer
+- the next honest G5 work is to lower the remaining acceptance-lane and
+  workload-side staging rules that still duplicate lower generated logic
+
+Superseded by:
+
+- none
+
 ### DEC-0108: Shared wide-fibonacci witness-shape law should live on the generated execution seed
 
 - Date: `2026-03-11`

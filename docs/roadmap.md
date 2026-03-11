@@ -194,6 +194,9 @@ The next active work is:
 - when a workload and benchmark boundary still duplicate the same runtime law,
   move that shared law down onto the generated execution seed before widening
   outward again
+- when a private support bridge still re-checks benchmark lane law that is
+  already implied by the generated seed, move that validation into
+  `stwo-metal` and keep the bridge as a consumer-only layer
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

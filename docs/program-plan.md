@@ -357,6 +357,18 @@ The twenty-fourth G5 slice is now landed:
 - the next honest G5 work is to pick the next boundary-owned staging rule that
   still duplicates lower generated logic after this witness-shape move
 
+The twenty-fifth G5 slice is now landed:
+
+- the wide-fibonacci benchmark boundary now owns prove-values lane validation
+  through its generated execution seed instead of leaving that law in the
+  private benchmark support bridge
+- the private benchmark prove-values bridge now consumes a validated benchmark
+  lane and only maps the resulting narrow error surface, so it no longer
+  re-checks benchmark plan or stage ownership on its own
+- the next honest G5 work is to lower the remaining acceptance-lane and
+  workload-side staging rules that still depend on boundary-local plan checks
+  or duplicated error mapping
+
 ## G2 progress snapshot
 
 G2 is now complete:

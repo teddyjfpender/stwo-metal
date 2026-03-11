@@ -29,10 +29,10 @@ mod workload_contract;
 
 pub use backend::MetalBackend;
 pub use benchmark::{
-    declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError, MetalBenchmarkOperation,
-    MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalWideFibonacciBenchmarkBoundary,
-    MetalWideFibonacciWitnessInputs, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
-    WIDE_FIBONACCI_TRACE_LOG20_TARGET,
+    declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError, MetalBenchmarkLaneError,
+    MetalBenchmarkOperation, MetalBenchmarkReferencePlatform, MetalBenchmarkTarget,
+    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
+    WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
 };
 pub use capability::{
     metal_backend_surface_detail, metal_backend_surface_status, metal_runtime_error,

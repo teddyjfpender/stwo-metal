@@ -7,6 +7,7 @@ use super::execution_plan::{
 use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload::{declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary};
+use super::workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalBenchmarkOperation {
@@ -73,6 +74,22 @@ pub struct MetalWideFibonacciBenchmarkBoundary {
     execution_seed: RegisteredMetalExecutionSeed,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MetalBenchmarkLaneError {
+    PlanNotMetalCapable {
+        workload_name: &'static str,
+        plan: super::planner::MetalExecutionPlan,
+    },
+    UnsupportedWitnessOwnership {
+        workload_name: &'static str,
+        stage: MetalWorkloadStage,
+    },
+    UnsupportedFriOwnership {
+        workload_name: &'static str,
+        stage: MetalWorkloadStage,
+    },
+}
+
 impl MetalWideFibonacciBenchmarkBoundary {
     pub fn workload_boundary(&self) -> &MetalWorkloadBoundary {
         &self.workload_boundary
@@ -80,6 +97,42 @@ impl MetalWideFibonacciBenchmarkBoundary {
 
     pub fn target(&self) -> &MetalBenchmarkTarget {
         &self.target
+    }
+
+    pub fn validate_prove_values_lane(&self) -> Result<&'static str, MetalBenchmarkLaneError> {
+        let workload_name = self.workload_boundary.workload_name();
+        if !matches!(
+            self.execution_seed.plan,
+            super::planner::MetalExecutionPlan::MetalFriHybrid
+                | super::planner::MetalExecutionPlan::MetalFull
+        ) {
+            return Err(MetalBenchmarkLaneError::PlanNotMetalCapable {
+                workload_name,
+                plan: self.execution_seed.plan,
+            });
+        }
+        if self
+            .execution_seed
+            .stage_ownership(MetalWorkloadStage::WitnessMain)
+            != Some(MetalWorkloadOwnership::CpuOwned)
+        {
+            return Err(MetalBenchmarkLaneError::UnsupportedWitnessOwnership {
+                workload_name,
+                stage: MetalWorkloadStage::WitnessMain,
+            });
+        }
+        if self
+            .execution_seed
+            .stage_ownership(MetalWorkloadStage::FriBlake2s)
+            != Some(MetalWorkloadOwnership::MetalNative)
+        {
+            return Err(MetalBenchmarkLaneError::UnsupportedFriOwnership {
+                workload_name,
+                stage: MetalWorkloadStage::FriBlake2s,
+            });
+        }
+
+        Ok(workload_name)
     }
 
     pub fn ingest_cpu_witness_inputs(
@@ -265,8 +318,8 @@ mod tests {
 
     use super::{
         declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError,
-        MetalBenchmarkOperation, MetalBenchmarkReferencePlatform, MetalExecutionIntent,
-        WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
+        MetalBenchmarkLaneError, MetalBenchmarkOperation, MetalBenchmarkReferencePlatform,
+        MetalExecutionIntent, WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
     };
     use crate::backend::metal::artifact::MetalGeneratedRouteKind;
     use crate::backend::metal::{
@@ -323,6 +376,10 @@ mod tests {
                 .specialization_keys,
             &["log_n_instances", "n_columns"]
         );
+        assert_eq!(
+            boundary.validate_prove_values_lane(),
+            Ok("fibonacci_example")
+        );
     }
 
     #[test]
@@ -377,6 +434,23 @@ mod tests {
             boundary.workload_boundary().plan()
         );
         assert_eq!(request.n_columns, target.n_columns);
+    }
+
+    #[test]
+    fn benchmark_boundary_rejects_prove_values_lane_for_cpu_plan() {
+        let boundary = declare_wide_fibonacci_benchmark_boundary(
+            MetalExecutionIntent::ForceCpu,
+            WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+        )
+        .unwrap();
+
+        assert_eq!(
+            boundary.validate_prove_values_lane(),
+            Err(MetalBenchmarkLaneError::PlanNotMetalCapable {
+                workload_name: "fibonacci_example",
+                plan: MetalExecutionPlan::CpuOnly,
+            })
+        );
     }
 
     #[test]

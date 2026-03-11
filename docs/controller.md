@@ -104,14 +104,14 @@ Invariants:
 ## Next three deliverables
 
 1. Keep G5 on generated lowering now that the transitional workload-law cleanup
-   is complete, and pick the next runtime-planning helper after
-   wide-fibonacci-witness shape validation that should move from boundary-shaped
-   code onto the lower generated contract.
+   is complete, and move the next live staging rule after witness-shape
+   validation onto the lower generated contract instead of leaving it owned by
+   a support bridge or boundary-shaped API.
 2. Keep the restored pinned-nightly verification path explicit and narrow while
    G5 continues lowering generated registrations.
 3. Preserve the non-public bridge-law boundary and private support-crate
-   ownership while deciding whether the transitional public execution-law
-   surface can now shrink in `stwo-metal` companion exports before G7.
+   ownership while lowering the remaining acceptance-lane and workload-side
+   staging checks off boundary-owned helpers before G7.
 
 ## Explicitly not doing now
 
