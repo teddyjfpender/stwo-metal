@@ -1,4 +1,6 @@
 use std::array;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use hashbrown::HashMap;
 use stwo::core::fields::m31::BaseField;
@@ -11,9 +13,95 @@ use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use stwo::core::vcs_lifted::verifier::{
     ExtendedMerkleDecommitmentLifted, MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux,
 };
+use stwo::prover::line::LineEvaluation;
 
 use super::fri;
+use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
+
+type LineIfftFactorCache =
+    Mutex<BTreeMap<(usize, usize, u32), Arc<stwo_metal_sys::metal::U32Buffer>>>;
+
+fn line_ifft_factor_cache() -> &'static LineIfftFactorCache {
+    static CACHE: OnceLock<LineIfftFactorCache> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn cached_line_ifft_inverse_factors(domain: LineDomain) -> Arc<stwo_metal_sys::metal::U32Buffer> {
+    let coset = domain.coset();
+    let key = (coset.initial_index.0, coset.step_size.0, domain.log_size());
+    if let Some(factors) = line_ifft_factor_cache()
+        .lock()
+        .expect("line IFFT factor cache mutex should not be poisoned")
+        .get(&key)
+        .cloned()
+    {
+        return factors;
+    }
+
+    let mut stage_domain = domain;
+    let mut factors = Vec::with_capacity(domain.size().saturating_sub(1));
+    while stage_domain.size() > 1 {
+        factors.extend(
+            stage_domain
+                .iter()
+                .take(stage_domain.size() / 2)
+                .map(|x| x.inverse().0),
+        );
+        stage_domain = stage_domain.double();
+    }
+
+    let factors = Arc::new(
+        stwo_metal_sys::metal::U32Buffer::from_slice(&factors)
+            .expect("Metal line IFFT factor upload should initialize"),
+    );
+    line_ifft_factor_cache()
+        .lock()
+        .expect("line IFFT factor cache mutex should not be poisoned")
+        .insert(key, factors.clone());
+    factors
+}
+
+pub fn interpolate_line_polynomial(
+    evaluation: LineEvaluation<super::MetalBackend>,
+) -> stwo::core::poly::line::LinePoly {
+    let domain = evaluation.domain();
+    let len = evaluation.len();
+
+    if len == 1 {
+        return stwo::core::poly::line::LinePoly::new(vec![evaluation.values.at(0)]);
+    }
+
+    let inverse_line_factors = cached_line_ifft_inverse_factors(domain);
+    let scale_factor = BaseField::from_u32_unchecked(
+        len.try_into()
+            .expect("line IFFT scale length should fit in u32"),
+    )
+    .inverse()
+    .0;
+
+    let mut coords: [BaseFieldVec; 4] = evaluation.values.columns;
+    for coord in &mut coords {
+        coord.bit_reverse();
+        coord
+            .buffer
+            .ifft_line_interpolate_in_place(inverse_line_factors.as_ref(), scale_factor)
+            .expect("Metal line IFFT interpolation should complete through the native lane");
+    }
+
+    let coord_slices = coords.each_ref().map(BaseFieldVec::host_slice);
+    let coeffs = (0..len)
+        .map(|index| {
+            SecureField::from_u32_unchecked(
+                coord_slices[0][index].0,
+                coord_slices[1][index].0,
+                coord_slices[2][index].0,
+                coord_slices[3][index].0,
+            )
+        })
+        .collect();
+    stwo::core::poly::line::LinePoly::new(coeffs)
+}
 
 #[derive(Clone, Debug)]
 pub struct MetalLineEvaluation {

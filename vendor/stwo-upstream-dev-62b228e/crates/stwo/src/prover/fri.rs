@@ -1,7 +1,8 @@
+use std::time::Instant;
+
 use hashbrown::HashMap;
 use itertools::Itertools;
 use num_traits::Zero;
-use std::time::Instant;
 use tracing::instrument;
 
 use crate::core::channel::{Channel, MerkleChannel};
@@ -72,6 +73,20 @@ pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField
     fn decompose(
         eval: &SecureEvaluation<Self, BitReversedOrder>,
     ) -> (SecureEvaluation<Self, BitReversedOrder>, SecureField);
+
+    /// Interpolates a final FRI line evaluation into the verifier-visible last-layer polynomial.
+    ///
+    /// Laws:
+    /// - returns the same coefficient basis and ordering as
+    ///   `LineEvaluation<CpuBackend>::interpolate`
+    /// - preserves the degree check behavior performed by `FriProver::commit_last_layer`
+    /// - may use backend-native interpolation to avoid ownership transfers
+    ///
+    /// This hook exists so backends can keep the final FRI layer on their native storage without
+    /// forcing a conversion through `CpuBackend`.
+    fn interpolate_line(evaluation: LineEvaluation<Self>) -> LinePoly {
+        evaluation.to_cpu().interpolate()
+    }
 }
 
 pub struct FriDecommitResult<H: MerkleHasherLifted> {
@@ -160,7 +175,9 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         let profile_fri_layers = std::env::var_os("STWO_METAL_PROFILE_FRI_LAYERS").is_some();
         let emit_layer_timing = |phase: &str, layer_index: usize, elapsed_ms: f64| {
             if profile_fri_layers {
-                eprintln!("fri_inner_layer_timing phase={phase} layer={layer_index} ms={elapsed_ms}");
+                eprintln!(
+                    "fri_inner_layer_timing phase={phase} layer={layer_index} ms={elapsed_ms}"
+                );
             }
         };
         let first_inner_layer_log_size = column.domain.log_size() - CIRCLE_TO_LINE_FOLD_STEP;
@@ -246,8 +263,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     ) -> LinePoly {
         assert_eq!(evaluation.len(), config.last_layer_domain_size());
 
-        let evaluation = evaluation.to_cpu();
-        let mut coeffs = evaluation.interpolate().into_ordered_coefficients();
+        let mut coeffs = B::interpolate_line(evaluation).into_ordered_coefficients();
 
         let last_layer_degree_bound = 1 << config.log_last_layer_degree_bound;
         let zeros = coeffs.split_off(last_layer_degree_bound);

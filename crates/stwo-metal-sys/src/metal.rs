@@ -374,6 +374,33 @@ impl U32Buffer {
         }
     }
 
+    pub fn ifft_line_interpolate_in_place(
+        &mut self,
+        inverse_line_twiddles: &Self,
+        scale_factor: u32,
+    ) -> Result<(), MetalError> {
+        assert!(
+            self.len.is_power_of_two(),
+            "Line IFFT interpolate requires a power-of-two value buffer"
+        );
+        assert_eq!(
+            inverse_line_twiddles.len,
+            self.len.saturating_sub(1),
+            "Line IFFT interpolate requires stage twiddles of total length len(values)-1"
+        );
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::ifft_line_interpolate_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                inverse_line_twiddles.raw.as_ptr(),
+                self.len.ilog2(),
+                scale_factor,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
     pub fn batch_eval_at_point_base_field(
         &self,
         factors: &Self,
@@ -1520,6 +1547,15 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_ifft_line_interpolate_u32(
+            runtime: *mut c_void,
+            values: *mut c_void,
+            inverse_line_twiddles: *mut c_void,
+            values_log_len: u32,
+            scale_factor: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_batch_eval_at_point_base_field_u32(
             runtime: *mut c_void,
             flat_coeffs: *mut c_void,
@@ -2102,6 +2138,30 @@ mod ffi {
             runtime,
             values,
             inverse_twiddles,
+            values_log_len,
+            scale_factor,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn ifft_line_interpolate_u32(
+        runtime: *mut c_void,
+        values: *mut c_void,
+        inverse_line_twiddles: *mut c_void,
+        values_log_len: u32,
+        scale_factor: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_ifft_line_interpolate_u32(
+            runtime,
+            values,
+            inverse_line_twiddles,
             values_log_len,
             scale_factor,
             error_ptr(&mut error),
@@ -3076,6 +3136,19 @@ mod ffi {
         _runtime: *mut c_void,
         _values: *mut c_void,
         _inverse_twiddles: *mut c_void,
+        _values_log_len: u32,
+        _scale_factor: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn ifft_line_interpolate_u32(
+        _runtime: *mut c_void,
+        _values: *mut c_void,
+        _inverse_line_twiddles: *mut c_void,
         _values_log_len: u32,
         _scale_factor: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,

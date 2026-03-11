@@ -6,7 +6,7 @@ use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::fri::CIRCLE_TO_LINE_FOLD_STEP;
 use stwo::core::poly::circle::CircleDomain;
-use stwo::core::poly::line::LineDomain;
+use stwo::core::poly::line::{LineDomain, LinePoly};
 use stwo::core::utils::bit_reverse_index;
 use stwo::prover::fri::FriOps;
 use stwo::prover::line::LineEvaluation;
@@ -16,6 +16,7 @@ use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::secure_column::SecureColumnByCoords;
 use stwo_metal_sys::metal::U32Buffer;
 
+use super::line::interpolate_line_polynomial;
 use super::MetalBackend;
 use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
@@ -186,6 +187,10 @@ fn metal_line_evaluation_from_base_coords(
 }
 
 impl FriOps for MetalBackend {
+    fn interpolate_line(evaluation: LineEvaluation<Self>) -> LinePoly {
+        interpolate_line_polynomial(evaluation)
+    }
+
     fn fold_line(
         eval: &LineEvaluation<Self>,
         alpha: SecureField,

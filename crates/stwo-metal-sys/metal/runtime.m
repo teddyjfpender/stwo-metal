@@ -816,6 +816,103 @@ bool stwo_metal_ifft_interpolate_u32(
     }
 }
 
+bool stwo_metal_ifft_line_interpolate_u32(
+    void *runtime_ptr,
+    void *values_ptr,
+    void *inverse_line_twiddles_ptr,
+    uint32_t values_log_len,
+    uint32_t scale_factor,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *values = stwo_metal_buffer_box(values_ptr);
+        StwoMetalBufferBox *inverse_line_twiddles = stwo_metal_buffer_box(inverse_line_twiddles_ptr);
+        uint32_t values_len = ((uint32_t)1) << values_log_len;
+        uint32_t expected_twiddle_len = values_len > 1 ? values_len - 1u : 0u;
+        if (values.len != (NSUInteger)values_len || inverse_line_twiddles.len != (NSUInteger)expected_twiddle_len) {
+            stwo_metal_write_error(error_message, error_message_len, @"Line IFFT interpolation expects a power-of-two value buffer and a stage-twiddle slice of len(values)-1.");
+            return false;
+        }
+
+        if (values_len <= 1u) {
+            return true;
+        }
+
+        id<MTLComputePipelineState> line_pipeline =
+            stwo_metal_pipeline(runtime, @"ifft_line_stage_u32", error_message, error_message_len);
+        if (line_pipeline == nil) {
+            return false;
+        }
+        id<MTLComputePipelineState> rescale_pipeline =
+            stwo_metal_pipeline(runtime, @"rescale_m31_values_u32", error_message, error_message_len);
+        if (rescale_pipeline == nil) {
+            return false;
+        }
+
+        uint32_t pair_count = values_len >> 1u;
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        uint32_t twiddle_offset = 0u;
+        for (uint32_t stage_domain_log_size = values_log_len; stage_domain_log_size > 0u; --stage_domain_log_size) {
+            uint32_t stage_domain_size = ((uint32_t)1) << stage_domain_log_size;
+            uint32_t half_stage_size = stage_domain_size >> 1u;
+
+            id<MTLComputeCommandEncoder> line_encoder = [command_buffer computeCommandEncoder];
+            if (line_encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                return false;
+            }
+
+            [line_encoder setComputePipelineState:line_pipeline];
+            [line_encoder setBuffer:values.buffer offset:0 atIndex:0];
+            [line_encoder setBuffer:inverse_line_twiddles.buffer
+                                  offset:(NSUInteger)(twiddle_offset * sizeof(uint32_t))
+                                 atIndex:1];
+            [line_encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
+            [line_encoder setBytes:&stage_domain_log_size length:sizeof(stage_domain_log_size) atIndex:3];
+
+            MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
+            MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(line_pipeline), 1, 1);
+            [line_encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+            [line_encoder endEncoding];
+
+            twiddle_offset += half_stage_size;
+        }
+
+        id<MTLComputeCommandEncoder> rescale_encoder = [command_buffer computeCommandEncoder];
+        if (rescale_encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [rescale_encoder setComputePipelineState:rescale_pipeline];
+        [rescale_encoder setBuffer:values.buffer offset:0 atIndex:0];
+        [rescale_encoder setBytes:&values_len length:sizeof(values_len) atIndex:1];
+        [rescale_encoder setBytes:&scale_factor length:sizeof(scale_factor) atIndex:2];
+
+        MTLSize rescale_grid = MTLSizeMake(values_len, 1, 1);
+        MTLSize rescale_group = MTLSizeMake(stwo_metal_threads_per_group(rescale_pipeline), 1, 1);
+        [rescale_encoder dispatchThreads:rescale_grid threadsPerThreadgroup:rescale_group];
+        [rescale_encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_batch_eval_at_point_base_field_u32(
     void *runtime_ptr,
     void *flat_coeffs_ptr,

@@ -127,17 +127,19 @@ Invariants:
 - the current wide-fibonacci generated benchmark still trails SIMD from
   `log_size = 19` onward, so remaining prove-values and commitment staging
   costs must stay explicit and measured
+- the final FRI last-layer interpolation no longer forces a `CpuBackend`
+  conversion for `MetalBackend`; that bridge is now native Metal line-IFFT
+  plus final host coefficient decode, so the next CPU-shaped ownership wall is
+  the broader FRI/PCS workload and handoff boundary rather than
+  `commit_last_layer`
 
 ## Next three deliverables
 
-1. Lower the remaining prove-values grouping overhead above the generated
-   wide-fibonacci lane now that repeated tree-decommit staging, one quotient
-   regrouping pass, and one proof-facing sample materialization pass have been
-   reduced, and the direct grouped quotient feed path now avoids one full
-   intermediate tree-shaped regroup pass.
-2. Measure whether the next benchmark-critical host-owned cost is the
-   remaining higher-level sample grouping or quotient/decommit staging in the
-   PCS prover.
+1. Lower the broader FRI/PCS CPU-ownership boundary above the generated
+   wide-fibonacci lane now that the final FRI last-layer interpolation no
+   longer routes through `CpuBackend`.
+2. Reduce the remaining prove-values grouping and quotient/decommit staging in
+   the PCS prover above the now-native last-layer FRI path.
 3. Keep downstream `stark-v` hardening iced unless an external support signal
    appears.
 

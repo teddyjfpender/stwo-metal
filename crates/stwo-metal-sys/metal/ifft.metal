@@ -47,3 +47,32 @@ kernel void ifft_line_part_u32(
     values[idx0] = stwo_metal_m31_add(val0, val1);
     values[idx1] = stwo_metal_m31_mul(stwo_metal_m31_sub(val0, val1), twiddle);
 }
+
+kernel void ifft_line_stage_u32(
+    device uint *values [[buffer(0)]],
+    device const uint *twiddles [[buffer(1)]],
+    constant uint &values_log_len [[buffer(2)]],
+    constant uint &stage_domain_log_size [[buffer(3)]],
+    uint index [[thread_position_in_grid]]
+) {
+    uint values_len = 1u << values_log_len;
+    uint pair_count = values_len >> 1u;
+    if (index >= pair_count) {
+        return;
+    }
+
+    uint stage_domain_size = 1u << stage_domain_log_size;
+    uint half_stage_size = stage_domain_size >> 1u;
+    uint group = index / half_stage_size;
+    uint inner = index % half_stage_size;
+    uint base = group * stage_domain_size;
+    uint idx0 = base + inner;
+    uint idx1 = idx0 + half_stage_size;
+
+    uint val0 = values[idx0];
+    uint val1 = values[idx1];
+    uint twiddle = twiddles[inner];
+
+    values[idx0] = stwo_metal_m31_add(val0, val1);
+    values[idx1] = stwo_metal_m31_mul(stwo_metal_m31_sub(val0, val1), twiddle);
+}

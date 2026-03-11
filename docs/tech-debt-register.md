@@ -28,6 +28,44 @@ Target retirement point:
 
 ## Active debt
 
+### TD-0033: FRI and workload handoff surfaces still own CPU-shaped evaluation transitions above the native last-layer path
+
+- Status: `active`
+- Category: `backend ownership boundary`
+- Introduced: `2026-03-11`
+- Owner area: `generated-lane performance`
+
+Why it exists now:
+
+`MetalBackend` no longer routes the final FRI last-layer interpolation through
+`CpuBackend`, but the broader workload and handoff surfaces still expose
+CPU-shaped evaluation and quotient-ingestion boundaries. That means large parts
+of the PCS/FRI ownership contract are still described as CPU transitions even
+after the narrow last-layer bridge is gone.
+
+Current containment:
+
+- `crates/stwo-metal/src/backend/metal/workload.rs`
+- `crates/stwo-metal/src/backend/metal/handoff.rs`
+- `crates/stwo-metal/src/backend/metal/witness.rs`
+- `vendor/stwo-upstream-dev-62b228e/crates/stwo/src/prover/fri.rs`
+
+Risk if left in place:
+
+The benchmark may stop seeing meaningful wins from smaller grouping cleanups
+because the surrounding prover phases are still structured around CPU-shaped
+handoff ownership rather than a GPU-owned execution contract.
+
+Exit condition:
+
+The generated-lane FRI/PCS workload handoff is expressed in Metal-owned or
+backend-parametric terms, or measured evidence shows those remaining
+CPU-shaped boundaries are no longer material to the target rows.
+
+Target retirement point:
+
+- `generated-lane performance follow-up`
+
 ### TD-0032: Standard Blake2s Merkle layers still round-trip through host hash columns between native layers
 
 - Status: `active`

@@ -71,6 +71,49 @@ Superseded by:
 
 - none
 
+### DEC-0134: Metal FRI last-layer interpolation must not cross through CpuBackend
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+`MetalBackend` now owns the final FRI last-layer interpolation through a native
+Metal line-IFFT path, and `FriProver::commit_last_layer` consumes a backend
+interpolation hook instead of forcing `LineEvaluation<B>` through
+`LineEvaluation<CpuBackend>`.
+
+Context:
+
+The remaining benchmark-critical ownership walls had shifted away from the
+obvious grouped prove-values cleanup and toward a few explicit CPU-shaped
+handoffs. The vendored FRI prover still converted the final last-layer line
+evaluation to `CpuBackend` only to reuse a small interpolation routine. That
+conversion was narrow, semantically isolated, and verifier-visible through the
+last-layer polynomial, making it a good law-preserving slice to retire.
+
+Alternatives rejected:
+
+- leave `commit_last_layer` on `evaluation.to_cpu().interpolate()`
+- add a benchmark-local or Metal-only special-case around the vendored FRI
+  prover instead of moving the law into the backend abstraction
+- widen the public workload surface before retiring the narrow FRI ownership
+  cut
+
+Impact:
+
+- the final FRI last-layer polynomial for `MetalBackend` is now computed from a
+  native Metal coordinate-wise line-IFFT path
+- proof-level parity remains enforced by the existing Metal-vs-CPU FRI prover
+  regression
+- the next honest CPU-shaped ownership target is the broader FRI/PCS
+  workload/handoff boundary, not this final last-layer conversion
+
+Superseded by:
+
+- none
+
 ### DEC-0132: Build proof-facing sampled values alongside samples and reuse prepared query buffers before widening prove-values interfaces
 
 - Date: `2026-03-11`
