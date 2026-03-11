@@ -16,6 +16,7 @@ use stwo_metal_sys::metal::{MetalError, U32Buffer};
 
 use super::accumulation::metal_secure_column_from_values;
 use super::MetalBackend;
+use crate::stwo_metal::base_field_column_batch::BaseFieldColumnBatch;
 use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
@@ -104,6 +105,15 @@ fn cached_quotient_domain_coords(lifting_log_size: u32) -> Arc<(U32Buffer, U32Bu
 #[derive(Clone, Copy, Debug)]
 pub struct MetalWideFibonacciQuotientRequest<'a> {
     pub trace_evaluations: &'a [&'a BaseFieldVec],
+    pub random_coeff_powers: &'a [SecureField],
+    pub denominator_inverses: &'a [BaseField],
+    pub domain_log_size: u32,
+    pub eval_domain_log_size: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MetalWideFibonacciBatchQuotientRequest<'a> {
+    pub trace_evaluations: &'a BaseFieldColumnBatch,
     pub random_coeff_powers: &'a [SecureField],
     pub denominator_inverses: &'a [BaseField],
     pub domain_log_size: u32,
@@ -299,6 +309,75 @@ pub fn accumulate_wide_fibonacci_quotients(
     let denominator_inverses = U32Buffer::from_slice(&denominator_inverses)?;
     let values = U32Buffer::accumulate_wide_fibonacci_quotients(
         &trace_values,
+        &random_coeff_powers,
+        &denominator_inverses,
+        request.domain_log_size,
+        request.eval_domain_log_size,
+        expected_coeff_len as u32,
+    )?;
+
+    Ok(MetalWideFibonacciQuotients {
+        values: SecureFieldVec::from_buffer(values),
+        eval_domain_size,
+    })
+}
+
+pub fn accumulate_wide_fibonacci_quotients_from_batch(
+    request: MetalWideFibonacciBatchQuotientRequest<'_>,
+) -> Result<MetalWideFibonacciQuotients, MetalWideFibonacciQuotientError> {
+    let trace_columns = request.trace_evaluations.n_columns();
+    if trace_columns < 3 {
+        return Err(MetalWideFibonacciQuotientError::NotEnoughTraceColumns { trace_columns });
+    }
+    if request.eval_domain_log_size < request.domain_log_size {
+        return Err(MetalWideFibonacciQuotientError::InvalidDomainLogSizes {
+            domain_log_size: request.domain_log_size,
+            eval_domain_log_size: request.eval_domain_log_size,
+        });
+    }
+
+    let eval_domain_size = 1usize << request.eval_domain_log_size;
+    if request.trace_evaluations.column_len() != eval_domain_size {
+        return Err(
+            MetalWideFibonacciQuotientError::InconsistentTraceColumnLength {
+                expected_len: eval_domain_size,
+                actual_len: request.trace_evaluations.column_len(),
+                column_index: 0,
+            },
+        );
+    }
+
+    let expected_coeff_len = trace_columns - 2;
+    if request.random_coeff_powers.len() != expected_coeff_len {
+        return Err(MetalWideFibonacciQuotientError::RandomCoeffCountMismatch {
+            expected_len: expected_coeff_len,
+            actual_len: request.random_coeff_powers.len(),
+        });
+    }
+
+    let expected_denominator_len =
+        1usize << (request.eval_domain_log_size - request.domain_log_size);
+    if request.denominator_inverses.len() != expected_denominator_len {
+        return Err(MetalWideFibonacciQuotientError::DenominatorCountMismatch {
+            expected_len: expected_denominator_len,
+            actual_len: request.denominator_inverses.len(),
+        });
+    }
+
+    let random_coeff_powers = request
+        .random_coeff_powers
+        .iter()
+        .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+        .collect::<Vec<_>>();
+    let denominator_inverses = request
+        .denominator_inverses
+        .iter()
+        .map(|value| value.0)
+        .collect::<Vec<_>>();
+    let random_coeff_powers = U32Buffer::from_slice(&random_coeff_powers)?;
+    let denominator_inverses = U32Buffer::from_slice(&denominator_inverses)?;
+    let values = U32Buffer::accumulate_wide_fibonacci_quotients(
+        request.trace_evaluations.buffer(),
         &random_coeff_powers,
         &denominator_inverses,
         request.domain_log_size,

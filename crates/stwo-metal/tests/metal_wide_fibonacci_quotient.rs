@@ -3,9 +3,15 @@
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::fields::FieldExpOps;
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::poly::circle::PolyOps;
+use stwo::prover::poly::BitReversedOrder;
 use stwo_metal::{
-    accumulate_wide_fibonacci_quotients, metal_runtime_support, MetalBaseFieldVec,
-    MetalRuntimeSupport, MetalWideFibonacciQuotientError, MetalWideFibonacciQuotientRequest,
+    accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
+    evaluate_polys_on_domain_batch, metal_runtime_support, MetalBackend, MetalBaseFieldVec,
+    MetalRuntimeSupport, MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciQuotientError,
+    MetalWideFibonacciQuotientRequest,
 };
 
 fn cpu_wide_fibonacci_quotients(
@@ -142,4 +148,89 @@ fn native_wide_fibonacci_quotients_match_cpu_oracle() {
             assert_eq!(column[row_index], limb);
         }
     }
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn batched_domain_evaluation_feeds_the_same_wide_fibonacci_quotients() {
+    assert_eq!(
+        metal_runtime_support(),
+        MetalRuntimeSupport::Available,
+        "Metal runtime must be available for the native Apple Silicon parity test"
+    );
+
+    let trace_domain = CanonicCoset::new(3).circle_domain();
+    let eval_domain = CanonicCoset::new(4).circle_domain();
+    let trace0 = (0..trace_domain.size())
+        .map(|i| BaseField::from_u32_unchecked((i as u32 % 17) + 3))
+        .collect::<Vec<_>>();
+    let trace1 = (0..trace_domain.size())
+        .map(|i| BaseField::from_u32_unchecked(((i as u32 * 3) % 19) + 5))
+        .collect::<Vec<_>>();
+    let trace2 = (0..trace_domain.size())
+        .map(|i| trace0[i].square() + trace1[i].square())
+        .collect::<Vec<_>>();
+    let trace3 = (0..trace_domain.size())
+        .map(|i| trace1[i].square() + trace2[i].square())
+        .collect::<Vec<_>>();
+    let trace4 = (0..trace_domain.size())
+        .map(|i| trace2[i].square() + trace3[i].square())
+        .collect::<Vec<_>>();
+    let trace_evals = [trace0, trace1, trace2, trace3, trace4]
+        .into_iter()
+        .map(|column| {
+            CircleEvaluation::<MetalBackend, BaseField, BitReversedOrder>::new(
+                trace_domain,
+                MetalBaseFieldVec::from_vec(column),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let trace_twiddles = MetalBackend::precompute_twiddles(trace_domain.half_coset);
+    let coeffs = trace_evals
+        .into_iter()
+        .map(|eval| MetalBackend::interpolate(eval, &trace_twiddles))
+        .collect::<Vec<_>>();
+    let coeff_refs = coeffs.iter().collect::<Vec<_>>();
+    let eval_twiddles = MetalBackend::precompute_twiddles(eval_domain.half_coset);
+    let batch = evaluate_polys_on_domain_batch(&coeff_refs, eval_domain, &eval_twiddles)
+        .expect("batched Metal domain evaluation should succeed");
+    let individual_evals = coeffs
+        .iter()
+        .map(|poly| MetalBackend::evaluate(poly, eval_domain, &eval_twiddles))
+        .collect::<Vec<_>>();
+    let individual_refs = individual_evals
+        .iter()
+        .map(|column| &column.values)
+        .collect::<Vec<_>>();
+
+    let random_coeff_powers = vec![
+        SecureField::from_u32_unchecked(3, 5, 7, 11),
+        SecureField::from_u32_unchecked(13, 17, 19, 23),
+        SecureField::from_u32_unchecked(29, 31, 37, 41),
+    ];
+    let denominator_inverses = vec![
+        BaseField::from_u32_unchecked(5),
+        BaseField::from_u32_unchecked(9),
+    ];
+
+    let individual = accumulate_wide_fibonacci_quotients(MetalWideFibonacciQuotientRequest {
+        trace_evaluations: &individual_refs,
+        random_coeff_powers: &random_coeff_powers,
+        denominator_inverses: &denominator_inverses,
+        domain_log_size: trace_domain.log_size(),
+        eval_domain_log_size: eval_domain.log_size(),
+    })
+    .expect("individual quotient path should succeed");
+    let batched =
+        accumulate_wide_fibonacci_quotients_from_batch(MetalWideFibonacciBatchQuotientRequest {
+            trace_evaluations: &batch,
+            random_coeff_powers: &random_coeff_powers,
+            denominator_inverses: &denominator_inverses,
+            domain_log_size: trace_domain.log_size(),
+            eval_domain_log_size: eval_domain.log_size(),
+        })
+        .expect("batched quotient path should succeed");
+
+    assert_eq!(batched.to_vec(), individual.to_vec());
 }

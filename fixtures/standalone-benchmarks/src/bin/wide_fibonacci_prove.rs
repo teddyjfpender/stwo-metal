@@ -53,10 +53,13 @@ use stwo_examples::wide_fibonacci::{
 };
 #[cfg(feature = "metal-runtime")]
 use stwo_metal::{
-    accumulate_wide_fibonacci_quotients, declare_exemplar_metal_workload_boundary,
-    declare_wide_fibonacci_benchmark_boundary, MetalBackend, MetalBenchmarkOperation,
-    MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalExecutionIntent, MetalBaseFieldVec,
-    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientRequest, MetalWideFibonacciTrace,
+    accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
+    declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
+    evaluate_polys_on_domain_batch, MetalBackend, MetalBenchmarkOperation,
+    MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalExecutionIntent,
+    MetalBaseFieldVec, MetalWideFibonacciBatchQuotientRequest,
+    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientRequest,
+    MetalWideFibonacciTrace,
 };
 #[cfg(feature = "metal-runtime")]
 use stwo_metal_fixture_shims::acceptance_bridge_catalog;
@@ -685,27 +688,6 @@ impl ComponentProver<MetalBackend> for WideFibonacciBenchmarkComponent {
             );
         }
 
-        let owned_trace_evaluations;
-        let trace1_evaluation_refs = if trace_columns
-            .iter()
-            .all(|poly| poly.evals.domain == eval_domain)
-        {
-            trace_columns
-                .iter()
-                .map(|poly| &poly.evals.values)
-                .collect::<Vec<_>>()
-        } else {
-            let twiddles = MetalBackend::precompute_twiddles(eval_domain.half_coset);
-            owned_trace_evaluations = trace_columns
-                .iter()
-                .map(|poly| poly.get_evaluation_on_domain(eval_domain, &twiddles))
-                .collect::<Vec<_>>();
-            owned_trace_evaluations
-                .iter()
-                .map(|column| &column.values)
-                .collect::<Vec<_>>()
-        };
-
         let log_expand = eval_domain.log_size() - trace_domain.log_size();
         let mut denominator_inverses = (0..(1 << log_expand))
             .map(|index| coset_vanishing(trace_domain.coset(), eval_domain.at(index)).inverse())
@@ -715,13 +697,41 @@ impl ComponentProver<MetalBackend> for WideFibonacciBenchmarkComponent {
         let [mut accum] =
             evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
         accum.random_coeff_powers.reverse();
-        let quotients = accumulate_wide_fibonacci_quotients(MetalWideFibonacciQuotientRequest {
-            trace_evaluations: &trace1_evaluation_refs,
-            random_coeff_powers: &accum.random_coeff_powers,
-            denominator_inverses: &denominator_inverses,
-            domain_log_size: trace_domain.log_size(),
-            eval_domain_log_size: eval_domain.log_size(),
-        })
+        let quotients = if trace_columns
+            .iter()
+            .all(|poly| poly.evals.domain == eval_domain)
+        {
+            let trace1_evaluation_refs = trace_columns
+                .iter()
+                .map(|poly| &poly.evals.values)
+                .collect::<Vec<_>>();
+            accumulate_wide_fibonacci_quotients(MetalWideFibonacciQuotientRequest {
+                trace_evaluations: &trace1_evaluation_refs,
+                random_coeff_powers: &accum.random_coeff_powers,
+                denominator_inverses: &denominator_inverses,
+                domain_log_size: trace_domain.log_size(),
+                eval_domain_log_size: eval_domain.log_size(),
+            })
+        } else {
+            let twiddles = MetalBackend::precompute_twiddles(eval_domain.half_coset);
+            let coeffs = trace_columns
+                .iter()
+                .map(|poly| {
+                    poly.coeffs.as_ref().expect(
+                        "wide fibonacci benchmark requires stored trace coefficients for eval-domain extension",
+                    )
+                })
+                .collect::<Vec<_>>();
+            let trace_batch = evaluate_polys_on_domain_batch(&coeffs, eval_domain, &twiddles)
+                .expect("wide-fibonacci trace batch evaluation should stay on Metal");
+            accumulate_wide_fibonacci_quotients_from_batch(MetalWideFibonacciBatchQuotientRequest {
+                trace_evaluations: &trace_batch,
+                random_coeff_powers: &accum.random_coeff_powers,
+                denominator_inverses: &denominator_inverses,
+                domain_log_size: trace_domain.log_size(),
+                eval_domain_log_size: eval_domain.log_size(),
+            })
+        }
         .expect(
             "wide-fibonacci quotient accumulation should succeed through the native Metal path",
         );

@@ -28,6 +28,50 @@ Superseded by:
 
 ## Entries
 
+### DEC-0150: Eval-domain extension for the generated wide-fibonacci quotient path should stay in one contiguous Metal column batch
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+The generated `wide_fibonacci` quotient hot path should build eval-domain trace
+extensions into one contiguous Metal column batch and feed quotient
+accumulation directly from that batch, instead of materializing per-column
+evaluation objects and then flattening them back into the same layout.
+
+Context:
+
+The earlier "zero-copy trace" idea was too narrow because the hot quotient path
+usually does not consume the original generated trace buffer directly; it
+consumes eval-domain-extended trace columns. The real restaging cost was
+therefore one layer higher: extend each column, allocate one buffer per
+evaluation, then flatten those evaluations back into the column-major buffer
+shape expected by the quotient kernel.
+
+Alternatives rejected:
+
+- keep optimizing quotient staging around separately materialized evaluation
+  columns
+- add only more metadata about shared source buffers without preserving the
+  actual contiguous eval-domain layout
+- widen the public API with raw sys-buffer exposure instead of introducing a
+  narrow backend-owned column-batch abstraction
+
+Impact:
+
+- the generated `wide_fibonacci` quotient path now keeps eval-domain extension
+  on a shared Metal buffer through the quotient ingress
+- the warmed `log20` generated row improves from about `619.55 ms` to about
+  `586.72 ms`
+- the next dominant walls remain quotient numerator accumulation and the first
+  FRI fold/commit band rather than eval-domain restaging
+
+Superseded by:
+
+- none
+
 ### DEC-0149: Standard native Blake2s commitment should stay on Metal down to log-size 12 on the generated lane
 
 - Date: `2026-03-11`

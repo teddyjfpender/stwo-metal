@@ -30,12 +30,12 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `generated-lane benchmark contract closure: steady-state reporting plus the
-  next quotient and early-FRI follow-up`
+  `generated-lane steady-state optimization: contiguous eval-domain quotient
+  feed plus the next quotient and early-FRI follow-up`
 - Objective:
   keep generated-lane optimization measured against steady-state proving while
-  reducing the remaining `prove_values` and early FRI commit costs without
-  widening public contracts or changing proving semantics
+  reducing the remaining quotient numerator accumulation and early FRI commit
+  costs without changing proving semantics
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
   and
@@ -189,16 +189,21 @@ Invariants:
   to `log_size 12` keeps more early FRI commitment rounds on Metal and moves
   the warmed generated `wide_fibonacci` `log20` row to about `619.55 ms` mean /
   `619.36 ms` prove mean, with `prove_core_prove_values_ms` about `204.87 ms`
+- building the eval-domain trace extension for the wide-fibonacci quotient hot
+  path as one contiguous Metal column batch and feeding quotient accumulation
+  directly from that batch removes one full restaging pass and moves the warmed
+  generated `wide_fibonacci` `log20` row again to about `586.72 ms` mean /
+  `586.39 ms` prove mean, with `prove_core_prove_values_ms` about `198.55 ms`
 
 ## Next three deliverables
 
 1. Reduce numerator accumulation in the generated `prove_values` lane from the
-   new `~620 ms steady-state` / `~619 ms warmed prove` baseline, with the next
-   measured target still
-   being the quotient numerator kernel before lift-and-accumulate.
+   new `~587 ms steady-state` / `~586 ms warmed prove` baseline, with the next
+   measured target still being the quotient numerator kernel before
+   lift-and-accumulate.
 2. Reduce the first FRI fold and commit band from the same baseline now that
-   repeated Merkle parent-layer dispatch is no longer the dominant early-commit
-   tax.
+   repeated Merkle parent-layer dispatch and eval-domain restaging are no
+   longer the dominant early-commit tax.
 3. Keep downstream `stark-v` hardening iced unless an external support signal
    appears.
 

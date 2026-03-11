@@ -24,6 +24,7 @@ use stwo::prover::secure_column::SecureColumnByCoords;
 use stwo_metal_sys::metal::{MetalError, U32Buffer};
 
 use super::MetalBackend;
+use crate::stwo_metal::base_field_column_batch::BaseFieldColumnBatch;
 use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
@@ -224,6 +225,64 @@ fn tail_twiddle_buffer(values_len: usize, twiddles: &[BaseField]) -> Result<U32B
     let slice = &twiddles[twiddles.len() - eval_domain_size..];
     let raw: Vec<u32> = slice.iter().map(|value| value.0).collect();
     U32Buffer::from_slice(&raw)
+}
+
+pub fn evaluate_polys_on_domain_batch(
+    polys: &[&CircleCoefficients<MetalBackend>],
+    domain: CircleDomain,
+    twiddles: &TwiddleTree<MetalBackend>,
+) -> Result<BaseFieldColumnBatch, MetalError> {
+    assert!(
+        domain.half_coset.is_doubling_of(twiddles.root_coset),
+        "Metal batched evaluate requires twiddles rooted at the evaluation domain"
+    );
+    if polys.is_empty() {
+        return Ok(BaseFieldColumnBatch::from_buffer(
+            U32Buffer::zeroed(0)?,
+            domain.size(),
+            0,
+        ));
+    }
+
+    let domain_log_size = domain.log_size();
+    let domain_size = domain.size();
+
+    if domain_log_size <= 3 {
+        let mut values = Vec::with_capacity(polys.len() * domain_size);
+        for poly in polys {
+            let cpu_poly = to_cpu_circle_poly(poly);
+            let cpu_twiddles = to_cpu_twiddle_tree(twiddles);
+            let cpu_eval = CpuBackend::evaluate(&cpu_poly, domain, &cpu_twiddles);
+            values.extend(cpu_eval.values.into_iter().map(|value| value.0));
+        }
+        return Ok(BaseFieldColumnBatch::from_buffer(
+            U32Buffer::from_slice(&values)?,
+            domain_size,
+            polys.len(),
+        ));
+    }
+
+    let twiddle_tail = tail_twiddle_buffer(domain_size, &twiddles.twiddles)?;
+    let mut values = U32Buffer::uninitialized(
+        polys
+            .len()
+            .checked_mul(domain_size)
+            .expect("Metal batched evaluate length should fit in usize"),
+    )?;
+    for (index, poly) in polys.iter().enumerate() {
+        let extended = MetalBackend::extend(poly, domain_log_size);
+        let offset = index
+            .checked_mul(domain_size)
+            .expect("Metal batched evaluate offset should fit in usize");
+        values.copy_from_offset(&extended.coeffs.buffer, offset)?;
+        values.rfft_evaluate_subbuffer_in_place(offset, domain_size, &twiddle_tail)?;
+    }
+
+    Ok(BaseFieldColumnBatch::from_buffer(
+        values,
+        domain_size,
+        polys.len(),
+    ))
 }
 
 fn evaluate_into_native(

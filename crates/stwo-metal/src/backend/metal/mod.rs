@@ -54,14 +54,15 @@ pub use planner::{
     UnsupportedMetalPlan,
 };
 pub use planner_manifest_v1_generated::STWO_METAL_PLANNER_COMPONENTS_V1;
-pub use poly::permute_coset_to_circle_domain_bit_reversed;
+pub use poly::{evaluate_polys_on_domain_batch, permute_coset_to_circle_domain_bit_reversed};
 pub use proof::{
     MetalExtendedInnerFriProof, MetalFriInnerProofSlice, MetalInnerFriProof, MetalInnerFriProofAux,
 };
 pub use proof_slice::MetalFriProofSlice;
 pub use prover::MetalFriProver;
 pub use quotient::{
-    accumulate_wide_fibonacci_quotients, MetalWideFibonacciQuotientError,
+    accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
+    MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciQuotientError,
     MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients,
 };
 pub use row::MetalFriInnerLayerRow;
@@ -80,5 +81,6 @@ pub use workload::{
 pub use workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
 
 pub use crate::stwo_metal::{
-    BaseFieldVec as MetalBaseFieldVec, SecureFieldVec as MetalSecureFieldVec,
+    BaseFieldColumnBatch as MetalBaseFieldColumnBatch, BaseFieldVec as MetalBaseFieldVec,
+    SecureFieldVec as MetalSecureFieldVec,
 };

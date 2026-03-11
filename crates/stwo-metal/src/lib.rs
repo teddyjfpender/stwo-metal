@@ -75,7 +75,8 @@ pub mod quotient {
         launch_constraint_quotients_on_domain, opaque_eval_ptr, ConstraintQuotientEvalRequest,
     };
     pub use crate::backend::metal::{
-        accumulate_wide_fibonacci_quotients, MetalWideFibonacciQuotientError,
+        accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
+        MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciQuotientError,
         MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients,
     };
 }
@@ -121,8 +122,9 @@ pub use planner::{
 };
 #[cfg(feature = "prover")]
 pub use quotient::{
-    accumulate_wide_fibonacci_quotients, launch_constraint_quotients_on_domain, opaque_eval_ptr,
-    ConstraintQuotientEvalRequest, MetalWideFibonacciQuotientError,
+    accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
+    launch_constraint_quotients_on_domain, opaque_eval_ptr, ConstraintQuotientEvalRequest,
+    MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciQuotientError,
     MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients,
 };
 #[cfg(feature = "prover")]
@@ -144,14 +146,14 @@ pub use workload::{
 pub use crate::backend::cuda::{BaseFieldVec, CudaBackend, SecureFieldVec};
 #[cfg(feature = "prover")]
 pub use crate::backend::metal::{
-    commit_line_evaluation_via_cpu_bridge, fold_circle_into_line_first_layer, fold_line,
-    materialize_line_evaluation_via_cpu_bridge, metal_backend_surface_detail,
-    metal_backend_surface_status, metal_runtime_error, metal_runtime_support,
-    permute_coset_to_circle_domain_bit_reversed, CpuLineCommitmentBridge, MetalBackend,
-    MetalBackendSurface, MetalBackendSurfaceStatus, MetalBaseFieldVec, MetalExtendedInnerFriProof,
-    MetalFriBlake2sSubpath, MetalFriCommitmentSlice, MetalFriFirstLayer, MetalFriInnerLayerRow,
-    MetalFriInnerLayerSequence, MetalFriInnerProofSlice, MetalFriLayerDecommitment,
-    MetalFriProofSlice, MetalFriProver, MetalInnerFriProof, MetalInnerFriProofAux,
-    MetalLineCommitment, MetalLineEvaluation, MetalRuntimeSupport, MetalSecureFieldVec,
-    STWO_METAL_BACKEND_SURFACES_V1,
+    commit_line_evaluation_via_cpu_bridge, evaluate_polys_on_domain_batch,
+    fold_circle_into_line_first_layer, fold_line, materialize_line_evaluation_via_cpu_bridge,
+    metal_backend_surface_detail, metal_backend_surface_status, metal_runtime_error,
+    metal_runtime_support, permute_coset_to_circle_domain_bit_reversed, CpuLineCommitmentBridge,
+    MetalBackend, MetalBackendSurface, MetalBackendSurfaceStatus, MetalBaseFieldColumnBatch,
+    MetalBaseFieldVec, MetalExtendedInnerFriProof, MetalFriBlake2sSubpath, MetalFriCommitmentSlice,
+    MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerLayerSequence, MetalFriInnerProofSlice,
+    MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver, MetalInnerFriProof,
+    MetalInnerFriProofAux, MetalLineCommitment, MetalLineEvaluation, MetalRuntimeSupport,
+    MetalSecureFieldVec, STWO_METAL_BACKEND_SURFACES_V1,
 };

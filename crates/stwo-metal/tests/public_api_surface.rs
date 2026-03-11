@@ -3,21 +3,22 @@ use std::collections::HashSet;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleHasher};
 use stwo::prover::backend::{Backend, BackendForChannel};
 use stwo_metal::{
-    accumulate_wide_fibonacci_quotients, cuda_backend_surface_status,
-    declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
-    declare_wide_fibonacci_benchmark_boundary, plan_exemplar_metal_prove_by_name,
-    plan_exemplar_prove_by_name, BaseFieldVec, CudaBackend, CudaBackendSurface,
-    CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan, MetalBackend,
-    MetalBaseFieldVec, MetalBenchmarkInputError, MetalBenchmarkTarget,
-    MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput, MetalExecutionIntent,
-    MetalExecutionPlan, MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow,
-    MetalFriInnerProofSlice, MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver,
-    MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation,
-    MetalQuotientEvaluationInput, MetalSecureFieldVec, MetalWideFibonacciBenchmarkBoundary,
-    MetalWideFibonacciQuotientError, MetalWideFibonacciQuotientRequest,
-    MetalWideFibonacciQuotients, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
-    MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs, MetalWorkloadBoundary,
-    MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
+    accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
+    cuda_backend_surface_status, declare_exemplar_hybrid_fri_workload,
+    declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
+    evaluate_polys_on_domain_batch, plan_exemplar_metal_prove_by_name, plan_exemplar_prove_by_name,
+    BaseFieldVec, CudaBackend, CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent,
+    CudaExecutionPlan, MetalBackend, MetalBaseFieldColumnBatch, MetalBaseFieldVec,
+    MetalBenchmarkInputError, MetalBenchmarkTarget, MetalCpuQuotientEvaluationInput,
+    MetalCpuWideFibonacciWitnessInput, MetalExecutionIntent, MetalExecutionPlan,
+    MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice,
+    MetalFriLayerDecommitment, MetalFriProofSlice, MetalFriProver, MetalFriReadyEvaluationInput,
+    MetalHybridFriWorkload, MetalLineCommitment, MetalLineEvaluation, MetalQuotientEvaluationInput,
+    MetalSecureFieldVec, MetalWideFibonacciBatchQuotientRequest,
+    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciQuotientError,
+    MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients, MetalWideFibonacciTrace,
+    MetalWideFibonacciTraceError, MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs,
+    MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     OwnedConstraintEvalAbiV1, SecureFieldVec, StwoCudaWideFibonacciEvalAbiV1,
     STWO_CUDA_BACKEND_SURFACES_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
 };
@@ -32,6 +33,7 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<CudaBackend>();
     let _ = std::mem::size_of::<BaseFieldVec>();
     let _ = std::mem::size_of::<MetalBackend>();
+    let _ = std::mem::size_of::<MetalBaseFieldColumnBatch>();
     let _ = std::mem::size_of::<MetalBaseFieldVec>();
     let _ = std::mem::size_of::<MetalFriFirstLayer<Blake2sMerkleHasher>>();
     let _ = std::mem::size_of::<MetalFriInnerLayerRow<Blake2sMerkleHasher>>();
@@ -49,6 +51,12 @@ fn companion_surface_exports_backend_core_types() {
         as fn(
             MetalWideFibonacciQuotientRequest<'_>,
         ) -> Result<MetalWideFibonacciQuotients, MetalWideFibonacciQuotientError>;
+    let _ = accumulate_wide_fibonacci_quotients_from_batch
+        as fn(
+            MetalWideFibonacciBatchQuotientRequest<'_>,
+        ) -> Result<MetalWideFibonacciQuotients, MetalWideFibonacciQuotientError>;
+    let _ = evaluate_polys_on_domain_batch;
+    let _ = std::mem::size_of::<MetalWideFibonacciBatchQuotientRequest<'static>>();
     let _ = std::mem::size_of::<MetalWideFibonacciQuotientRequest<'static>>();
     let _ = std::mem::size_of::<MetalWideFibonacciQuotients>();
     let _ = std::mem::size_of::<MetalWideFibonacciQuotientError>();
