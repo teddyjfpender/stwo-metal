@@ -8,7 +8,8 @@ use stwo_metal::{
     declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
     evaluate_polys_on_domain_batch, execute_metal_evaluation_program_v1_on_metal,
     execute_selected_metal_evaluation_program_v1_on_metal,
-    lower_registered_metal_evaluation_program_v1, plan_exemplar_metal_prove_by_name,
+    lower_registered_metal_evaluation_program_v1, metal_evaluation_program_overlays_v1,
+    plan_exemplar_metal_prove_by_name,
     plan_exemplar_prove_by_name, select_metal_evaluation_program_dispatch_v1,
     validate_metal_evaluation_program_v1, BaseFieldVec, CudaBackend, CudaBackendSurface,
     CudaBackendSurfaceStatus, CudaExecutionIntent, CudaExecutionPlan, MetalBackend,
@@ -35,7 +36,6 @@ use stwo_metal::{
     MetalWorkloadBoundary, MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
     OwnedConstraintEvalAbiV1, OwnedMetalEvaluationProgramV1, SecureFieldVec,
     StwoCudaWideFibonacciEvalAbiV1, STWO_CUDA_BACKEND_SURFACES_V1,
-    STWO_METAL_EVAL_PROGRAM_OVERLAYS_V1,
     STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1, STWO_METAL_EVAL_PROGRAM_MAGIC_V1,
     STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
 };
@@ -247,7 +247,9 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
     assert_eq!(lowered.header().n_constraints, 98);
     assert_eq!(lowered.base_insts().len(), 1 + 98 * 7);
     assert_eq!(lowered.ext_insts().len(), 98);
-    assert!(STWO_METAL_EVAL_PROGRAM_OVERLAYS_V1.is_empty());
+    let overlays = metal_evaluation_program_overlays_v1();
+    assert!(!overlays.is_empty());
+    assert!(overlays.iter().any(|overlay| overlay.name == "wide_fibonacci_eval_v1"));
     let _ = lower_registered_metal_evaluation_program_v1
         as fn(
             &'static str,

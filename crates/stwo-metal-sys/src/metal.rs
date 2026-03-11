@@ -1736,6 +1736,32 @@ impl U32Buffer {
         }
         Ok(dst)
     }
+
+    pub fn eval_program_v1_wide_fibonacci_u32x4(
+        trace_values: &Self,
+        interaction_offsets: &Self,
+        random_coeff_powers: &Self,
+        row_count: usize,
+        n_interactions: u32,
+        n_constraints: u32,
+    ) -> Result<Self, MetalError> {
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(row_count * 4)?;
+        unsafe {
+            ffi::eval_program_v1_wide_fibonacci_u32x4(
+                runtime.raw.as_ptr(),
+                trace_values.raw.as_ptr(),
+                interaction_offsets.raw.as_ptr(),
+                random_coeff_powers.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                row_count.try_into().expect("row_count should fit in u32"),
+                n_interactions,
+                n_constraints,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
 }
 
 impl Clone for U32Buffer {
@@ -2359,6 +2385,18 @@ mod ffi {
             n_ext_params: u32,
             n_base_insts: u32,
             n_ext_insts: u32,
+            n_constraints: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_eval_program_v1_wide_fibonacci_u32x4(
+            runtime: *mut c_void,
+            trace_values: *mut c_void,
+            interaction_offsets: *mut c_void,
+            random_coeff_powers: *mut c_void,
+            dst: *mut c_void,
+            row_count: u32,
+            n_interactions: u32,
             n_constraints: u32,
             error_message: *mut i8,
             error_message_len: usize,
@@ -3739,6 +3777,36 @@ mod ffi {
             n_ext_params,
             n_base_insts,
             n_ext_insts,
+            n_constraints,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn eval_program_v1_wide_fibonacci_u32x4(
+        runtime: *mut c_void,
+        trace_values: *mut c_void,
+        interaction_offsets: *mut c_void,
+        random_coeff_powers: *mut c_void,
+        dst: *mut c_void,
+        row_count: u32,
+        n_interactions: u32,
+        n_constraints: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_eval_program_v1_wide_fibonacci_u32x4(
+            runtime,
+            trace_values,
+            interaction_offsets,
+            random_coeff_powers,
+            dst,
+            row_count,
+            n_interactions,
             n_constraints,
             error_ptr(&mut error),
             error.len(),

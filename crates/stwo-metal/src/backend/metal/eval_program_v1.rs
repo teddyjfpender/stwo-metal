@@ -1,3 +1,4 @@
+use std::sync::OnceLock;
 use std::vec::Vec;
 
 use ark_std::Zero;
@@ -513,7 +514,30 @@ pub enum MetalEvaluationProgramDispatchKindV1 {
     GeneratedOverlay(MetalEvaluationProgramOverlayV1),
 }
 
-pub const STWO_METAL_EVAL_PROGRAM_OVERLAYS_V1: &[MetalEvaluationProgramOverlayV1] = &[];
+const WIDE_FIBONACCI_EVAL_OVERLAY_NAME_V1: &str = "wide_fibonacci_eval_v1";
+
+pub fn metal_evaluation_program_overlays_v1() -> &'static [MetalEvaluationProgramOverlayV1] {
+    static OVERLAYS: OnceLock<Vec<MetalEvaluationProgramOverlayV1>> = OnceLock::new();
+    OVERLAYS
+        .get_or_init(|| {
+            let semantic_hash =
+                lower_wide_fibonacci_evaluation_program_v1(MetalEvaluationProgramSpecializationV1 {
+                    log_n_rows: 20,
+                    n_columns: 100,
+                })
+                .expect("wide-fibonacci V1 overlay specialization should lower")
+                .header()
+                .semantic_hash;
+            vec![MetalEvaluationProgramOverlayV1 {
+                name: WIDE_FIBONACCI_EVAL_OVERLAY_NAME_V1,
+                semantic_hash,
+                required_capability_bits: STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1
+                    | STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1
+                    | STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
+            }]
+        })
+        .as_slice()
+}
 
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Eq, PartialEq)]
@@ -1229,7 +1253,7 @@ pub fn lookup_metal_evaluation_program_overlay_v1(
     program: &OwnedMetalEvaluationProgramV1,
     profile: MetalEvaluationProgramCapabilityProfileV1,
 ) -> Option<MetalEvaluationProgramOverlayV1> {
-    STWO_METAL_EVAL_PROGRAM_OVERLAYS_V1
+    metal_evaluation_program_overlays_v1()
         .iter()
         .copied()
         .find(|overlay| {
@@ -1279,9 +1303,17 @@ pub fn execute_selected_metal_evaluation_program_v1_on_metal(
             interpret_metal_evaluation_program_v1_on_metal(program, runtime)
                 .map_err(MetalEvaluationProgramExecutionError::from)?
         }
-        MetalEvaluationProgramDispatchKindV1::GeneratedOverlay(_overlay) => {
-            interpret_metal_evaluation_program_v1_on_metal(program, runtime)
-                .map_err(MetalEvaluationProgramExecutionError::from)?
+        MetalEvaluationProgramDispatchKindV1::GeneratedOverlay(overlay) => {
+            match overlay.name {
+                WIDE_FIBONACCI_EVAL_OVERLAY_NAME_V1 => {
+                    execute_wide_fibonacci_overlay_v1_on_metal(program, runtime)
+                        .map_err(MetalEvaluationProgramExecutionError::from)?
+                }
+                _ => {
+                    interpret_metal_evaluation_program_v1_on_metal(program, runtime)
+                        .map_err(MetalEvaluationProgramExecutionError::from)?
+                }
+            }
         }
     };
     Ok((row_res, dispatch))
@@ -1447,6 +1479,124 @@ fn interpret_metal_evaluation_program_v1_on_metal(
         runtime.ext_params.len() as u32,
         program.base_insts().len() as u32,
         program.ext_insts().len() as u32,
+        program.constraint_roots().len() as u32,
+    )?;
+
+    let raw = dst.to_vec()?;
+    Ok(raw
+        .chunks_exact(4)
+        .map(|limbs| SecureField::from_u32_unchecked(limbs[0], limbs[1], limbs[2], limbs[3]))
+        .collect())
+}
+
+fn execute_wide_fibonacci_overlay_v1_on_metal(
+    program: &OwnedMetalEvaluationProgramV1,
+    runtime: MetalEvaluationProgramRuntimeInputsV1<'_>,
+) -> Result<Vec<SecureField>, MetalEvaluationProgramDeviceInterpreterError> {
+    let support = metal_runtime_support();
+    if support != MetalRuntimeSupport::Available {
+        return Err(MetalEvaluationProgramDeviceInterpreterError::RuntimeUnavailable(support));
+    }
+
+    program
+        .validate(METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET)
+        .map_err(
+            |_| MetalEvaluationProgramDeviceInterpreterError::RegisterBudgetExceeded {
+                required_base: program.header().max_base_regs,
+                required_ext: program.header().max_ext_regs,
+                supported_base: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET.max_base_regs,
+                supported_ext: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET.max_ext_regs,
+            },
+        )?;
+
+    let n_rows = runtime
+        .trace
+        .trace_interactions
+        .first()
+        .and_then(|interaction| interaction.first().map(|column| column.len()))
+        .or_else(|| {
+            runtime
+                .trace
+                .trace_interactions
+                .iter()
+                .find_map(|interaction| interaction.first().map(|column| column.len()))
+        })
+        .ok_or(MetalEvaluationProgramDeviceInterpreterError::EmptyTrace)?;
+
+    if runtime.trace.trace_interactions.len() != program.header().n_interactions as usize {
+        return Err(
+            MetalEvaluationProgramDeviceInterpreterError::TraceInteractionCountMismatch {
+                expected: program.header().n_interactions as usize,
+                actual: runtime.trace.trace_interactions.len(),
+            },
+        );
+    }
+    for interaction in runtime.trace.trace_interactions {
+        for column in *interaction {
+            if column.len() != n_rows {
+                return Err(
+                    MetalEvaluationProgramDeviceInterpreterError::InconsistentTraceColumnLength {
+                        expected_len: n_rows,
+                        actual_len: column.len(),
+                    },
+                );
+            }
+        }
+    }
+    if runtime.random_coeff_powers.len() != program.constraint_roots().len() {
+        return Err(
+            MetalEvaluationProgramDeviceInterpreterError::RandomCoeffCountMismatch {
+                expected: program.constraint_roots().len(),
+                actual: runtime.random_coeff_powers.len(),
+            },
+        );
+    }
+    if runtime.base_params.len() != program.header().n_base_params as usize {
+        return Err(
+            MetalEvaluationProgramDeviceInterpreterError::BaseParamCountMismatch {
+                expected: program.header().n_base_params as usize,
+                actual: runtime.base_params.len(),
+            },
+        );
+    }
+    if runtime.ext_params.len() != program.header().n_ext_params as usize {
+        return Err(
+            MetalEvaluationProgramDeviceInterpreterError::ExtParamCountMismatch {
+                expected: program.header().n_ext_params as usize,
+                actual: runtime.ext_params.len(),
+            },
+        );
+    }
+    for inst in program.base_insts() {
+        if MetalEvaluationProgramBaseOpcodeV1::from_raw(inst.op)
+            == Some(MetalEvaluationProgramBaseOpcodeV1::TraceCol)
+            && inst.imm != 0
+        {
+            return Err(
+                MetalEvaluationProgramDeviceInterpreterError::UnsupportedNonZeroTraceOffset {
+                    offset: inst.imm,
+                },
+            );
+        }
+    }
+
+    let (flat_trace, interaction_offsets) =
+        flatten_trace_interactions(runtime.trace.trace_interactions, n_rows);
+    let random_coeff_powers = runtime
+        .random_coeff_powers
+        .iter()
+        .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+        .collect::<Vec<_>>();
+
+    let trace_values = U32Buffer::from_slice(&flat_trace)?;
+    let interaction_offsets = U32Buffer::from_slice(&interaction_offsets)?;
+    let random_coeff_powers = U32Buffer::from_slice(&random_coeff_powers)?;
+    let dst = U32Buffer::eval_program_v1_wide_fibonacci_u32x4(
+        &trace_values,
+        &interaction_offsets,
+        &random_coeff_powers,
+        n_rows,
+        runtime.trace.trace_interactions.len() as u32,
         program.constraint_roots().len() as u32,
     )?;
 

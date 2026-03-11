@@ -74,6 +74,48 @@ Superseded by:
 
 - none
 
+### DEC-0161: The first generated overlay must attach to the explicit V1 selector, not to benchmark-local dispatch
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+The first real generated overlay registration for `MetalEvaluationProgramV1`
+must attach through the explicit semantic-hash and capability-profile selector,
+and the active generated benchmark row must consume that selector for live
+generated-trace execution instead of introducing benchmark-local overlay
+dispatch.
+
+Context:
+
+After the explicit V1 selector landed, the next architectural risk was adding
+the first overlay as a benchmark-owned special case. That would preserve the
+same benchmark-local execution law under a new name and leave the selected V1
+runtime contract hollow. The active `wide_fibonacci` generated row is the
+current migration target, so it is the right place to attach the first real
+overlay only if the benchmark boundary uses the stable selector and selected
+runtime contract.
+
+Alternatives rejected:
+
+- add the first overlay as a benchmark-only direct branch
+- keep the selector empty while widening more benchmark-owned prove logic
+- claim G10 completion before a real overlay is attached to the selected V1
+  runtime contract
+
+Impact:
+
+- `MetalEvaluationProgramV1` now has a real generated overlay registration keyed
+  by semantic hash and capability profile
+- the generated benchmark boundary now consumes the selected V1 runtime for live
+  generated-trace execution
+- the next honest G10 work is broader prove-path migration onto that selected
+  V1 runtime contract, not “attach the first overlay”
+
 ### DEC-0159: Generated prove-values execution for `wide_fibonacci` now belongs to `stwo-metal`
 
 - Date: `2026-03-11`

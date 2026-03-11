@@ -56,9 +56,9 @@ Invariants:
   path is still only partially migrated: the prove-values staging, prove-values
   execution, and composition/prove-core law now live on the benchmark boundary
   in `stwo-metal`, and the V1 runtime now has an explicit overlay lookup and
-  dispatch-selection law keyed by semantic hash and capability profile, but the
-  benchmark still does not prove through the selected V1 runtime contract end
-  to end
+  dispatch-selection law keyed by semantic hash and capability profile with a
+  first real `wide_fibonacci` generated overlay registration, but the benchmark
+  still does not prove through the selected V1 runtime contract end to end
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
   row still does not prove through that V1 runtime contract
@@ -79,8 +79,9 @@ Invariants:
 1. Migrate the active generated `wide_fibonacci` benchmark row onto the
    selected V1 runtime contract for the next live prove-phase boundary beyond
    benchmark-boundary-owned prove core.
-2. Attach the first real generated overlay registration to the now-explicit V1
-   selector instead of leaving the registry empty.
+2. Move the first live generated prove boundary onto the selected overlay-aware
+   V1 runtime instead of only lowering, validating, and executing V1 beside the
+   prove path.
 3. Add layout/reflection verification for the V1 host/device boundary records
    once the first live Metal runtime consumer exists, so the ABI surface is
    checked both statically and against compiled Metal metadata.

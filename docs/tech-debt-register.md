@@ -46,9 +46,9 @@ now lower, validate, and execute on the live generated trace for the currently
 supported subset.
 
 The runtime contract now includes an explicit capability-profile and
-semantic-hash-based selector, but the overlay registry is still empty and the
-generated benchmark row still depends on direct benchmark-boundary prove logic
-beyond the migrated prove-core boundary.
+semantic-hash-based selector with one real generated overlay registration, but
+the generated benchmark row still depends on direct benchmark-boundary prove
+logic beyond the migrated prove-core boundary.
 
 Current containment:
 
@@ -68,7 +68,8 @@ Exit condition:
 The active generated lane consumes a validated `MetalEvaluationProgramV1`
 artifact for at least one live prove-phase boundary, and the generic
 interpreter lane and generated overlay lane share that same contract with at
-least one real overlay registration.
+least one real overlay registration and more of the live prove path migrated
+onto the selected V1 runtime law.
 
 Target retirement point:
 

@@ -144,13 +144,10 @@ The next active work is:
   `MetalEvaluationProgramV1` runtime contract
 - keep the remaining fixture shims as non-authoritative wrappers once the same
   benchmark law exists inside `stwo-metal`
-
-- migrate the active generated benchmark row onto the first live
-  `MetalEvaluationProgramV1` runtime contract instead of benchmark-specialized
-  lowering
-- attach generated overlays to the explicit lookup law keyed by semantic hash
-  and capability profile
-- migrate the active generated benchmark row onto the same program contract
+- expand the live generated benchmark row from “selected V1 side execution plus
+  backend-owned prove core” toward end-to-end selected V1 runtime ownership
+- widen the first generated overlay registration into a durable overlay law
+  instead of leaving it as one benchmark-shape registration
 - keep examples as the acceptance matrix for the generic and generated lanes
 - keep `stark-v` iced until the V1 contract is available to test downstream
   honestly

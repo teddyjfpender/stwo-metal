@@ -191,3 +191,39 @@ kernel void eval_program_v1_reference_u32x4(
 
     stwo_metal_store_qm31(dst, row_index, acc);
 }
+
+kernel void eval_program_v1_wide_fibonacci_u32x4(
+    device const uint *trace_values [[buffer(0)]],
+    device const uint *interaction_offsets [[buffer(1)]],
+    device const uint *random_coeff_powers [[buffer(2)]],
+    device uint *dst [[buffer(3)]],
+    constant uint &row_count [[buffer(4)]],
+    constant uint &n_constraints [[buffer(5)]],
+    uint row_index [[thread_position_in_grid]]
+) {
+    if (row_index >= row_count) {
+        return;
+    }
+
+    uint main_trace_base = interaction_offsets[1];
+    StwoMetalQm31 acc = StwoMetalQm31 { 0u, 0u, 0u, 0u };
+    for (uint constraint_index = 0u; constraint_index < n_constraints; ++constraint_index) {
+        uint a = trace_values[(main_trace_base + constraint_index) * row_count + row_index];
+        uint b = trace_values[(main_trace_base + constraint_index + 1u) * row_count + row_index];
+        uint c = trace_values[(main_trace_base + constraint_index + 2u) * row_count + row_index];
+        uint residue = stwo_metal_m31_sub(
+            c,
+            stwo_metal_m31_add(
+                stwo_metal_m31_mul(a, a),
+                stwo_metal_m31_mul(b, b)
+            )
+        );
+        StwoMetalQm31 lifted = StwoMetalQm31 { residue, 0u, 0u, 0u };
+        acc = stwo_metal_qm31_add(
+            acc,
+            stwo_metal_qm31_mul(lifted, stwo_metal_load_qm31(random_coeff_powers, constraint_index))
+        );
+    }
+
+    stwo_metal_store_qm31(dst, row_index, acc);
+}

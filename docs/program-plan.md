@@ -196,6 +196,18 @@ The third G10 slice is now landed in code:
 - the next honest migration target is the composition-generation/commit side of
   the prove core, because that is the next benchmark-local prove-phase boundary
 
+The fourth G10 slice is now landed in code:
+
+- the generated `wide_fibonacci` benchmark row now executes composition
+  generation and prove core through `MetalWideFibonacciBenchmarkBoundary`
+  instead of local benchmark-owned logic
+- `MetalEvaluationProgramV1` now has a first real generated overlay
+  registration keyed by semantic hash and capability profile for the active
+  `wide_fibonacci` lowered-program shape
+- the benchmark boundary now consumes the explicit V1 selector and selected
+  runtime contract for live generated-trace program execution, even though the
+  full prove path is not yet selected-runtime-owned end to end
+
 ## Current implementation obligations under G3
 
 - preserve the non-public bridge laws from
@@ -580,10 +592,11 @@ The current G10 prove-path migration state is:
 - `MetalEvaluationProgramV1` now has an explicit capability-profile and
   semantic-hash-based dispatch selector, and the benchmark boundary executes
   live generated traces through that selected V1 runtime contract
+  with one real generated overlay registration
 - the next honest G10 work is the next live prove boundary after
-  benchmark-boundary-owned prove core, plus the first real generated overlay
-  registration on top of the now-explicit selector
-  boundary surface
+  benchmark-boundary-owned prove core, so the selected V1 runtime contract
+  owns more of the live generated proof than just side execution of the
+  lowered program
 
 The twenty-seventh G5 slice is now landed:
 
