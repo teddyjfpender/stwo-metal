@@ -28,6 +28,46 @@ Superseded by:
 
 ## Entries
 
+### DEC-0107: The full stage-assignment slice should stay internal once workload law has narrowed to per-stage ownership
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
+
+Decision:
+
+After retiring `MetalExecutionAuthority`, the public workload surface should
+also drop `stage_assignments()` and the companion `MetalWorkloadStageAssignment`
+export. The full assignment slice remains internal to generated inventory,
+artifact registration, and execution-plan lowering.
+
+Context:
+
+The follow-up audit showed that no live public or fixture consumer needed the
+full assignment slice once the workload boundary already exposed `plan()` and
+`stage_ownership()`. Keeping the full slice public would preserve a broader
+inspection surface than the current workload law actually requires.
+
+Alternatives rejected:
+
+- keep `stage_assignments()` public indefinitely
+- remove `stage_ownership()` and force callers to scan the full slice
+- delete the full assignment slice from internal planning layers as well
+
+Impact:
+
+- the workload-facing public law is now just `plan()` and `stage_ownership()`
+- internal generated and execution-plan layers still keep the richer assignment
+  data they need for lowering
+- the next honest G5 work is to return from surface cleanup to lower generated
+  runtime planning further
+
+Superseded by:
+
+- none
+
 ### DEC-0106: The transitional `MetalExecutionAuthority` object should be retired once workload law is available directly
 
 - Date: `2026-03-11`

@@ -12,9 +12,7 @@ use super::execution_plan::{registered_execution_binding, RegisteredMetalExecuti
 use super::planner::{MetalExecutionIntent, MetalExecutionPlan, MetalPlannerError};
 use super::subpath::MetalFriBlake2sSubpath;
 use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
-use super::workload_contract::{
-    stage_ownership, MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
-};
+use super::workload_contract::{stage_ownership, MetalWorkloadOwnership, MetalWorkloadStage};
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
 #[derive(Clone, Debug)]
@@ -91,10 +89,6 @@ impl MetalWorkloadBoundary {
 
     pub fn plan(&self) -> MetalExecutionPlan {
         self.execution_seed.plan
-    }
-
-    pub fn stage_assignments(&self) -> &'static [MetalWorkloadStageAssignment] {
-        self.execution_seed.stage_assignments
     }
 
     pub fn generated_inventory(&self) -> MetalGeneratedInventory {

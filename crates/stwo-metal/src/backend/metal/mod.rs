@@ -77,9 +77,7 @@ pub use workload::{
     MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalWorkloadBoundary,
     MetalWorkloadHandoffError,
 };
-pub use workload_contract::{
-    MetalWorkloadOwnership, MetalWorkloadStage, MetalWorkloadStageAssignment,
-};
+pub use workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
 
 pub use crate::stwo_metal::{
     BaseFieldVec as MetalBaseFieldVec, SecureFieldVec as MetalSecureFieldVec,

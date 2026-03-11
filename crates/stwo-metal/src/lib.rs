@@ -65,7 +65,6 @@ pub mod workload {
         MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput,
         MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalWorkloadBoundary,
         MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
-        MetalWorkloadStageAssignment,
     };
 }
 
@@ -138,7 +137,6 @@ pub use workload::{
     MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput,
     MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalWorkloadBoundary,
     MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
-    MetalWorkloadStageAssignment,
 };
 
 #[cfg(feature = "prover")]

@@ -189,6 +189,8 @@ The next active work is:
 - once execution law has collapsed onto workload methods, decide whether the
   full `stage_assignments()` slice is still required publicly or whether
   `stage_ownership()` is the stable semantic unit
+- once that public-law cleanup is complete, move G5 back to generated lowering
+  and runtime planning rather than doing more surface-only shrink work
 - keep the bridge-law surface non-public and private while generated lowering
   grows above it
 - keep examples only as validation and benchmark inputs

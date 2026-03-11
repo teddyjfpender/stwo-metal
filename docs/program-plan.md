@@ -337,6 +337,17 @@ The twenty-second G5 slice is now landed:
   belongs on the public workload surface, or whether callers only need
   per-stage ownership
 
+The twenty-third G5 slice is now landed:
+
+- `stage_assignments()` and the public `MetalWorkloadStageAssignment` companion
+  export are gone; the workload-facing public law is now just `plan()` and
+  `stage_ownership()`
+- the richer stage-assignment slice remains internal to the generated manifest,
+  artifact registry, and execution-plan layers where lowering still needs it
+- the next honest G5 work is to move back up from surface cleanup and pick the
+  next runtime helper that should depend on the lower generated contract rather
+  than the boundary-shaped API
+
 ## G2 progress snapshot
 
 G2 is now complete:
