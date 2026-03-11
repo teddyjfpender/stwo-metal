@@ -136,10 +136,17 @@ struct TimingMetadata {
     samples_ms: Vec<f64>,
     summary_ms: Option<SummaryStats>,
     throughput_kelem_per_second: Option<f64>,
+    steady_state_samples_ms: Option<Vec<f64>>,
+    steady_state_summary_ms: Option<SummaryStats>,
+    steady_state_throughput_kelem_per_second: Option<f64>,
     phase_samples_ms: Option<PhaseSampleTimings>,
     phase_summary_ms: Option<PhaseSummaryTimings>,
+    steady_state_phase_samples_ms: Option<PhaseSampleTimings>,
+    steady_state_phase_summary_ms: Option<PhaseSummaryTimings>,
     prove_breakdown_samples_ms: Option<ProveBreakdownSampleTimings>,
     prove_breakdown_summary_ms: Option<ProveBreakdownSummaryTimings>,
+    steady_state_prove_breakdown_samples_ms: Option<ProveBreakdownSampleTimings>,
+    steady_state_prove_breakdown_summary_ms: Option<ProveBreakdownSummaryTimings>,
 }
 
 #[derive(Serialize)]
@@ -182,6 +189,176 @@ struct ProveBreakdownSummaryTimings {
     prove_core_composition_commit_ms: SummaryStats,
     prove_core_prove_values_ms: SummaryStats,
     prove_core_sanity_check_ms: SummaryStats,
+}
+
+#[cfg(feature = "metal-runtime")]
+fn steady_state_tail<T>(samples: &[T]) -> Option<&[T]> {
+    (samples.len() >= 2).then(|| &samples[1..])
+}
+
+#[cfg(feature = "metal-runtime")]
+fn throughput_from_summary(instances: u64, summary: &SummaryStats) -> Option<f64> {
+    (summary.mean > 0.0).then_some(instances as f64 / summary.mean)
+}
+
+#[cfg(feature = "metal-runtime")]
+fn phase_sample_timings_from_samples(samples: &[SampleResult]) -> PhaseSampleTimings {
+    PhaseSampleTimings {
+        prove_ms: samples.iter().map(|sample| sample.prove_elapsed_ms).collect(),
+        verify_ms: samples.iter().map(|sample| sample.verify_elapsed_ms).collect(),
+    }
+}
+
+#[cfg(feature = "metal-runtime")]
+fn phase_summary_timings_from_samples(samples: &[SampleResult]) -> PhaseSummaryTimings {
+    PhaseSummaryTimings {
+        prove_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.prove_elapsed_ms)
+                .collect::<Vec<_>>(),
+        ),
+        verify_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.verify_elapsed_ms)
+                .collect::<Vec<_>>(),
+        ),
+    }
+}
+
+#[cfg(feature = "metal-runtime")]
+fn prove_breakdown_samples_from_samples(samples: &[ProveBreakdown]) -> ProveBreakdownSampleTimings {
+    let setup_and_preprocessed_commit_ms = samples
+        .iter()
+        .map(|sample| sample.setup_and_preprocessed_commit_ms)
+        .collect::<Vec<_>>();
+    let trace_generation_ms = samples
+        .iter()
+        .map(|sample| sample.trace_generation_ms)
+        .collect::<Vec<_>>();
+    let trace_commit_ms = samples
+        .iter()
+        .map(|sample| sample.trace_commit_ms)
+        .collect::<Vec<_>>();
+    let trace_commit_interpolation_ms = samples
+        .iter()
+        .map(|sample| sample.trace_commit_interpolation_ms)
+        .collect::<Vec<_>>();
+    let trace_commit_extension_ms = samples
+        .iter()
+        .map(|sample| sample.trace_commit_extension_ms)
+        .collect::<Vec<_>>();
+    let trace_commit_merkle_ms = samples
+        .iter()
+        .map(|sample| sample.trace_commit_merkle_ms)
+        .collect::<Vec<_>>();
+    let prove_core_ms = samples
+        .iter()
+        .map(|sample| sample.prove_core_ms)
+        .collect::<Vec<_>>();
+    let prove_core_composition_generation_ms = samples
+        .iter()
+        .map(|sample| sample.prove_core_composition_generation_ms)
+        .collect::<Vec<_>>();
+    let prove_core_composition_commit_ms = samples
+        .iter()
+        .map(|sample| sample.prove_core_composition_commit_ms)
+        .collect::<Vec<_>>();
+    let prove_core_prove_values_ms = samples
+        .iter()
+        .map(|sample| sample.prove_core_prove_values_ms)
+        .collect::<Vec<_>>();
+    let prove_core_sanity_check_ms = samples
+        .iter()
+        .map(|sample| sample.prove_core_sanity_check_ms)
+        .collect::<Vec<_>>();
+
+    ProveBreakdownSampleTimings {
+        setup_and_preprocessed_commit_ms,
+        trace_generation_ms,
+        trace_commit_ms,
+        trace_commit_interpolation_ms,
+        trace_commit_extension_ms,
+        trace_commit_merkle_ms,
+        prove_core_ms,
+        prove_core_composition_generation_ms,
+        prove_core_composition_commit_ms,
+        prove_core_prove_values_ms,
+        prove_core_sanity_check_ms,
+    }
+}
+
+#[cfg(feature = "metal-runtime")]
+fn prove_breakdown_summary_from_samples(samples: &[ProveBreakdown]) -> ProveBreakdownSummaryTimings {
+    ProveBreakdownSummaryTimings {
+        setup_and_preprocessed_commit_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.setup_and_preprocessed_commit_ms)
+                .collect::<Vec<_>>(),
+        ),
+        trace_generation_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.trace_generation_ms)
+                .collect::<Vec<_>>(),
+        ),
+        trace_commit_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.trace_commit_ms)
+                .collect::<Vec<_>>(),
+        ),
+        trace_commit_interpolation_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.trace_commit_interpolation_ms)
+                .collect::<Vec<_>>(),
+        ),
+        trace_commit_extension_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.trace_commit_extension_ms)
+                .collect::<Vec<_>>(),
+        ),
+        trace_commit_merkle_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.trace_commit_merkle_ms)
+                .collect::<Vec<_>>(),
+        ),
+        prove_core_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.prove_core_ms)
+                .collect::<Vec<_>>(),
+        ),
+        prove_core_composition_generation_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.prove_core_composition_generation_ms)
+                .collect::<Vec<_>>(),
+        ),
+        prove_core_composition_commit_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.prove_core_composition_commit_ms)
+                .collect::<Vec<_>>(),
+        ),
+        prove_core_prove_values_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.prove_core_prove_values_ms)
+                .collect::<Vec<_>>(),
+        ),
+        prove_core_sanity_check_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.prove_core_sanity_check_ms)
+                .collect::<Vec<_>>(),
+        ),
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -258,10 +435,17 @@ fn main() {
                 samples_ms: Vec::new(),
                 summary_ms: None,
                 throughput_kelem_per_second: None,
+                steady_state_samples_ms: None,
+                steady_state_summary_ms: None,
+                steady_state_throughput_kelem_per_second: None,
                 phase_samples_ms: None,
                 phase_summary_ms: None,
+                steady_state_phase_samples_ms: None,
+                steady_state_phase_summary_ms: None,
                 prove_breakdown_samples_ms: None,
                 prove_breakdown_summary_ms: None,
+                steady_state_prove_breakdown_samples_ms: None,
+                steady_state_prove_breakdown_summary_ms: None,
             },
             proof: None,
             sentinel: None,
@@ -317,16 +501,30 @@ fn main() {
             let total_summary = summarize(&samples_ms);
             let prove_summary = summarize(&prove_samples_ms);
             let verify_summary = summarize(&verify_samples_ms);
+            let steady_state_results = steady_state_tail(&sample_results);
+            let steady_state_samples_ms =
+                steady_state_results.map(|samples| samples.iter().map(|sample| sample.total_elapsed_ms).collect::<Vec<_>>());
+            let steady_state_summary =
+                steady_state_samples_ms.as_ref().map(|samples| summarize(samples));
             let prove_breakdown_samples = sample_results
                 .iter()
                 .map(|sample| sample.prove_breakdown)
                 .collect::<Option<Vec<_>>>();
-            let throughput = if total_summary.mean > 0.0 {
-                // elements per millisecond is numerically equal to Kelem/s
-                Some(instances as f64 / total_summary.mean)
-            } else {
-                None
-            };
+            let steady_state_phase_samples = steady_state_results.map(phase_sample_timings_from_samples);
+            let steady_state_phase_summary =
+                steady_state_results.map(phase_summary_timings_from_samples);
+            let steady_state_prove_breakdown_samples = prove_breakdown_samples
+                .as_ref()
+                .and_then(|samples| steady_state_tail(samples))
+                .map(prove_breakdown_samples_from_samples);
+            let steady_state_prove_breakdown_summary = prove_breakdown_samples
+                .as_ref()
+                .and_then(|samples| steady_state_tail(samples))
+                .map(prove_breakdown_summary_from_samples);
+            let throughput = throughput_from_summary(instances, &total_summary);
+            let steady_state_throughput = steady_state_summary
+                .as_ref()
+                .and_then(|summary| throughput_from_summary(instances, summary));
             let last_sample = sample_results.last().expect("at least one sample");
 
             BenchmarkResult {
@@ -346,6 +544,9 @@ fn main() {
                     samples_ms,
                     summary_ms: Some(total_summary),
                     throughput_kelem_per_second: throughput,
+                    steady_state_samples_ms,
+                    steady_state_summary_ms: steady_state_summary,
+                    steady_state_throughput_kelem_per_second: steady_state_throughput,
                     phase_samples_ms: Some(PhaseSampleTimings {
                         prove_ms: prove_samples_ms,
                         verify_ms: verify_samples_ms,
@@ -354,134 +555,16 @@ fn main() {
                         prove_ms: prove_summary,
                         verify_ms: verify_summary,
                     }),
-                    prove_breakdown_samples_ms: prove_breakdown_samples.clone().map(|samples| {
-                        let setup_and_preprocessed_commit_ms = samples
-                            .iter()
-                            .map(|sample| sample.setup_and_preprocessed_commit_ms)
-                            .collect::<Vec<_>>();
-                        let trace_generation_ms = samples
-                            .iter()
-                            .map(|sample| sample.trace_generation_ms)
-                            .collect::<Vec<_>>();
-                        let trace_commit_ms = samples
-                            .iter()
-                            .map(|sample| sample.trace_commit_ms)
-                            .collect::<Vec<_>>();
-                        let trace_commit_interpolation_ms = samples
-                            .iter()
-                            .map(|sample| sample.trace_commit_interpolation_ms)
-                            .collect::<Vec<_>>();
-                        let trace_commit_extension_ms = samples
-                            .iter()
-                            .map(|sample| sample.trace_commit_extension_ms)
-                            .collect::<Vec<_>>();
-                        let trace_commit_merkle_ms = samples
-                            .iter()
-                            .map(|sample| sample.trace_commit_merkle_ms)
-                            .collect::<Vec<_>>();
-                        let prove_core_ms = samples
-                            .iter()
-                            .map(|sample| sample.prove_core_ms)
-                            .collect::<Vec<_>>();
-                        let prove_core_composition_generation_ms = samples
-                            .iter()
-                            .map(|sample| sample.prove_core_composition_generation_ms)
-                            .collect::<Vec<_>>();
-                        let prove_core_composition_commit_ms = samples
-                            .iter()
-                            .map(|sample| sample.prove_core_composition_commit_ms)
-                            .collect::<Vec<_>>();
-                        let prove_core_prove_values_ms = samples
-                            .iter()
-                            .map(|sample| sample.prove_core_prove_values_ms)
-                            .collect::<Vec<_>>();
-                        let prove_core_sanity_check_ms = samples
-                            .iter()
-                            .map(|sample| sample.prove_core_sanity_check_ms)
-                            .collect::<Vec<_>>();
-
-                        ProveBreakdownSampleTimings {
-                            setup_and_preprocessed_commit_ms,
-                            trace_generation_ms,
-                            trace_commit_ms,
-                            trace_commit_interpolation_ms,
-                            trace_commit_extension_ms,
-                            trace_commit_merkle_ms,
-                            prove_core_ms,
-                            prove_core_composition_generation_ms,
-                            prove_core_composition_commit_ms,
-                            prove_core_prove_values_ms,
-                            prove_core_sanity_check_ms,
-                        }
-                    }),
-                    prove_breakdown_summary_ms: prove_breakdown_samples.map(|samples| {
-                        let setup_and_preprocessed_commit_ms = samples
-                            .iter()
-                            .map(|sample| sample.setup_and_preprocessed_commit_ms)
-                            .collect::<Vec<_>>();
-                        let trace_generation_ms = samples
-                            .iter()
-                            .map(|sample| sample.trace_generation_ms)
-                            .collect::<Vec<_>>();
-                        let trace_commit_ms = samples
-                            .iter()
-                            .map(|sample| sample.trace_commit_ms)
-                            .collect::<Vec<_>>();
-                        let trace_commit_interpolation_ms = samples
-                            .iter()
-                            .map(|sample| sample.trace_commit_interpolation_ms)
-                            .collect::<Vec<_>>();
-                        let trace_commit_extension_ms = samples
-                            .iter()
-                            .map(|sample| sample.trace_commit_extension_ms)
-                            .collect::<Vec<_>>();
-                        let trace_commit_merkle_ms = samples
-                            .iter()
-                            .map(|sample| sample.trace_commit_merkle_ms)
-                            .collect::<Vec<_>>();
-                        let prove_core_ms = samples
-                            .iter()
-                            .map(|sample| sample.prove_core_ms)
-                            .collect::<Vec<_>>();
-                        let prove_core_composition_generation_ms = samples
-                            .iter()
-                            .map(|sample| sample.prove_core_composition_generation_ms)
-                            .collect::<Vec<_>>();
-                        let prove_core_composition_commit_ms = samples
-                            .iter()
-                            .map(|sample| sample.prove_core_composition_commit_ms)
-                            .collect::<Vec<_>>();
-                        let prove_core_prove_values_ms = samples
-                            .iter()
-                            .map(|sample| sample.prove_core_prove_values_ms)
-                            .collect::<Vec<_>>();
-                        let prove_core_sanity_check_ms = samples
-                            .iter()
-                            .map(|sample| sample.prove_core_sanity_check_ms)
-                            .collect::<Vec<_>>();
-
-                        ProveBreakdownSummaryTimings {
-                            setup_and_preprocessed_commit_ms: summarize(
-                                &setup_and_preprocessed_commit_ms,
-                            ),
-                            trace_generation_ms: summarize(&trace_generation_ms),
-                            trace_commit_ms: summarize(&trace_commit_ms),
-                            trace_commit_interpolation_ms: summarize(
-                                &trace_commit_interpolation_ms,
-                            ),
-                            trace_commit_extension_ms: summarize(&trace_commit_extension_ms),
-                            trace_commit_merkle_ms: summarize(&trace_commit_merkle_ms),
-                            prove_core_ms: summarize(&prove_core_ms),
-                            prove_core_composition_generation_ms: summarize(
-                                &prove_core_composition_generation_ms,
-                            ),
-                            prove_core_composition_commit_ms: summarize(
-                                &prove_core_composition_commit_ms,
-                            ),
-                            prove_core_prove_values_ms: summarize(&prove_core_prove_values_ms),
-                            prove_core_sanity_check_ms: summarize(&prove_core_sanity_check_ms),
-                        }
-                    }),
+                    steady_state_phase_samples_ms: steady_state_phase_samples,
+                    steady_state_phase_summary_ms: steady_state_phase_summary,
+                    prove_breakdown_samples_ms: prove_breakdown_samples
+                        .clone()
+                        .map(|samples| prove_breakdown_samples_from_samples(&samples)),
+                    prove_breakdown_summary_ms: prove_breakdown_samples
+                        .map(|samples| prove_breakdown_summary_from_samples(&samples)),
+                    steady_state_prove_breakdown_samples_ms: steady_state_prove_breakdown_samples,
+                    steady_state_prove_breakdown_summary_ms:
+                        steady_state_prove_breakdown_summary,
                 },
                 proof: Some(last_sample.proof_metadata.clone()),
                 sentinel: Some(last_sample.sentinel.clone()),

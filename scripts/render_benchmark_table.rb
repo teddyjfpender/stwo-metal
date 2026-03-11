@@ -11,14 +11,21 @@ def format_number(value)
   format("%.3f", value)
 end
 
+def timing_summary(timings, steady_key, default_key)
+  timings[steady_key] || timings[default_key] || {}
+end
+
 rows = ARGV.map do |path|
   data = JSON.parse(File.read(path))
   workload = data.fetch("workload")
   timings = data.fetch("timings")
-  summary = timings["summary_ms"] || {}
-  phase_summary = timings["phase_summary_ms"] || {}
+  summary = timing_summary(timings, "steady_state_summary_ms", "summary_ms")
+  phase_summary = timing_summary(timings, "steady_state_phase_summary_ms", "phase_summary_ms")
   prove_summary = phase_summary["prove_ms"] || {}
   verify_summary = phase_summary["verify_ms"] || {}
+  throughput =
+    timings["steady_state_throughput_kelem_per_second"] ||
+    timings["throughput_kelem_per_second"]
 
   {
     "workload" => "#{workload.fetch("family")}/#{workload.fetch("operation")}",
@@ -32,7 +39,7 @@ rows = ARGV.map do |path|
     "median_ms" => summary["median"],
     "min_ms" => summary["min"],
     "max_ms" => summary["max"],
-    "throughput_kelem_per_second" => timings["throughput_kelem_per_second"],
+    "throughput_kelem_per_second" => throughput,
     "classification" => data.fetch("classification"),
     "git_commit" => data.fetch("git_commit")[0, 12]
   }

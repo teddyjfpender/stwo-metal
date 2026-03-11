@@ -16,7 +16,7 @@ data = JSON.parse(File.read(path))
 runner = data.fetch("runner")
 workload = data.fetch("workload")
 timings = data.fetch("timings")
-summary = timings["summary_ms"]
+summary = timings["steady_state_summary_ms"] || timings["summary_ms"]
 
 errors = []
 errors << "status is not completed" unless data["status"] == "completed"
@@ -61,6 +61,7 @@ puts "benchmark: #{data.fetch("benchmark_id")}"
 puts "workload: #{workload.fetch("family")}/#{workload.fetch("channel")}/#{workload.fetch("operation")}"
 puts "runner_class: #{runner.fetch("runner_class")}"
 puts "status: #{data.fetch("status")}"
+puts "summary_source: #{timings.key?("steady_state_summary_ms") ? "steady_state_summary_ms" : "summary_ms"}"
 puts "primary_ok: #{primary_ok}"
 puts "supporting_ok: #{supporting_ok}"
 unless errors.empty?

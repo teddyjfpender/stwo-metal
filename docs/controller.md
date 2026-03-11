@@ -30,11 +30,12 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `generated-lane hotspot retirement: Metal-backed Blake2s commitment columns
-  plus quotient and early-FRI follow-up`
+  `generated-lane benchmark contract closure: steady-state reporting plus the
+  next quotient and early-FRI follow-up`
 - Objective:
-  reduce the remaining generated-lane `prove_values` and early FRI commit
-  costs without widening public contracts or changing proving semantics
+  keep generated-lane optimization measured against steady-state proving while
+  reducing the remaining `prove_values` and early FRI commit costs without
+  widening public contracts or changing proving semantics
 - Active design note:
   [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
   and
@@ -178,11 +179,18 @@ Invariants:
   with `prove_core_prove_values_ms` about `405 ms` mean; the remaining hot
   wall is no longer repeated Merkle dispatch setup or quotient unpack
   duplication, but numerator accumulation plus the first FRI fold/commit band
+- the `wide_fibonacci` benchmark contract now emits steady-state summary,
+  throughput, phase, and prove-breakdown timings when at least two samples are
+  available, so generated-lane optimization can target warmed proving rather
+  than a mixed cold-start mean; on the current `da9c598` baseline, the warmed
+  `log20` row is about `655.18 ms` mean / `654.97 ms` prove mean while the full
+  three-sample mean remains about `867.79 ms`
 
 ## Next three deliverables
 
 1. Reduce numerator accumulation in the generated `prove_values` lane from the
-   new `~854 ms` / `~638 ms` baseline, with the next measured target still
+   new `~655 ms steady-state` / `~638 ms median` baseline, with the next
+   measured target still
    being the quotient numerator kernel before lift-and-accumulate.
 2. Reduce the first FRI fold and commit band from the same baseline now that
    repeated Merkle parent-layer dispatch is no longer the dominant early-commit

@@ -7,19 +7,26 @@ abort "usage: ruby scripts/render_wide_fibonacci_dual_lane_report.rb <generated_
 
 generated_dir, generic_dir = ARGV
 
+def timing_summary(timings, steady_key, default_key)
+  timings[steady_key] || timings[default_key] || {}
+end
+
 def load_rows(dir)
   Dir[File.join(dir, "wide_fibonacci_prove_log*.json")].sort.map do |path|
     data = JSON.parse(File.read(path))
     workload = data.fetch("workload")
     timings = data.fetch("timings")
-    phase_summary = timings["phase_summary_ms"] || {}
+    phase_summary = timing_summary(timings, "steady_state_phase_summary_ms", "phase_summary_ms")
     prove_summary = phase_summary["prove_ms"] || {}
+    throughput =
+      timings["steady_state_throughput_kelem_per_second"] ||
+      timings["throughput_kelem_per_second"]
 
     {
       "lane" => data["benchmark_lane"] || "unknown",
       "log_n_instances" => workload.fetch("log_n_instances"),
       "prove_ms" => prove_summary["mean"],
-      "throughput" => timings["throughput_kelem_per_second"]
+      "throughput" => throughput
     }
   end
 end

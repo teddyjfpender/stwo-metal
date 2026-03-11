@@ -49,6 +49,10 @@ def format_speedup(numerator, denominator)
   format("%.2fx", numerator / denominator)
 end
 
+def timing_summary(timings, steady_key, default_key)
+  timings[steady_key] || timings[default_key] || {}
+end
+
 rows = paths.map do |path|
   data = JSON.parse(File.read(path))
   workload = data.fetch("workload")
@@ -57,15 +61,18 @@ rows = paths.map do |path|
   next unless workload.fetch("operation") == "prove_verify"
 
   timings = data.fetch("timings")
-  phase_summary = timings["phase_summary_ms"] || {}
+  phase_summary = timing_summary(timings, "steady_state_phase_summary_ms", "phase_summary_ms")
   prove_summary = phase_summary["prove_ms"] || {}
+  throughput =
+    timings["steady_state_throughput_kelem_per_second"] ||
+    timings["throughput_kelem_per_second"]
 
   {
     "path" => path,
     "lane" => data["benchmark_lane"] || "unknown",
     "log_n_instances" => workload.fetch("log_n_instances"),
     "prove_ms" => prove_summary["mean"],
-    "throughput" => timings["throughput_kelem_per_second"]
+    "throughput" => throughput
   }
 end.compact
 

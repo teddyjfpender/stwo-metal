@@ -28,6 +28,46 @@ Superseded by:
 
 ## Entries
 
+### DEC-0148: Generated-lane benchmark reporting should default to steady-state summaries when available
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+Benchmark-reporting surfaces should prefer `steady_state_*` timing summaries
+when they are present, while preserving the full-sample summaries in the raw
+JSON artifact for cold-start analysis.
+
+Context:
+
+The generated `wide_fibonacci` lane now shows a clear cold-start penalty on the
+first sample that materially inflates the overall mean. That makes optimization
+work harder to reason about because the reporting scripts were publishing the
+mixed cold-plus-warm average as the default comparison number even when the
+artifact already had enough samples to separate steady-state behavior.
+
+Alternatives rejected:
+
+- keep reporting the mixed full-sample mean by default and require humans to
+  manually inspect raw sample arrays
+- drop the cold-start data from the artifact entirely
+- add a second standalone report pipeline instead of teaching the existing one
+  to prefer warmed summaries when available
+
+Impact:
+
+- benchmark comparison tables and acceptance checks now default to steady-state
+  summaries when the artifact contains them
+- cold-start behavior remains preserved in the raw benchmark JSON
+- generated-lane optimization can target the warmed proving path explicitly
+  without losing visibility into one-time setup cost
+
+Superseded by:
+
+- none
+
 ### DEC-0146: Generic Metal Blake2s commitment should build full parent-layer chains in one command buffer
 
 - Date: `2026-03-11`
