@@ -30,8 +30,8 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `generated-lane hotspot retirement: batched quotient numerator accumulation
-  plus zero-copy native FRI commitment decode`
+  `generated-lane hotspot retirement: Metal-backed Blake2s commitment columns
+  plus quotient and early-FRI follow-up`
 - Objective:
   reduce the remaining generated-lane `prove_values` and early FRI commit
   costs without widening public contracts or changing proving semantics
@@ -151,13 +151,16 @@ Invariants:
   evaluations; on the `wide_fibonacci` generated lane this moved `log20` to
   about `1157 ms` mean and then `1132 ms` mean across successive bounded
   slices, with `compute_quotients_and_combine` dropping sharply on warm runs;
-  the next quotient/FRI slice now batches partial-numerator accumulation across
-  all sample batches in one Metal launch and decodes packed native Merkle
-  layers without an intermediate host copy; the current `wide_fibonacci` `log20`
-  generated row is now about `1066 ms` mean / `842 ms` median, with warm
-  `accumulate_numerators` in the `~82-88 ms` range and early FRI commitment
-  rounds still the clearest remaining interior cost rather than obvious
-  quotient-combine or first-fold overhead
+  the next quotient/FRI slice then batched partial-numerator accumulation
+  across all sample batches in one Metal launch and decoded packed native
+  Merkle layers without an intermediate host copy, moving the generated
+  `log20` row to about `1066 ms` mean / `842 ms` median; the current slice now
+  keeps generic Blake2s commitment layers on a Metal-backed packed-hash column
+  across the commitment path, which moved the current generated `log20` row to
+  about `934 ms` mean / `707 ms` median while dropping
+  `trace_commit_merkle_ms` to about `29 ms`; the remaining measured interior
+  walls are now quotient numerator accumulation before lift-and-accumulate and
+  the earliest FRI commitment rounds rather than Merkle layer decode
 
 ## Next three deliverables
 

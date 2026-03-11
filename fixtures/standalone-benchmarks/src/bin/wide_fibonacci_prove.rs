@@ -65,8 +65,6 @@ use stwo_metal_fixture_shims::{
     registered_wide_fibonacci_prove_values_lane, stage_wide_fibonacci_prove_values,
 };
 #[cfg(feature = "metal-runtime")]
-use stwo_metal_sys::metal::U32Buffer;
-#[cfg(feature = "metal-runtime")]
 use stwo_metal_standalone_benchmarks::support::summarize;
 use stwo_metal_standalone_benchmarks::support::{
     enforce_metal_benchmark_contract, env_flag, env_or, env_u32, env_usize, epoch_ms,
@@ -1072,32 +1070,6 @@ struct TraceCommitBreakdown {
 }
 
 #[cfg(feature = "metal-runtime")]
-fn encode_packed_blake2s_hashes(hashes: &[stwo::core::vcs::blake2_hash::Blake2sHash]) -> Vec<u32> {
-    let mut words = Vec::with_capacity(hashes.len() * 8);
-    for hash in hashes {
-        for chunk in hash.0.chunks_exact(4) {
-            words.push(u32::from_le_bytes(
-                chunk.try_into().expect("Blake2s hash words are 4 bytes"),
-            ));
-        }
-    }
-    words
-}
-
-#[cfg(feature = "metal-runtime")]
-fn decode_packed_blake2s_hashes(words: Vec<u32>) -> Vec<stwo::core::vcs::blake2_hash::Blake2sHash> {
-    words.chunks_exact(8)
-        .map(|chunk| {
-            let mut bytes = [0u8; 32];
-            for (word_index, word) in chunk.iter().enumerate() {
-                bytes[word_index * 4..(word_index + 1) * 4].copy_from_slice(&word.to_le_bytes());
-            }
-            stwo::core::vcs::blake2_hash::Blake2sHash(bytes)
-        })
-        .collect()
-}
-
-#[cfg(feature = "metal-runtime")]
 fn build_native_standard_blake2s_merkle_prover(
     columns: Vec<&MetalBaseFieldVec>,
     lifting_log_size: u32,
@@ -1114,12 +1086,11 @@ fn build_native_standard_blake2s_merkle_prover(
         lifting_log_size,
     );
     let mut layers = vec![leaves.clone()];
-    let mut current_layer =
-        U32Buffer::from_slice(&encode_packed_blake2s_hashes(&leaves)).ok()?;
-
-    while current_layer.len() > 8 {
-        current_layer = U32Buffer::blake2s_build_next_layer(&current_layer).ok()?;
-        layers.push(decode_packed_blake2s_hashes(current_layer.to_vec().ok()?));
+    while layers.last()?.len() > 1 {
+        let next = <MetalBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_next_layer(
+            layers.last().expect("Merkle layers should be non-empty"),
+        );
+        layers.push(next);
     }
 
     layers.reverse();

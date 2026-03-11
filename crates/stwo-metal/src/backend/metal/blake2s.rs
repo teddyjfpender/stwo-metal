@@ -6,17 +6,16 @@ use rayon::prelude::*;
 use stwo::core::channel::{Blake2sChannelGeneric, Channel};
 use stwo::core::fields::m31::BaseField;
 use stwo::core::proof_of_work::GrindOps;
-use stwo::core::utils::bit_reverse;
-use stwo::core::vcs::blake2_hash::Blake2sHash;
 use stwo::core::vcs_lifted::blake2_merkle::{
     Blake2sM31MerkleChannel, Blake2sMerkleChannel, Blake2sMerkleHasherGeneric,
 };
 use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use stwo::prover::backend::{BackendForChannel, ColumnOps};
+use stwo::prover::backend::BackendForChannel;
 use stwo::prover::vcs_lifted::ops::MerkleOpsLifted;
 use stwo_metal_sys::metal::U32Buffer;
 
 use super::{MetalBackend, MetalBaseFieldVec};
+use crate::stwo_metal::blake2s_hash_vec::Blake2sHashVec as MetalBlake2sHashVec;
 
 const HOST_BLAKE2S_LEAF_CHUNK_COLUMNS: usize = 16;
 
@@ -24,48 +23,10 @@ fn materialize_leaf_columns<'a>(columns: &'a [&'a MetalBaseFieldVec]) -> Vec<&'a
     columns.iter().map(|column| column.host_slice()).collect()
 }
 
-fn decode_packed_blake2s_hashes(words: Vec<u32>) -> Vec<Blake2sHash> {
-    words
-        .chunks_exact(8)
-        .map(|chunk| {
-            let mut bytes = [0u8; 32];
-            for (word_index, word) in chunk.iter().enumerate() {
-                bytes[word_index * 4..(word_index + 1) * 4].copy_from_slice(&word.to_le_bytes());
-            }
-            Blake2sHash(bytes)
-        })
-        .collect()
-}
-
-fn decode_packed_blake2s_hashes_from_words(words: &[u32]) -> Vec<Blake2sHash> {
-    words
-        .chunks_exact(8)
-        .map(|chunk| {
-            let mut bytes = [0u8; 32];
-            for (word_index, word) in chunk.iter().enumerate() {
-                bytes[word_index * 4..(word_index + 1) * 4].copy_from_slice(&word.to_le_bytes());
-            }
-            Blake2sHash(bytes)
-        })
-        .collect()
-}
-
-fn encode_packed_blake2s_hashes(hashes: &[Blake2sHash]) -> Vec<u32> {
-    let mut words = Vec::with_capacity(hashes.len() * 8);
-    for hash in hashes {
-        for chunk in hash.0.chunks_exact(4) {
-            words.push(u32::from_le_bytes(
-                chunk.try_into().expect("Blake2s hash words are 4 bytes"),
-            ));
-        }
-    }
-    words
-}
-
 fn build_leaves_native_standard(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
-) -> Option<Vec<Blake2sHash>> {
+) -> Option<MetalBlake2sHashVec> {
     if columns.is_empty() || lifting_log_size < 18 || columns.len() > 8 {
         return None;
     }
@@ -93,13 +54,13 @@ fn build_leaves_native_standard(
         lifting_log_size,
     )
     .ok()?;
-    Some(decode_packed_blake2s_hashes(packed_hashes.to_vec().ok()?))
+    Some(MetalBlake2sHashVec::from_buffer(packed_hashes))
 }
 
 fn build_leaves_native_wide(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
-) -> Option<Vec<Blake2sHash>> {
+) -> Option<MetalBlake2sHashVec> {
     if columns.is_empty() {
         return None;
     }
@@ -115,21 +76,19 @@ fn build_leaves_native_wide(
         lifting_log_size,
     )
     .ok()?;
-    Some(decode_packed_blake2s_hashes(packed_hashes.to_vec().ok()?))
+    Some(MetalBlake2sHashVec::from_buffer(packed_hashes))
 }
 
-fn build_next_layer_native_standard(prev_layer: &[Blake2sHash]) -> Option<Vec<Blake2sHash>> {
+fn build_next_layer_native_standard(
+    prev_layer: &MetalBlake2sHashVec,
+) -> Option<MetalBlake2sHashVec> {
     if prev_layer.is_empty() || !prev_layer.len().is_power_of_two() || prev_layer.len() < (1 << 12)
     {
         return None;
     }
 
-    let packed_prev_layer = encode_packed_blake2s_hashes(prev_layer);
-    let packed_prev_layer = U32Buffer::from_slice(&packed_prev_layer).ok()?;
-    let packed_next_layer = U32Buffer::blake2s_build_next_layer(&packed_prev_layer).ok()?;
-    Some(decode_packed_blake2s_hashes(
-        packed_next_layer.to_vec().ok()?,
-    ))
+    let packed_next_layer = U32Buffer::blake2s_build_next_layer(&prev_layer.buffer).ok()?;
+    Some(MetalBlake2sHashVec::from_buffer(packed_next_layer))
 }
 
 fn build_leaves_native_standard_packed(
@@ -186,15 +145,10 @@ fn build_leaves_native_wide_packed(
     .ok()
 }
 
-fn decode_packed_blake2s_layer(buffer: &U32Buffer) -> Option<Vec<Blake2sHash>> {
-    let words = unsafe { std::slice::from_raw_parts(buffer.host_ptr(), buffer.len()) };
-    Some(decode_packed_blake2s_hashes_from_words(words))
-}
-
 fn build_merkle_layers_native_standard(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
-) -> Option<Vec<Vec<Blake2sHash>>> {
+) -> Option<Vec<MetalBlake2sHashVec>> {
     let mut packed_layer = if columns.len() > 8 {
         build_leaves_native_wide_packed(columns, lifting_log_size)?
     } else {
@@ -209,25 +163,17 @@ fn build_merkle_layers_native_standard(
     }
 
     let mut layers = packed_layers
-        .iter()
-        .map(decode_packed_blake2s_layer)
-        .collect::<Option<Vec<_>>>()?;
+        .into_iter()
+        .map(MetalBlake2sHashVec::from_buffer)
+        .collect::<Vec<_>>();
     layers.reverse();
     Some(layers)
-}
-
-impl ColumnOps<Blake2sHash> for MetalBackend {
-    type Column = Vec<Blake2sHash>;
-
-    fn bit_reverse_column(column: &mut Self::Column) {
-        bit_reverse(column);
-    }
 }
 
 impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>
     for MetalBackend
 {
-    fn build_leaves(columns: &[&MetalBaseFieldVec], lifting_log_size: u32) -> Vec<Blake2sHash> {
+    fn build_leaves(columns: &[&MetalBaseFieldVec], lifting_log_size: u32) -> MetalBlake2sHashVec {
         let profile_merkle = std::env::var_os("STWO_METAL_PROFILE_MERKLE").is_some();
         let build_leaves_start = Instant::now();
         if !IS_M31_OUTPUT {
@@ -258,7 +204,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         }
         let hasher = Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::default();
         if columns.is_empty() {
-            return vec![hasher.finalize()];
+            return MetalBlake2sHashVec::from_vec(vec![hasher.finalize()]);
         }
 
         let host_columns = materialize_leaf_columns(columns);
@@ -323,34 +269,40 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                 build_leaves_start.elapsed().as_secs_f64() * 1000.0
             );
         }
-        leaves
+        MetalBlake2sHashVec::from_vec(leaves)
     }
 
-    fn build_next_layer(prev_layer: &Vec<Blake2sHash>) -> Vec<Blake2sHash> {
+    fn build_next_layer(prev_layer: &MetalBlake2sHashVec) -> MetalBlake2sHashVec {
         let profile_merkle = std::env::var_os("STWO_METAL_PROFILE_MERKLE").is_some();
         let build_next_layer_start = Instant::now();
         let next = if !IS_M31_OUTPUT {
-            build_next_layer_native_standard(prev_layer).unwrap_or_else(|| {
+            if let Some(next) = build_next_layer_native_standard(prev_layer) {
+                next
+            } else {
                 let log_size: u32 = prev_layer.len().ilog2() - 1;
-                stwo::parallel_iter!(0..(1 << log_size))
+                let prev_layer_cpu = prev_layer.to_vec();
+                let hashes = stwo::parallel_iter!(0..(1 << log_size))
                     .map(|i| {
                         Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::hash_children((
-                            prev_layer[2 * i],
-                            prev_layer[2 * i + 1],
+                            prev_layer_cpu[2 * i],
+                            prev_layer_cpu[2 * i + 1],
                         ))
                     })
-                    .collect()
-            })
+                    .collect::<Vec<_>>();
+                MetalBlake2sHashVec::from_vec(hashes)
+            }
         } else {
             let log_size: u32 = prev_layer.len().ilog2() - 1;
-            stwo::parallel_iter!(0..(1 << log_size))
+            let prev_layer_cpu = prev_layer.to_vec();
+            let hashes = stwo::parallel_iter!(0..(1 << log_size))
                 .map(|i| {
                     Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::hash_children((
-                        prev_layer[2 * i],
-                        prev_layer[2 * i + 1],
+                        prev_layer_cpu[2 * i],
+                        prev_layer_cpu[2 * i + 1],
                     ))
                 })
-                .collect()
+                .collect::<Vec<_>>();
+            MetalBlake2sHashVec::from_vec(hashes)
         };
         if profile_merkle {
             eprintln!(
@@ -365,7 +317,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
     fn build_merkle_layers(
         columns: Vec<&MetalBaseFieldVec>,
         lifting_log_size: u32,
-    ) -> Vec<Vec<Blake2sHash>> {
+    ) -> Vec<MetalBlake2sHashVec> {
         let profile_merkle = std::env::var_os("STWO_METAL_PROFILE_MERKLE").is_some();
         let build_tree_start = Instant::now();
         let sorted_columns = columns.into_iter().sorted_by_key(|c| c.len()).collect_vec();

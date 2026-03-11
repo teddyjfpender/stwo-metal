@@ -6,7 +6,7 @@ use stwo::core::proof_of_work::GrindOps;
 use stwo::core::vcs::blake2_hash::Blake2sHash;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleHasher, Blake2sMerkleHasher};
 use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use stwo::prover::backend::CpuBackend;
+use stwo::prover::backend::{Col, CpuBackend};
 use stwo::prover::vcs_lifted::ops::MerkleOpsLifted;
 use stwo_metal::{metal_runtime_support, MetalBackend, MetalBaseFieldVec, MetalRuntimeSupport};
 
@@ -87,7 +87,7 @@ fn metal_blake2s_merkle_native_wide_leaf_path_matches_cpu() {
 fn metal_blake2s_merkle_native_next_layer_matches_cpu_on_large_standard_layer() {
     require_metal_runtime();
 
-    let prev_layer = (0..(1 << 12))
+    let prev_layer_cpu = (0..(1 << 12))
         .map(|index| {
             let mut bytes = [0u8; 32];
             for (word_index, chunk) in bytes.chunks_exact_mut(4).enumerate() {
@@ -101,7 +101,8 @@ fn metal_blake2s_merkle_native_next_layer_matches_cpu_on_large_standard_layer() 
         .collect::<Vec<_>>();
 
     let expected =
-        <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_next_layer(&prev_layer);
+        <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_next_layer(&prev_layer_cpu);
+    let prev_layer = Col::<MetalBackend, Blake2sHash>::from_iter(prev_layer_cpu);
     let actual =
         <MetalBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_next_layer(&prev_layer);
 

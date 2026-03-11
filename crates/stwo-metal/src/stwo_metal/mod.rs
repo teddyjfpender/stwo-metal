@@ -1,4 +1,5 @@
 pub mod base_field_vec;
+pub mod blake2s_hash_vec;
 pub mod secure_field_vec;
 
 pub use base_field_vec::BaseFieldVec;

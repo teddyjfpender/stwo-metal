@@ -81,13 +81,15 @@ Why it exists now:
 
 After batching full Blake2s parent-layer construction for the generic Metal
 Merkle path, then keeping quotient partial numerators packed through
-`compute_quotients_and_combine`, and then specializing the generic first FRI
-layer fold to skip zero-destination accumulation work, then batching
-partial-numerator accumulation across sample batches, and finally decoding
-packed native Merkle layers directly from shared Metal buffers, the measured
-`wide_fibonacci` `log20` generated-lane profile no longer points at repeated
-parent-layer host re-encoding, quotient combination, or the generic first fold
-kernel as the dominant remaining work. The next dominant subphases are now:
+`compute_quotients_and_combine`, then specializing the generic first FRI layer
+fold to skip zero-destination accumulation work, then batching
+partial-numerator accumulation across sample batches, then decoding packed
+native Merkle layers directly from shared Metal buffers, and now keeping
+generic Blake2s commitment layers on a Metal-backed packed hash column across
+the native commitment chain, the measured `wide_fibonacci` `log20`
+generated-lane profile no longer points at repeated parent-layer
+materialization, quotient combination, or the generic first fold kernel as the
+dominant remaining work. The next dominant subphases are now:
 
 - quotient numerator accumulation before lift-and-accumulate
 - the earliest FRI commitment construction rounds
@@ -105,7 +107,8 @@ Risk if left in place:
 
 The generated lane may stall near SIMD parity instead of reaching clear
 GPU-class speedups, even after quotient combination, numerator staging, and the
-generic first-layer fold are substantially more native.
+generic first-layer fold plus generic Merkle layer residency are substantially
+more native.
 
 Exit condition:
 
@@ -119,7 +122,7 @@ Target retirement point:
 
 ### TD-0032: Standard Blake2s Merkle layers still round-trip through host hash columns between native layers
 
-- Status: `active`
+- Status: `retired`
 - Category: `benchmark staging overhead`
 - Introduced: `2026-03-11`
 - Owner area: `generated-lane performance`
@@ -127,24 +130,27 @@ Target retirement point:
 Why it exists now:
 
 `stwo-metal` now supports native Metal Blake2s leaf hashing and native
-standard Blake2s parent-layer hashing, and the generated wide-fibonacci trace
-tree now keeps parent layers native until the final decode. The remaining debt
-is that the committed tree still materializes host `Vec<Blake2sHash>` layers
-at the contract boundary, so full-tree GPU residency still stops at final tree
-construction.
+standard Blake2s parent-layer hashing, the generated wide-fibonacci trace tree
+keeps parent layers native until final decode, and the generic Blake2s lifted
+Merkle path now carries a private Metal-backed packed hash column across
+`build_leaves`, `build_next_layer`, and `build_merkle_layers`. The remaining
+Merkle cost is no longer a whole-layer host round trip between native layers.
 
 Current containment:
 
 - `crates/stwo-metal/src/backend/metal/blake2s.rs`
+- `crates/stwo-metal/src/backend/metal/column.rs`
+- `crates/stwo-metal/src/stwo_metal/blake2s_hash_vec.rs`
 - `crates/stwo-metal-sys/metal/blake2s.metal`
 - `crates/stwo-metal/tests/metal_blake2s_channel_cpu_bridge.rs`
 - `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
 
 Risk if left in place:
 
-The benchmark may continue to trail SIMD even after more arithmetic kernels are
-native, because Merkle commitment still pays a final host materialization cost
-before the committed tree enters the broader prover contract.
+Before retirement, the benchmark could continue to trail SIMD even after more
+arithmetic kernels were native, because Merkle commitment still paid a final
+host materialization cost before the committed tree entered the broader prover
+contract.
 
 Exit condition:
 
@@ -154,7 +160,7 @@ Merkle staging elimination is no longer material.
 
 Target retirement point:
 
-- `generated-lane performance follow-up`
+- `2026-03-11 generic Blake2s packed-layer residency slice`
 
 ### TD-0030: The pinned `stark-v` snapshot is still SIMD-shaped and therefore unsupported on the generic lane
 

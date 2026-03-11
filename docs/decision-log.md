@@ -28,6 +28,52 @@ Superseded by:
 
 ## Entries
 
+### DEC-0143: Generic Blake2s commitment layers stay on Metal-backed packed hash columns until a caller explicitly asks for host hashes
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+
+Decision:
+
+`MetalBackend` now uses a private Metal-backed packed hash column for
+`ColumnOps<Blake2sHash>`, and the generic Blake2s lifted Merkle path carries
+that packed representation across `build_leaves`, `build_next_layer`, and
+`build_merkle_layers` instead of decoding every native layer eagerly into
+`Vec<Blake2sHash>`.
+
+Context:
+
+After native Metal leaf hashing, native standard parent hashing, direct shared-
+buffer decode, and wide-fibonacci trace-tree native parent construction were
+all in place, the remaining early-FRI commitment cost still included repeated
+whole-layer host hash materialization at the generic Merkle column boundary.
+That boundary was still forcing early decode even when the next consumer was
+just another Blake2s Merkle layer build on Metal.
+
+Alternatives rejected:
+
+- keep `ColumnOps<Blake2sHash>` on host `Vec<Blake2sHash>` and only optimize
+  buffer decoding
+- special-case only the standalone benchmark instead of fixing the generic
+  Metal Merkle column representation
+- widen the public API with a new exported packed hash type before proving the
+  value of the private representation
+
+Impact:
+
+- generic Blake2s commitment layers stay Metal-backed through the native
+  commitment chain
+- early FRI commitment rounds no longer pay eager whole-layer host hash
+  materialization between native parent-layer builds
+- the generated `wide_fibonacci` `log20` row moved to about `934 ms` mean /
+  `707 ms` median on the measured production slice, with
+  `trace_commit_merkle_ms` around `29 ms`
+
+Superseded by:
+
+- none
+
 ### DEC-0141: Partial numerator accumulation should batch all sample batches through one Metal kernel launch
 
 - Date: `2026-03-11`
