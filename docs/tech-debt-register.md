@@ -137,11 +137,11 @@ post-composition runtime boundary itself, carrying the prepared
 sampled-values phase, sampled-values ABI object, post-composition evaluation,
 dispatch kind, and proof/result ownership under one backend contract. The
 remaining debt is that the vendored PCS quotient/FRI finishing path and the
-following tree-decommit generation still retain ownership behind that runtime
+following tree-decommit generation still provide the implementation behind that runtime
 boundary, so the generated prove path cannot yet stay on the V1/overlay
 contract end to end. The monolithic `commitment_scheme.prove_values(...)`
 call is no longer the live authority in the generated row; it has been split
-into a prepared sampled-values phase and a later finish phase.
+into a prepared sampled-values phase and a later prepared-finish phase.
 
 Current containment:
 

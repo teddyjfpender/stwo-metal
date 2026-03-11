@@ -72,9 +72,10 @@ Invariants:
   both a correctness-first reference lane and a first Metal runtime lane for
   the live generated post-composition sampled-values shape, so the blocker is
   no longer “missing ABI” or “missing device execution”; the active blocker is
-  that the generated row still retains legacy vendored PCS quotient/FRI
-  finishing and tree-decommit generation above that ABI, even though the
-  monolithic `commitment_scheme.prove_values(...)` call has now been split and
+  that the generated row still retains vendored quotient/FRI finishing and
+  tree-decommit implementation behind the backend-owned post-composition
+  runtime contract, even though the monolithic
+  `commitment_scheme.prove_values(...)` call has now been split and
   `stwo-metal` owns the backend post-composition runtime boundary, the
   sampled-values preparation boundary, the
   post-composition sampled-values result contract, generated-lane proof
@@ -97,10 +98,10 @@ Invariants:
 
 ## Next three deliverables
 
-1. Remove the remaining vendored PCS quotient/FRI finishing and tree-decommit
-   ownership from the generated row by routing that flow through the
-   sampled-values ABI/runtime contract instead of legacy component-level
-   interpretation.
+1. Replace the vendored quotient/FRI finishing and tree-decommit
+   implementation behind the backend-owned post-composition runtime contract
+   with backend-owned or V1-owned execution, so the generated row no longer
+   depends on vendored PCS finishing after the sampled-values ABI phase.
 2. Add layout/reflection verification for the V1 host/device boundary records
    once the first live Metal runtime consumer exists, so the ABI surface is
    checked both statically and against compiled Metal metadata.

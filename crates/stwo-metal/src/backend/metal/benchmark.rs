@@ -17,8 +17,8 @@ use stwo::prover::vcs_lifted::ops::MerkleOpsLifted;
 use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
 use stwo::prover::{
     AccumulationOps, CommitmentSchemeProver, CommitmentTreeProver, ComponentProver,
-    ComponentProvers, DomainEvaluationAccumulator, PreparedCommitmentSchemeProveValues,
-    ProvingError, Trace,
+    ComponentProvers, DomainEvaluationAccumulator, PreparedCommitmentSchemeFinish,
+    PreparedCommitmentSchemeProveValues, ProvingError, Trace,
 };
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
@@ -273,6 +273,14 @@ struct MetalBenchmarkPostCompositionRuntime<'a> {
     sampled_values: MetalBenchmarkPostCompositionSampledValuesV1,
     oods_point: stwo::core::circle::CirclePoint<SecureField>,
     max_log_degree_bound: u32,
+}
+
+struct MetalBenchmarkPostCompositionFinishRuntime<'a> {
+    prepared_finish:
+        PreparedCommitmentSchemeFinish<'a, super::MetalBackend, Blake2sMerkleChannel>,
+    sampled_values: MetalBenchmarkPostCompositionSampledValuesV1,
+    post_composition_eval: SecureField,
+    sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
 }
 
 impl MetalBenchmarkProveValuesResult {
@@ -667,23 +675,51 @@ impl MetalWideFibonacciBenchmarkBoundary {
         }
         let sanity_check_ms = sanity_check_start.elapsed().as_secs_f64() * 1000.0;
 
-        let commitment_scheme_proof = runtime.prepared_prove_values.finish(channel);
-        let proof = StarkProof(commitment_scheme_proof.proof);
+        let finish_runtime =
+            self.prepare_post_composition_finish_runtime(channel, runtime, post_composition_eval, sampled_values_dispatch)?;
+        let finish_start = std::time::Instant::now();
+        let result = self.execute_post_composition_finish_runtime(finish_runtime);
+        let finish_ms = finish_start.elapsed().as_secs_f64() * 1000.0;
 
         Ok((
-            MetalBenchmarkProveValuesResult {
-                proof,
-                sampled_values: runtime.sampled_values,
-                post_composition_eval,
-                sampled_values_dispatch,
-            },
+            result,
             MetalBenchmarkProveValuesBreakdown {
-                prove_values_ms: 0.0,
+                prove_values_ms: finish_ms,
                 sampled_values_v1_ms,
                 sampled_values_dispatch,
                 sanity_check_ms,
             },
         ))
+    }
+
+    fn prepare_post_composition_finish_runtime<'a>(
+        &self,
+        channel: &mut Blake2sChannel,
+        runtime: MetalBenchmarkPostCompositionRuntime<'a>,
+        post_composition_eval: SecureField,
+        sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
+    ) -> Result<MetalBenchmarkPostCompositionFinishRuntime<'a>, ProvingError> {
+        let prepared_finish = runtime.prepared_prove_values.prepare_finish(channel);
+        Ok(MetalBenchmarkPostCompositionFinishRuntime {
+            prepared_finish,
+            sampled_values: runtime.sampled_values,
+            post_composition_eval,
+            sampled_values_dispatch,
+        })
+    }
+
+    fn execute_post_composition_finish_runtime(
+        &self,
+        runtime: MetalBenchmarkPostCompositionFinishRuntime<'_>,
+    ) -> MetalBenchmarkProveValuesResult {
+        let commitment_scheme_proof = runtime.prepared_finish.finish();
+        let proof = StarkProof(commitment_scheme_proof.proof);
+        MetalBenchmarkProveValuesResult {
+            proof,
+            sampled_values: runtime.sampled_values,
+            post_composition_eval: runtime.post_composition_eval,
+            sampled_values_dispatch: runtime.sampled_values_dispatch,
+        }
     }
 
     pub fn lower_post_composition_sampled_values_v1(

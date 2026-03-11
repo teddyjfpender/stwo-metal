@@ -10,6 +10,7 @@ use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fri::ExtendedFriProof;
 use crate::core::pcs::quotients::{
     CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
 };
@@ -44,6 +45,16 @@ pub struct PreparedCommitmentSchemeProveValues<'a, B: BackendForChannel<MC>, MC:
     sampled_values: TreeVec<Vec<Vec<SecureField>>>,
 }
 
+pub struct PreparedCommitmentSchemeFinish<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
+    commitment_scheme: CommitmentSchemeProver<'a, B, MC>,
+    sampled_values: TreeVec<Vec<Vec<SecureField>>>,
+    commitments: TreeVec<<MC::H as MerkleHasherLifted>::Hash>,
+    proof_of_work: u64,
+    fri_proof: ExtendedFriProof<MC::H>,
+    unsorted_query_locations: Vec<usize>,
+    tree_query_positions: Vec<Vec<usize>>,
+}
+
 impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel>
     PreparedCommitmentSchemeProveValues<'a, B, MC>
 {
@@ -51,7 +62,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel>
         &self.sampled_values
     }
 
-    pub fn finish(mut self, channel: &mut MC::C) -> ExtendedCommitmentSchemeProof<MC::H> {
+    pub fn prepare_finish(self, channel: &mut MC::C) -> PreparedCommitmentSchemeFinish<'a, B, MC> {
         let debug_prove_values = std::env::var_os("STWO_CUDA_DEBUG_PROVE_VALUES").is_some();
         let profile_prove_values = std::env::var_os("STWO_METAL_PROFILE_PROVE_VALUES").is_some();
         let debug_phase = |phase: &str| {
@@ -146,27 +157,64 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel>
             "query_position_tree",
             query_tree_start.elapsed().as_secs_f64() * 1000.0,
         );
-
+        let tree_query_positions = tree_log_sizes
+            .into_iter()
+            .map(|tree_log_size| {
+                prepared_tree_queries_by_log_size
+                    .get(&tree_log_size)
+                    .expect("prepared tree queries should exist for every tree log size")
+                    .clone()
+            })
+            .collect_vec();
         let commitments = self.commitment_scheme.roots();
+        debug_phase("finish_prepared");
+        PreparedCommitmentSchemeFinish {
+            commitment_scheme: self.commitment_scheme,
+            sampled_values: self.sampled_values,
+            commitments,
+            proof_of_work,
+            fri_proof,
+            unsorted_query_locations,
+            tree_query_positions,
+        }
+    }
+
+    pub fn finish(self, channel: &mut MC::C) -> ExtendedCommitmentSchemeProof<MC::H> {
+        self.prepare_finish(channel).finish()
+    }
+}
+
+impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> PreparedCommitmentSchemeFinish<'a, B, MC> {
+    pub fn finish(mut self) -> ExtendedCommitmentSchemeProof<MC::H> {
+        let debug_prove_values = std::env::var_os("STWO_CUDA_DEBUG_PROVE_VALUES").is_some();
+        let profile_prove_values = std::env::var_os("STWO_METAL_PROFILE_PROVE_VALUES").is_some();
+        let debug_phase = |phase: &str| {
+            if debug_prove_values {
+                eprintln!("prove_values_phase={phase}");
+            }
+        };
+        let emit_timing = |phase: &str, elapsed_ms: f64| {
+            if profile_prove_values {
+                eprintln!("prove_values_timing phase={phase} ms={elapsed_ms}");
+            }
+        };
+
         let mut queried_values = Vec::with_capacity(self.commitment_scheme.trees.len());
         let mut decommitments = Vec::with_capacity(self.commitment_scheme.trees.len());
         let mut aux = Vec::with_capacity(self.commitment_scheme.trees.len());
         let tree_decommit_start = Instant::now();
-        for (tree_index, (tree, tree_log_size)) in self
+        for (tree_index, (tree, query_positions)) in self
             .commitment_scheme
             .trees
             .as_ref()
             .0
             .into_iter()
-            .zip_eq(tree_log_sizes.into_iter())
+            .zip_eq(self.tree_query_positions.iter())
             .enumerate()
         {
             if debug_prove_values {
                 eprintln!("prove_values_phase=tree_decommit_start:{tree_index}");
             }
-            let query_positions = prepared_tree_queries_by_log_size
-                .get(&tree_log_size)
-                .expect("prepared tree queries should exist for every tree log size");
             let (values, decommit_result) = tree.decommit(query_positions);
             queried_values.push(values);
             decommitments.push(decommit_result.decommitment);
@@ -194,18 +242,18 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel>
 
         let proof = ExtendedCommitmentSchemeProof {
             proof: CommitmentSchemeProof {
-                commitments,
+                commitments: self.commitments,
                 sampled_values: self.sampled_values,
                 decommitments: TreeVec(decommitments),
                 queried_values: TreeVec(queried_values),
-                proof_of_work,
-                fri_proof: fri_proof.proof,
+                proof_of_work: self.proof_of_work,
+                fri_proof: self.fri_proof.proof,
                 config: self.commitment_scheme.config,
             },
             aux: CommitmentSchemeProofAux {
-                unsorted_query_locations,
+                unsorted_query_locations: self.unsorted_query_locations,
                 trace_decommitment: TreeVec(aux),
-                fri: fri_proof.aux,
+                fri: self.fri_proof.aux,
             },
         };
         debug_phase("return_ready");

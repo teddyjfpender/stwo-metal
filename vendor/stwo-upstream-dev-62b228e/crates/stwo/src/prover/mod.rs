@@ -15,7 +15,8 @@ pub use air::{AccumulationOps, ColumnAccumulator, DomainEvaluationAccumulator};
 mod pcs;
 pub use pcs::quotient_ops::{AccumulatedNumerators, QuotientOps};
 pub use pcs::{
-    CommitmentSchemeProver, CommitmentTreeProver, PreparedCommitmentSchemeProveValues, TreeBuilder,
+    CommitmentSchemeProver, CommitmentTreeProver, PreparedCommitmentSchemeFinish,
+    PreparedCommitmentSchemeProveValues, TreeBuilder,
 };
 pub mod backend;
 pub mod channel;
