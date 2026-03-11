@@ -13,7 +13,7 @@ use stwo::core::constraints::coset_vanishing;
 #[cfg(feature = "metal-runtime")]
 use stwo::core::fields::m31::BaseField;
 #[cfg(feature = "metal-runtime")]
-use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::fields::qm31::SecureField;
 #[cfg(feature = "metal-runtime")]
 use stwo::core::fields::FieldExpOps;
 #[cfg(feature = "metal-runtime")]
@@ -1151,71 +1151,23 @@ fn prove_with_breakdown(
     let prove_values_stage = benchmark_boundary
         .stage_prove_values(&component_provers, channel, &commitment_scheme)
         .expect("registered benchmark boundary must satisfy the prove-values lane contract");
-
-    let prove_values_start = Instant::now();
-    let commitment_scheme_proof =
-        commitment_scheme.prove_values(prove_values_stage.sample_points, channel);
-    let prove_values_ms = prove_values_start.elapsed().as_secs_f64() * 1000.0;
-    let proof = StarkProof(commitment_scheme_proof.proof);
-
-    let sanity_check_start = Instant::now();
-    if extract_composition_oods_eval(
-        &proof,
-        prove_values_stage.oods_point,
-        prove_values_stage.max_log_degree_bound,
-    )
-    .unwrap()
-        != component_provers
-            .components()
-            .eval_composition_polynomial_at_point(
-                prove_values_stage.oods_point,
-                &proof.sampled_values,
-                random_coeff,
-                prove_values_stage.max_log_degree_bound,
-            )
-    {
-        return Err(ProvingError::ConstraintsNotSatisfied);
-    }
-    let sanity_check_ms = sanity_check_start.elapsed().as_secs_f64() * 1000.0;
+    let (proof, prove_values_breakdown) = benchmark_boundary.execute_prove_values(
+        &component_provers,
+        random_coeff,
+        channel,
+        commitment_scheme,
+        prove_values_stage,
+    )?;
 
     Ok((
         proof,
         ProveCoreBreakdown {
             composition_generation_ms,
             composition_commit_ms,
-            prove_values_ms,
-            sanity_check_ms,
+            prove_values_ms: prove_values_breakdown.prove_values_ms,
+            sanity_check_ms: prove_values_breakdown.sanity_check_ms,
         },
     ))
-}
-
-#[cfg(feature = "metal-runtime")]
-fn extract_composition_oods_eval<H: stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted>(
-    proof: &StarkProof<H>,
-    oods_point: stwo::core::circle::CirclePoint<SecureField>,
-    max_log_degree_bound: u32,
-) -> Option<SecureField> {
-    let [.., left_and_right_composition_mask] = &**proof.sampled_values else {
-        return None;
-    };
-    let left_and_right_coordinate_evals: [SecureField; 2 * SECURE_EXTENSION_DEGREE] =
-        left_and_right_composition_mask
-            .iter()
-            .map(|columns| {
-                let &[eval] = &columns[..] else {
-                    return None;
-                };
-                Some(eval)
-            })
-            .collect::<Option<Vec<_>>>()?
-            .try_into()
-            .ok()?;
-
-    let (left_coordinate_evals, right_coordinate_evals) =
-        left_and_right_coordinate_evals.split_at(SECURE_EXTENSION_DEGREE);
-    let left_eval = SecureField::from_partial_evals(left_coordinate_evals.try_into().ok()?);
-    let right_eval = SecureField::from_partial_evals(right_coordinate_evals.try_into().ok()?);
-    Some(left_eval + oods_point.repeated_double(max_log_degree_bound - 1).x * right_eval)
 }
 
 #[cfg(feature = "metal-runtime")]

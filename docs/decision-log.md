@@ -74,6 +74,46 @@ Superseded by:
 
 - none
 
+### DEC-0159: Generated prove-values execution for `wide_fibonacci` now belongs to `stwo-metal`
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+After moving the prove-values staging law into `MetalWideFibonacciBenchmarkBoundary`,
+the next live generated prove-phase boundary also moves into `stwo-metal`:
+the prove-values execution step and its OODS sanity check. The benchmark binary
+may measure that boundary, but it no longer defines its semantics.
+
+Context:
+
+`wide_fibonacci_prove.rs` still owned the direct call to
+`commitment_scheme.prove_values(...)` plus the composition-OODS sanity check,
+even though the surrounding prove-values staging law had already moved into the
+backend crate. That left the benchmark binary as the owner of the live
+prove-values execution contract.
+
+Alternatives rejected:
+
+- leave the binary as the owner of the live prove-values execution law
+- skip directly to a larger end-to-end V1 prove migration and leave this
+  benchmark-local prove-phase seam in place
+
+Impact:
+
+- the generated benchmark’s prove-values execution law now lives in
+  `benchmark.rs`
+- the next honest prove-core migration target is composition generation/commit
+  rather than more prove-values-local logic
+
+Superseded by:
+
+- none
+
 ### DEC-0158: Generated prove-values staging for `wide_fibonacci` now belongs to `stwo-metal`
 
 - Date: `2026-03-11`

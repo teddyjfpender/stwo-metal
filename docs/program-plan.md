@@ -186,6 +186,16 @@ The second G10 slice is now landed in code:
   generated benchmark row, but the actual prove runtime still remains pre-V1
   beyond that staged boundary
 
+The third G10 slice is now landed in code:
+
+- the generated `wide_fibonacci` benchmark row now executes the prove-values
+  phase and OODS sanity check through `MetalWideFibonacciBenchmarkBoundary`
+  instead of local benchmark-owned logic
+- the benchmark binary no longer defines the live prove-values execution law
+  for the generated row
+- the next honest migration target is the composition-generation/commit side of
+  the prove core, because that is the next benchmark-local prove-phase boundary
+
 ## Current implementation obligations under G3
 
 - preserve the non-public bridge laws from

@@ -38,10 +38,11 @@ pub mod benchmark {
     pub use crate::backend::metal::{
         declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError,
         MetalBenchmarkLaneError, MetalBenchmarkOperation, MetalBenchmarkProgramError,
-        MetalBenchmarkProgramExecutionError, MetalBenchmarkProveValuesStaging,
-        MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalBenchmarkTraceShapeError,
-        MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
-        WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
+        MetalBenchmarkProgramExecutionError, MetalBenchmarkProveValuesBreakdown,
+        MetalBenchmarkProveValuesStaging, MetalBenchmarkReferencePlatform, MetalBenchmarkTarget,
+        MetalBenchmarkTraceShapeError, MetalWideFibonacciBenchmarkBoundary,
+        MetalWideFibonacciWitnessInputs, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+        WIDE_FIBONACCI_TRACE_LOG20_TARGET,
     };
 }
 
@@ -128,10 +129,10 @@ pub use abi::{
 pub use benchmark::{
     declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError, MetalBenchmarkLaneError,
     MetalBenchmarkOperation, MetalBenchmarkProgramError, MetalBenchmarkProgramExecutionError,
-    MetalBenchmarkProveValuesStaging, MetalBenchmarkReferencePlatform, MetalBenchmarkTarget,
-    MetalBenchmarkTraceShapeError, MetalWideFibonacciBenchmarkBoundary,
-    MetalWideFibonacciWitnessInputs, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
-    WIDE_FIBONACCI_TRACE_LOG20_TARGET,
+    MetalBenchmarkProveValuesBreakdown, MetalBenchmarkProveValuesStaging,
+    MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalBenchmarkTraceShapeError,
+    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
+    WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
 };
 #[cfg(feature = "prover")]
 pub use capability::{

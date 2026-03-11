@@ -4,8 +4,9 @@ use stwo::core::fields::qm31::SecureField;
 use stwo::core::fields::qm31::SECURE_EXTENSION_DEGREE;
 use stwo::core::pcs::utils::get_lifting_log_size;
 use stwo::core::pcs::TreeVec;
-use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
-use stwo::prover::{CommitmentSchemeProver, ComponentProvers};
+use stwo::core::proof::StarkProof;
+use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+use stwo::prover::{CommitmentSchemeProver, ComponentProvers, ProvingError};
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
 use super::eval_program_v1::{
@@ -93,6 +94,12 @@ pub struct MetalBenchmarkProveValuesStaging {
     pub oods_point: stwo::core::circle::CirclePoint<SecureField>,
     pub max_log_degree_bound: u32,
     pub sample_points: TreeVec<Vec<Vec<stwo::core::circle::CirclePoint<SecureField>>>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MetalBenchmarkProveValuesBreakdown {
+    pub prove_values_ms: f64,
+    pub sanity_check_ms: f64,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -189,6 +196,51 @@ impl MetalWideFibonacciBenchmarkBoundary {
             max_log_degree_bound,
             sample_points,
         })
+    }
+
+    pub fn execute_prove_values(
+        &self,
+        component_provers: &ComponentProvers<'_, super::MetalBackend>,
+        random_coeff: SecureField,
+        channel: &mut Blake2sChannel,
+        commitment_scheme: CommitmentSchemeProver<'_, super::MetalBackend, Blake2sMerkleChannel>,
+        staging: MetalBenchmarkProveValuesStaging,
+    ) -> Result<
+        (
+            StarkProof<Blake2sMerkleHasher>,
+            MetalBenchmarkProveValuesBreakdown,
+        ),
+        ProvingError,
+    > {
+        let prove_values_start = std::time::Instant::now();
+        let commitment_scheme_proof =
+            commitment_scheme.prove_values(staging.sample_points, channel);
+        let prove_values_ms = prove_values_start.elapsed().as_secs_f64() * 1000.0;
+        let proof = StarkProof(commitment_scheme_proof.proof);
+
+        let sanity_check_start = std::time::Instant::now();
+        if extract_composition_oods_eval(&proof, staging.oods_point, staging.max_log_degree_bound)
+            .unwrap()
+            != component_provers
+                .components()
+                .eval_composition_polynomial_at_point(
+                    staging.oods_point,
+                    &proof.sampled_values,
+                    random_coeff,
+                    staging.max_log_degree_bound,
+                )
+        {
+            return Err(ProvingError::ConstraintsNotSatisfied);
+        }
+        let sanity_check_ms = sanity_check_start.elapsed().as_secs_f64() * 1000.0;
+
+        Ok((
+            proof,
+            MetalBenchmarkProveValuesBreakdown {
+                prove_values_ms,
+                sanity_check_ms,
+            },
+        ))
     }
 
     pub fn ingest_cpu_witness_inputs(
@@ -437,6 +489,34 @@ pub enum MetalBenchmarkProgramExecutionError {
     Execution {
         source: MetalEvaluationProgramExecutionError,
     },
+}
+
+fn extract_composition_oods_eval(
+    proof: &StarkProof<Blake2sMerkleHasher>,
+    oods_point: stwo::core::circle::CirclePoint<SecureField>,
+    max_log_degree_bound: u32,
+) -> Option<SecureField> {
+    let [.., left_and_right_composition_mask] = &**proof.sampled_values else {
+        return None;
+    };
+    let left_and_right_coordinate_evals: [SecureField; 2 * SECURE_EXTENSION_DEGREE] =
+        left_and_right_composition_mask
+            .iter()
+            .map(|columns| {
+                let &[eval] = &columns[..] else {
+                    return None;
+                };
+                Some(eval)
+            })
+            .collect::<Option<Vec<_>>>()?
+            .try_into()
+            .ok()?;
+
+    let (left_coordinate_evals, right_coordinate_evals) =
+        left_and_right_coordinate_evals.split_at(SECURE_EXTENSION_DEGREE);
+    let left_eval = SecureField::from_partial_evals(left_coordinate_evals.try_into().ok()?);
+    let right_eval = SecureField::from_partial_evals(right_coordinate_evals.try_into().ok()?);
+    Some(left_eval + oods_point.repeated_double(max_log_degree_bound - 1).x * right_eval)
 }
 
 pub const WIDE_FIBONACCI_TRACE_LOG20_TARGET: MetalBenchmarkTarget = MetalBenchmarkTarget {

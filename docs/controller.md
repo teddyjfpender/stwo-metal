@@ -53,9 +53,9 @@ Invariants:
 - the active generated `wide_fibonacci` row can now lower its benchmark target
   into a validated V1 program and execute that program on the live generated
   trace through both the reference and Metal device lanes, but the actual prove
-  path is still only partially migrated: the prove-values staging law now lives
-  on the benchmark boundary in `stwo-metal`, but the benchmark still does not
-  prove through the V1 runtime contract end to end
+  path is still only partially migrated: the prove-values staging and execution
+  law now live on the benchmark boundary in `stwo-metal`, but the benchmark
+  still does not prove through the V1 runtime contract end to end
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
   row still does not prove through that V1 runtime contract
@@ -75,7 +75,7 @@ Invariants:
 
 1. Migrate the active generated `wide_fibonacci` benchmark row onto the
    validated V1 runtime contract for the next live prove-phase boundary beyond
-   prove-values staging.
+   prove-values execution.
 2. Define the overlay lookup law keyed by semantic hash and capability profile,
    then migrate the active generated benchmark row onto that same contract
    instead of benchmark-local lowering.
