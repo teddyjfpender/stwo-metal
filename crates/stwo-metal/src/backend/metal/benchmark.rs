@@ -142,6 +142,13 @@ pub struct MetalGeneratedWideFibonacciBenchmarkSample {
     pub breakdown: MetalGeneratedWideFibonacciBenchmarkBreakdown,
 }
 
+#[derive(Clone, Debug)]
+pub struct MetalGeneratedWideFibonacciBenchmarkIteration {
+    pub sample: MetalGeneratedWideFibonacciBenchmarkSample,
+    pub prove_elapsed_ms: f64,
+    pub verify_elapsed_ms: f64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MetalGeneratedWideFibonacciBenchmarkBreakdown {
     pub setup_and_preprocessed_commit_ms: f64,
@@ -709,6 +716,31 @@ impl MetalWideFibonacciBenchmarkBoundary {
         );
         verify_wide_fibonacci_blake(&component, &sample.proof)
     }
+
+    pub fn run_generated_blake2s_iteration(
+        &self,
+        input_a: &[BaseField],
+        input_b: &[BaseField],
+        config: PcsConfig,
+    ) -> Result<
+        MetalGeneratedWideFibonacciBenchmarkIteration,
+        MetalGeneratedWideFibonacciBenchmarkError,
+    > {
+        let prove_start = std::time::Instant::now();
+        let sample = self.run_generated_blake2s_sample(input_a, input_b, config)?;
+        let prove_elapsed_ms = prove_start.elapsed().as_secs_f64() * 1000.0;
+
+        let verify_start = std::time::Instant::now();
+        self.verify_generated_blake2s_sample(&sample)
+            .map_err(|source| MetalGeneratedWideFibonacciBenchmarkError::Verify { source })?;
+        let verify_elapsed_ms = verify_start.elapsed().as_secs_f64() * 1000.0;
+
+        Ok(MetalGeneratedWideFibonacciBenchmarkIteration {
+            sample,
+            prove_elapsed_ms,
+            verify_elapsed_ms,
+        })
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -798,6 +830,9 @@ pub enum MetalGeneratedWideFibonacciBenchmarkError {
     },
     ProveCore {
         source: MetalBenchmarkProveCoreError,
+    },
+    Verify {
+        source: VerificationError,
     },
 }
 

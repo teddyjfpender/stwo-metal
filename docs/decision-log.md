@@ -75,6 +75,52 @@ Superseded by:
 
 - none
 
+### DEC-0165: Generated wide-fibonacci iteration timing now belongs to `stwo-metal`
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+
+Decision:
+
+Once the generated `wide_fibonacci` row enters backend-owned sample execution,
+the benchmark binary must stop owning generated-row iteration timing and
+verification sequencing. `stwo-metal` now owns one backend-timed generated
+iteration result, and the binary only aggregates and reports those iteration
+results.
+
+Context:
+
+`DEC-0164` moved generated sample orchestration into
+`MetalWideFibonacciBenchmarkBoundary`, but `wide_fibonacci_prove.rs` still
+owned the prove/verify timing boundary for the generated lane. That left the
+benchmark harness as the live iteration authority even though the backend now
+owned the sample itself. The safer next step is to move iteration execution
+law into `stwo-metal` too and leave the binary as reporting glue.
+
+Alternatives rejected:
+
+- keep iteration timing and verification in the benchmark binary
+- move only more metadata into `stwo-metal` while leaving live generated
+  iteration execution benchmark-local
+- claim broader G10 completion before generated iteration authority leaves the
+  benchmark harness
+
+Impact:
+
+- the generated `wide_fibonacci` row now enters one backend-owned iteration
+  flow through `MetalWideFibonacciBenchmarkBoundary`
+- `wide_fibonacci_prove.rs` is thinner again and no longer owns generated
+  prove/verify iteration sequencing
+- the next honest G10 work is the remaining prove-path ownership beyond the
+  current selected-runtime prove-core gate
+
+Superseded by:
+
+- none
+
 ### DEC-0156: The first Metal device interpreter for MetalEvaluationProgramV1 must be a fail-closed subset lane over the same lowered contract as the Rust reference interpreter
 
 - Date: `2026-03-11`

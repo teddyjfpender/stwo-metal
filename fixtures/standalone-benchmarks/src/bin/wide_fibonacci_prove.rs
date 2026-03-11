@@ -41,8 +41,9 @@ use stwo_examples::wide_fibonacci::{
 #[cfg(feature = "metal-runtime")]
 use stwo_metal::{
     declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
-    MetalBackend, MetalBenchmarkOperation, MetalBenchmarkReferencePlatform, MetalBenchmarkTarget,
-    MetalExecutionIntent, MetalGeneratedWideFibonacciBenchmarkSample,
+    MetalBackend, MetalBenchmarkOperation, MetalBenchmarkReferencePlatform,
+    MetalBenchmarkTarget, MetalExecutionIntent, MetalGeneratedWideFibonacciBenchmarkIteration,
+    MetalGeneratedWideFibonacciBenchmarkSample,
 };
 #[cfg(feature = "metal-runtime")]
 use stwo_metal_fixture_shims::acceptance_bridge_catalog;
@@ -692,27 +693,19 @@ fn run_one_generated_sample(
     )
     .expect("wide-fibonacci prove benchmark boundary should be declared");
 
-    let prove_start = Instant::now();
-    let sample = benchmark_boundary
-        .run_generated_blake2s_sample(input_a_host, input_b_host, config)
+    let iteration = benchmark_boundary
+        .run_generated_blake2s_iteration(input_a_host, input_b_host, config)
         .expect("wide fibonacci prove should succeed");
-    let prove_elapsed_ms = prove_start.elapsed().as_secs_f64() * 1000.0;
 
-    let proof_metadata = proof_metadata(&sample.proof);
-
-    let verify_start = Instant::now();
-    benchmark_boundary
-        .verify_generated_blake2s_sample(&sample)
-        .expect("wide fibonacci proof should verify");
-    let verify_elapsed_ms = verify_start.elapsed().as_secs_f64() * 1000.0;
+    let proof_metadata = proof_metadata(&iteration.sample.proof);
 
     SampleResult {
-        total_elapsed_ms: prove_elapsed_ms + verify_elapsed_ms,
-        prove_elapsed_ms,
-        verify_elapsed_ms,
-        prove_breakdown: Some(prove_breakdown_from_generated_sample(&sample)),
+        total_elapsed_ms: iteration.prove_elapsed_ms + iteration.verify_elapsed_ms,
+        prove_elapsed_ms: iteration.prove_elapsed_ms,
+        verify_elapsed_ms: iteration.verify_elapsed_ms,
+        prove_breakdown: Some(prove_breakdown_from_generated_iteration(&iteration)),
         proof_metadata,
-        sentinel: sentinel_from_generated_sample(&sample),
+        sentinel: sentinel_from_generated_iteration(&iteration),
     }
 }
 
@@ -829,6 +822,13 @@ fn prove_breakdown_from_generated_sample(
 }
 
 #[cfg(feature = "metal-runtime")]
+fn prove_breakdown_from_generated_iteration(
+    iteration: &MetalGeneratedWideFibonacciBenchmarkIteration,
+) -> ProveBreakdown {
+    prove_breakdown_from_generated_sample(&iteration.sample)
+}
+
+#[cfg(feature = "metal-runtime")]
 fn sentinel_from_generated_sample(
     sample: &MetalGeneratedWideFibonacciBenchmarkSample,
 ) -> WideFibonacciSentinel {
@@ -838,6 +838,13 @@ fn sentinel_from_generated_sample(
         last_column_first_value: sample.sentinel.last_column_first_value,
         last_column_last_value: sample.sentinel.last_column_last_value,
     }
+}
+
+#[cfg(feature = "metal-runtime")]
+fn sentinel_from_generated_iteration(
+    iteration: &MetalGeneratedWideFibonacciBenchmarkIteration,
+) -> WideFibonacciSentinel {
+    sentinel_from_generated_sample(&iteration.sample)
 }
 
 #[cfg(feature = "metal-runtime")]

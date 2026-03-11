@@ -233,6 +233,17 @@ The sixth G10 slice is now landed in code:
   backend-owned generated sample flow, together with broader selected-runtime
   ownership beyond the current prove-core gate
 
+The seventh G10 slice is now landed in code:
+
+- the generated `wide_fibonacci` benchmark row now enters a backend-owned
+  timed iteration flow through `MetalWideFibonacciBenchmarkBoundary`
+- `wide_fibonacci_prove.rs` now consumes one backend-owned generated iteration
+  result instead of separately timing and verifying a benchmark-local generated
+  sample path
+- the next honest G10 work is no longer generated sample or iteration
+  orchestration; it is the remaining prove-path ownership beyond the current
+  selected-runtime prove-core gate
+
 ## Current implementation obligations under G3
 
 - preserve the non-public bridge laws from

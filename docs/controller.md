@@ -54,14 +54,15 @@ Invariants:
   into a validated V1 program and execute that program on the live generated
   trace through both the reference and Metal device lanes, but the actual prove
   path is still only partially migrated: the generated sample now enters
-  backend-owned trace generation, trace commit, prove core, and proof
-  verification through `MetalWideFibonacciBenchmarkBoundary`, and the V1
-  runtime now has an explicit overlay lookup and dispatch-selection law keyed
-  by semantic hash and capability profile with a first real `wide_fibonacci`
-  generated overlay registration, but the benchmark row still does not prove
-  through the selected V1 runtime contract end to end; prove core now treats
-  selected V1 execution as a fail-closed authority rather than a side API, and
-  that migrated authority currently carries a measurable performance cost that
+  backend-owned trace generation, trace commit, prove core, proof
+  verification, and generated iteration timing through
+  `MetalWideFibonacciBenchmarkBoundary`, and the V1 runtime now has an explicit
+  overlay lookup and dispatch-selection law keyed by semantic hash and
+  capability profile with a first real `wide_fibonacci` generated overlay
+  registration, but the benchmark row still does not prove through the
+  selected V1 runtime contract end to end; prove core now treats selected V1
+  execution as a fail-closed authority rather than a side API, and that
+  migrated authority currently carries a measurable performance cost that
   remains active G10 work
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
@@ -80,10 +81,9 @@ Invariants:
 
 ## Next three deliverables
 
-1. Move the remaining generated benchmark orchestration boundary after
-   backend-owned generated sample execution into `stwo-metal`, so
-   `wide_fibonacci_prove.rs` stops being the authority for live generated-row
-   trace/proof orchestration.
+1. Move the remaining prove-path ownership after backend-owned generated
+   iteration execution into `stwo-metal`, so `wide_fibonacci_prove.rs` is only
+   a reporting harness for the generated row.
 2. Replace selected-runtime prove-core preflight authority with broader
    selected-runtime prove-path ownership, so the generated row stops treating
    V1 execution as an expensive gate and starts treating it as the real prove

@@ -36,8 +36,9 @@ pub use benchmark::{
     MetalBenchmarkProveValuesBreakdown, MetalBenchmarkProveValuesStaging,
     MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalBenchmarkTraceShapeError,
     MetalGeneratedWideFibonacciBenchmarkBreakdown, MetalGeneratedWideFibonacciBenchmarkError,
-    MetalGeneratedWideFibonacciBenchmarkSample, MetalWideFibonacciBenchmarkBoundary,
-    MetalWideFibonacciWitnessInputs, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+    MetalGeneratedWideFibonacciBenchmarkIteration, MetalGeneratedWideFibonacciBenchmarkSample,
+    MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
+    WIDE_FIBONACCI_PROVE_LOG20_TARGET,
     WIDE_FIBONACCI_TRACE_LOG20_TARGET,
 };
 pub use capability::{
