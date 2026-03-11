@@ -30,7 +30,7 @@ Invariants:
 - Date opened: `2026-03-10`
 - Status: `in_progress`
 - Active tranche:
-  `G10 migration: move the generated row onto selected V1 runtime law`
+  `G10 migration: move post-composition proof flow onto the V1 sampled-values contract`
 - Objective:
   move `stwo-metal` from a benchmark-specialized generated path to one stable
   lowered-program contract that both the generic interpreter lane and the
@@ -68,13 +68,11 @@ Invariants:
   through the selected V1 runtime contract, and the remaining migrated
   authority still carries measurable performance cost that remains active G10
   work
-- the attempted next G10 migration step after selected-runtime-derived
-  composition generation is currently blocked by a sampled-values ABI mismatch:
-  the live post-composition proof flow still exposes secure-field-valued trace
-  masks, while the current V1 trace-interaction contract only accepts explicit
-  base-field trace interactions; that means the remaining post-composition
-  prove-path ownership cannot honestly move onto V1 by another local benchmark
-  patch alone
+- the repository now has an explicit `OwnedMetalSampledValuesV1` contract plus
+  a correctness-first reference lane for the live generated post-composition
+  sampled-values shape, so the blocker is no longer “missing ABI”; the active
+  blocker is that there is still no Metal post-composition runtime lane or
+  end-to-end prove-values/decommit ownership on top of that ABI
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
   row still does not prove through that V1 runtime contract
@@ -92,11 +90,11 @@ Invariants:
 
 ## Next three deliverables
 
-1. Define the next V1 post-composition ABI step for generated proof flow, so
-   secure-field sampled-value masks can be consumed through the same selected
-   V1 contract instead of re-entering legacy proof law.
-2. Keep `wide_fibonacci_prove.rs` as a reporting harness only by moving any
-   remaining generated-lane orchestration edges into `stwo-metal`.
+1. Add the Metal post-composition sampled-values runtime lane on top of the
+   new `OwnedMetalSampledValuesV1` contract.
+2. Remove the remaining legacy prove-values/decommit ownership from the
+   generated row by routing that flow through the sampled-values ABI instead of
+   legacy component-level interpretation.
 3. Add layout/reflection verification for the V1 host/device boundary records
    once the first live Metal runtime consumer exists, so the ABI surface is
    checked both statically and against compiled Metal metadata.

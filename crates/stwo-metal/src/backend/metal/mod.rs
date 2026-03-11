@@ -22,6 +22,7 @@ mod proof_slice;
 mod prover;
 mod quotient;
 mod row;
+mod sampled_values_v1;
 mod sequence;
 mod subpath;
 mod witness;
@@ -38,6 +39,7 @@ pub use benchmark::{
     MetalGeneratedWideFibonacciBenchmarkBreakdown, MetalGeneratedWideFibonacciBenchmarkError,
     MetalGeneratedWideFibonacciBenchmarkIteration, MetalGeneratedWideFibonacciBenchmarkRun,
     MetalGeneratedWideFibonacciBenchmarkSample,
+    MetalBenchmarkPostCompositionSampledValuesV1,
     MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
     WIDE_FIBONACCI_PROVE_LOG20_TARGET,
     WIDE_FIBONACCI_TRACE_LOG20_TARGET,
@@ -97,6 +99,15 @@ pub use quotient::{
     MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients,
 };
 pub use row::MetalFriInnerLayerRow;
+pub use sampled_values_v1::{
+    interpret_metal_sampled_values_v1, lower_metal_sampled_values_v1,
+    MetalSampledValuesColumnDescV1, MetalSampledValuesHeaderV1,
+    MetalSampledValuesInterpreterError, MetalSampledValuesLoweringError,
+    MetalSampledValuesTreeDescV1, MetalSampledValuesValidationError,
+    MetalSecureFieldValueV1, OwnedMetalSampledValuesV1,
+    STWO_METAL_SAMPLED_VALUES_ABI_MAJOR_V1, STWO_METAL_SAMPLED_VALUES_ABI_MINOR_V1,
+    STWO_METAL_SAMPLED_VALUES_MAGIC_V1,
+};
 pub use sequence::MetalFriInnerLayerSequence;
 pub use subpath::MetalFriBlake2sSubpath;
 pub use witness::{

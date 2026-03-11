@@ -28,6 +28,49 @@ Superseded by:
 
 ## Entries
 
+### DEC-0168: Post-composition sampled values require a distinct V1-family ABI and reference lane
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
+
+Decision:
+
+The generated post-composition proof boundary must now flow through an explicit
+`OwnedMetalSampledValuesV1` ABI and a correctness-first backend-owned
+reference lane instead of benchmark-local sampled-value reinterpretation.
+
+Context:
+
+Once selected `MetalEvaluationProgramV1` execution became the authority for
+composition generation, the next honest migration blocker was no longer the
+absence of selected runtime execution; it was the mismatch between the live
+secure-field sampled-values shape and the base-field trace-interaction ABI.
+The first correct step was therefore to land a separate V1-family sampled-
+values ABI and prove it against the existing host law before attempting a
+Metal runtime lane.
+
+Alternatives rejected:
+
+- continue widening the trace-interaction ABI until it implicitly covered the
+  post-composition shape
+- keep using benchmark-local ad hoc sampled-value interpretation
+- skip the reference lane and jump straight to an unvalidated Metal runtime
+
+Impact:
+
+- the active generated row now has one backend-owned sampled-values ABI and
+  reference execution boundary after composition generation
+- the next honest G10 step is the Metal sampled-values runtime lane
+- remaining legacy prove-values/decommit ownership is now explicitly bounded
+  by a named shared contract instead of diffuse benchmark glue
+
+Superseded by:
+
+- none
+
 ### DEC-0166: G10 cannot widen beyond composition generation until the post-composition sampled-values ABI is explicit
 
 - Date: `2026-03-11`

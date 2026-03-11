@@ -266,6 +266,18 @@ The ninth G10 slice is now landed in code:
   selected-runtime-derived composition generation, because the generated row
   still does not prove end to end through the selected V1 runtime contract
 
+The tenth G10 slice is now landed in code:
+
+- the repository now has an explicit `OwnedMetalSampledValuesV1` ABI for the
+  live generated post-composition sampled-values shape
+- the backend can lower that ABI from the generated proof flow and interpret
+  it through a correctness-first reference lane
+- the active generated `wide_fibonacci` row now uses that backend-owned
+  sampled-values ABI/reference boundary for its post-composition sanity step
+- the next honest G10 work is the Metal sampled-values runtime lane and the
+  migration of the remaining prove-values/decommit ownership onto that same
+  contract
+
 ## Current implementation obligations under G3
 
 - preserve the non-public bridge laws from

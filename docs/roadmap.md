@@ -151,10 +151,10 @@ The next active work is:
   selected-runtime-gated, the binary is no longer the main generated-sample or
   generated-iteration authority, and the generated lane's warmup/timed run
   orchestration now also enters through the backend boundary
-- define the next post-composition proof ABI step before widening G10 further:
-  the live generated proof still exposes secure-field sampled-value masks above
-  composition generation, and the current V1 trace-interaction contract cannot
-  consume that richer post-composition shape directly
+- keep widening G10 from the now-landed post-composition sampled-values ABI:
+  the repository has a correctness-first reference lane for the live generated
+  post-composition shape, and the next step is the Metal runtime lane plus
+  migration of the remaining prove-values/decommit flow onto that contract
 - keep the migrated selected-runtime authority measurable and optimize it once
   it becomes part of the live prove path, instead of treating V1 as a free side
   check

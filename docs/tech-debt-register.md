@@ -93,6 +93,10 @@ fail-closed preflight. That is the correct ownership move, but the migrated
 authority currently still adds substantial cost to the live benchmark row and
 does not yet own the full proof path end to end.
 
+The current reproduced generated-lane `log20` baseline on the last good path
+is about `936.16 ms` prove mean / `936.45 ms` total mean with `metal-prod`,
+`warmups=1`, and `samples=3`.
+
 Current containment:
 
 - `crates/stwo-metal/src/backend/metal/benchmark.rs`
@@ -126,31 +130,33 @@ Why it exists now:
 
 The generated `wide_fibonacci` row now uses selected
 `MetalEvaluationProgramV1` output as the authority for composition generation,
-but the next attempted migration step failed honestly. The live
-post-composition proof flow still exposes secure-field-valued sampled trace
-masks, while the current V1 runtime contract only accepts explicit base-field
-trace-interaction inputs. That means the remaining proof flow after
-composition generation cannot yet move onto V1 without a new shared ABI step.
+and the repository now has an explicit `OwnedMetalSampledValuesV1` ABI plus a
+correctness-first reference lane for the live post-composition sampled-values
+shape. The remaining debt is that the selected runtime still does not execute
+that ABI directly, so the remaining proof flow after composition generation
+cannot yet stay on the V1/overlay contract end to end.
 
 Current containment:
 
 - `crates/stwo-metal/src/backend/metal/benchmark.rs`
 - `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
+- `crates/stwo-metal/src/backend/metal/sampled_values_v1.rs`
 - `vendor/stwo-upstream-dev-62b228e/crates/stwo/src/prover/pcs/mod.rs`
 - `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
 
 Risk if left in place:
 
-The repository can keep widening G10 with benchmark-local patches that do not
-converge on one stable post-composition runtime contract, or claim broader V1
-ownership while the live proof still re-enters legacy sample interpretation.
+The repository can keep a truthful ABI and reference lane in place while still
+failing to migrate the live prove-values/decommit path onto the selected V1
+runtime contract, leaving the generated row architecturally mixed and slower
+than it should be.
 
 Exit condition:
 
-The selected V1 runtime contract or a V1-adjacent shared ABI can consume the
-live post-composition sampled-values shape directly, and the generated
-`wide_fibonacci` row no longer needs legacy component-level sample
-interpretation beyond V1-owned composition generation.
+The selected V1 runtime contract consumes the live post-composition
+sampled-values ABI directly through a Metal lane, and the generated
+`wide_fibonacci` row no longer needs legacy prove-values/decommit ownership
+beyond V1-owned composition generation.
 
 Target retirement point:
 

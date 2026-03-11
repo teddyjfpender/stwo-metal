@@ -145,6 +145,24 @@ The first version may stay narrow:
 - the first runtime consumer may be reference-first
 - device execution may remain a later widening step
 
+## Implementation status
+
+The first implementation slice is now landed:
+
+- `OwnedMetalSampledValuesV1` exists as a validated fixed-width ABI record
+- the backend can lower the live generated post-composition sampled-values
+  shape into that ABI
+- the backend can interpret that ABI through a correctness-first reference lane
+- the active generated `wide_fibonacci` row now uses that backend-owned
+  sampled-values ABI/reference boundary for its post-composition sanity check
+
+What is still missing:
+
+- a Metal runtime lane for post-composition sampled-values execution
+- migration of the remaining prove-values and decommit flow onto that ABI
+- removal of the remaining legacy post-composition ownership from the
+  generated row
+
 ## Migration rule
 
 The next G10 migration step must not:

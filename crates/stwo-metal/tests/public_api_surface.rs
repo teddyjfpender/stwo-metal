@@ -24,6 +24,10 @@ use stwo_metal::{
     MetalEvaluationProgramInterpreterError, MetalEvaluationProgramLoweringError,
     MetalEvaluationProgramOverlayV1, MetalEvaluationProgramRuntimeInputsV1,
     MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
+    MetalSampledValuesColumnDescV1, MetalSampledValuesHeaderV1,
+    MetalSampledValuesInterpreterError, MetalSampledValuesLoweringError,
+    MetalSampledValuesTreeDescV1, MetalSampledValuesValidationError,
+    MetalSecureFieldValueV1,
     MetalEvaluationProgramSpecializationV1, MetalEvaluationProgramTraceViewV1,
     MetalEvaluationProgramValidationError, MetalExecutionIntent, MetalExecutionPlan,
     MetalFriBlake2sSubpath, MetalFriFirstLayer, MetalFriInnerLayerRow, MetalFriInnerProofSlice,
@@ -38,10 +42,14 @@ use stwo_metal::{
     MetalWideFibonacciQuotients, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
     MetalWideFibonacciTraceRequest, MetalWideFibonacciWitnessInputs, MetalWorkloadBoundary,
     MetalWorkloadHandoffError, MetalWorkloadOwnership, MetalWorkloadStage,
-    OwnedConstraintEvalAbiV1, OwnedMetalEvaluationProgramV1, SecureFieldVec,
+    OwnedConstraintEvalAbiV1, OwnedMetalEvaluationProgramV1, OwnedMetalSampledValuesV1,
+    SecureFieldVec,
     StwoCudaWideFibonacciEvalAbiV1, STWO_CUDA_BACKEND_SURFACES_V1,
     STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1, STWO_METAL_EVAL_PROGRAM_MAGIC_V1,
-    STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+    STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1,
+    STWO_METAL_SAMPLED_VALUES_ABI_MAJOR_V1, STWO_METAL_SAMPLED_VALUES_MAGIC_V1,
+    WIDE_FIBONACCI_PROVE_LOG20_TARGET, interpret_metal_sampled_values_v1,
+    lower_metal_sampled_values_v1,
 };
 
 #[test]
@@ -96,6 +104,14 @@ fn companion_surface_exports_backend_core_types() {
     let _ = std::mem::size_of::<MetalLineCommitment<Blake2sMerkleHasher>>();
     let _ = std::mem::size_of::<MetalSecureFieldVec>();
     let _ = std::mem::size_of::<SecureFieldVec>();
+    let _ = std::mem::size_of::<MetalSampledValuesHeaderV1>();
+    let _ = std::mem::size_of::<MetalSampledValuesTreeDescV1>();
+    let _ = std::mem::size_of::<MetalSampledValuesColumnDescV1>();
+    let _ = std::mem::size_of::<MetalSecureFieldValueV1>();
+    let _ = std::mem::size_of::<OwnedMetalSampledValuesV1>();
+    let _ = std::mem::size_of::<MetalSampledValuesLoweringError>();
+    let _ = std::mem::size_of::<MetalSampledValuesValidationError>();
+    let _ = std::mem::size_of::<MetalSampledValuesInterpreterError>();
 }
 
 #[test]
@@ -212,6 +228,8 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
         header.secure_ext_degree,
         STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1
     );
+    assert_eq!(STWO_METAL_SAMPLED_VALUES_MAGIC_V1, u32::from_le_bytes(*b"SMS1"));
+    assert_eq!(STWO_METAL_SAMPLED_VALUES_ABI_MAJOR_V1, 1);
     validate_metal_evaluation_program_v1(
         header,
         &sections,
@@ -254,6 +272,8 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
     let _ = std::mem::size_of::<MetalEvaluationProgramTraceViewV1<'static>>();
     let _ = std::mem::size_of::<MetalEvaluationProgramValidationError>();
     let _ = std::mem::size_of::<OwnedMetalEvaluationProgramV1>();
+    let _ = lower_metal_sampled_values_v1;
+    let _ = interpret_metal_sampled_values_v1;
     assert_eq!(lowered.header().n_constraints, 98);
     assert_eq!(lowered.base_insts().len(), 1 + 98 * 7);
     assert_eq!(lowered.ext_insts().len(), 98);

@@ -40,6 +40,11 @@ use super::quotient::{
     accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
     MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciQuotientRequest,
 };
+use super::sampled_values_v1::{
+    interpret_metal_sampled_values_v1, lower_metal_sampled_values_v1,
+    MetalSampledValuesInterpreterError, MetalSampledValuesLoweringError,
+    OwnedMetalSampledValuesV1,
+};
 use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload::{declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary};
 use super::workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
@@ -203,6 +208,17 @@ pub struct MetalGeneratedWideFibonacciBenchmarkBreakdown {
 pub struct MetalBenchmarkProveValuesBreakdown {
     pub prove_values_ms: f64,
     pub sanity_check_ms: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct MetalBenchmarkPostCompositionSampledValuesV1 {
+    sampled_values: OwnedMetalSampledValuesV1,
+}
+
+impl MetalBenchmarkPostCompositionSampledValuesV1 {
+    pub fn sampled_values(&self) -> &OwnedMetalSampledValuesV1 {
+        &self.sampled_values
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -494,18 +510,22 @@ impl MetalWideFibonacciBenchmarkBoundary {
             commitment_scheme.prove_values(staging.sample_points, channel);
         let prove_values_ms = prove_values_start.elapsed().as_secs_f64() * 1000.0;
         let proof = StarkProof(commitment_scheme_proof.proof);
+        let sampled_values = self
+            .lower_post_composition_sampled_values_v1(&proof)
+            .map_err(|_| ProvingError::ConstraintsNotSatisfied)?;
 
         let sanity_check_start = std::time::Instant::now();
         if extract_composition_oods_eval(&proof, staging.oods_point, staging.max_log_degree_bound)
             .unwrap()
-            != component_provers
-                .components()
-                .eval_composition_polynomial_at_point(
+            != self
+                .interpret_post_composition_sampled_values_v1(
+                    &component_provers.components(),
                     staging.oods_point,
-                    &proof.sampled_values,
+                    &sampled_values,
                     random_coeff,
                     staging.max_log_degree_bound,
                 )
+                .map_err(|_| ProvingError::ConstraintsNotSatisfied)?
         {
             return Err(ProvingError::ConstraintsNotSatisfied);
         }
@@ -518,6 +538,33 @@ impl MetalWideFibonacciBenchmarkBoundary {
                 sanity_check_ms,
             },
         ))
+    }
+
+    pub fn lower_post_composition_sampled_values_v1(
+        &self,
+        proof: &StarkProof<Blake2sMerkleHasher>,
+    ) -> Result<MetalBenchmarkPostCompositionSampledValuesV1, MetalSampledValuesLoweringError>
+    {
+        Ok(MetalBenchmarkPostCompositionSampledValuesV1 {
+            sampled_values: lower_metal_sampled_values_v1(&proof.sampled_values)?,
+        })
+    }
+
+    pub fn interpret_post_composition_sampled_values_v1(
+        &self,
+        components: &stwo::core::air::Components<'_>,
+        point: stwo::core::circle::CirclePoint<SecureField>,
+        sampled_values: &MetalBenchmarkPostCompositionSampledValuesV1,
+        random_coeff: SecureField,
+        max_log_degree_bound: u32,
+    ) -> Result<SecureField, MetalSampledValuesInterpreterError> {
+        interpret_metal_sampled_values_v1(
+            components,
+            point,
+            sampled_values.sampled_values(),
+            random_coeff,
+            max_log_degree_bound,
+        )
     }
 
     pub fn execute_prove_core(
@@ -1416,6 +1463,8 @@ pub fn declare_wide_fibonacci_benchmark_boundary(
 
 #[cfg(test)]
 mod tests {
+    use stwo::core::air::Component;
+    use stwo::core::channel::Blake2sChannel;
     use stwo::core::fields::m31::BaseField;
     use stwo::core::fields::qm31::SecureField;
     use stwo::core::pcs::TreeVec;
@@ -1424,9 +1473,11 @@ mod tests {
     use stwo::core::proof::StarkProof;
 
     use super::{
-        declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError,
+        declare_wide_fibonacci_benchmark_boundary, lower_metal_sampled_values_v1,
+        ComponentProvers, MetalBenchmarkInputError,
         MetalBenchmarkLaneError, MetalBenchmarkOperation, MetalBenchmarkProgramExecutionError,
-        MetalBenchmarkReferencePlatform, MetalExecutionIntent, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
+        MetalBenchmarkPostCompositionSampledValuesV1, MetalBenchmarkReferencePlatform,
+        MetalExecutionIntent, WideFibonacciBenchmarkComponent, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
         WIDE_FIBONACCI_TRACE_LOG20_TARGET,
     };
     use crate::backend::metal::artifact::MetalGeneratedRouteKind;
@@ -1630,6 +1681,81 @@ mod tests {
                 },
             }
         );
+    }
+
+    #[test]
+    fn benchmark_boundary_interprets_post_composition_sampled_values_v1() {
+        let target = super::MetalBenchmarkTarget {
+            log_n_instances: 3,
+            n_columns: 6,
+            ..WIDE_FIBONACCI_PROVE_LOG20_TARGET
+        };
+        let boundary =
+            declare_wide_fibonacci_benchmark_boundary(MetalExecutionIntent::PreferMetal, target)
+                .unwrap();
+        let component = WideFibonacciBenchmarkComponent::new(
+            target.log_n_instances,
+            target.n_columns as usize,
+        );
+        let component_provers = ComponentProvers {
+            components: vec![&component],
+            n_preprocessed_columns: 0,
+        };
+        let point =
+            stwo::core::circle::CirclePoint::get_random_point(&mut Blake2sChannel::default());
+        let max_log_degree_bound = component.max_constraint_log_degree_bound();
+        let sample_points =
+            component_provers
+                .components()
+                .mask_points(point, max_log_degree_bound, false);
+        let sampled_values = TreeVec(
+            sample_points
+                .0
+                .iter()
+                .enumerate()
+                .map(|(tree_index, tree)| {
+                    tree.iter()
+                        .enumerate()
+                        .map(|(column_index, column)| {
+                            column
+                                .iter()
+                                .enumerate()
+                                .map(|(sample_index, _)| {
+                                    SecureField::from_u32_unchecked(
+                                        (tree_index + 1) as u32,
+                                        (column_index + 2) as u32,
+                                        (sample_index + 3) as u32,
+                                        (tree_index + column_index + sample_index + 4) as u32,
+                                    )
+                                })
+                                .collect()
+                        })
+                        .collect()
+                })
+                .collect(),
+        );
+        let lowered = lower_metal_sampled_values_v1(&sampled_values).unwrap();
+        let random_coeff = SecureField::from_u32_unchecked(3, 5, 7, 11);
+
+        let interpreted = boundary
+            .interpret_post_composition_sampled_values_v1(
+                &component_provers.components(),
+                point,
+                &MetalBenchmarkPostCompositionSampledValuesV1 {
+                    sampled_values: lowered,
+                },
+                random_coeff,
+                max_log_degree_bound,
+            )
+            .unwrap();
+        let legacy = component_provers.components().eval_composition_polynomial_at_point(
+            point,
+            &sampled_values,
+            random_coeff,
+            max_log_degree_bound,
+        );
+
+        assert_eq!(interpreted, legacy);
     }
 
     #[test]
