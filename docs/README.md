@@ -31,6 +31,8 @@ is planned, controlled, reviewed, and changed.
   slice or task template
 - [`milestone-archive.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/milestone-archive.md):
   superseded milestone history kept out of the active control path
+- [`handover-2026-03-12.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/handover-2026-03-12.md):
+  current runtime, benchmark, and downstream-target handover snapshot
 
 ## Current design note
 
