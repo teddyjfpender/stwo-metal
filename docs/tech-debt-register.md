@@ -30,52 +30,38 @@ Target retirement point:
 
 ### TD-0035: The active generated benchmark lane still runs on a pre-V1 lowering contract
 
-- Status: `active`
+- Status: `retired`
 - Category: `architecture migration gap`
 - Introduced: `2026-03-11`
 - Owner area: `G9 V1 execution contract`
 
 Why it exists now:
 
-`dn-0008-metal-evaluation-program-v1.md` now freezes the intended host/device
-and runtime contract for generic and generated Metal execution, and the live
-generated `wide_fibonacci` benchmark row now lowers, validates, executes,
-verifies, and times that V1 contract through backend-owned generated sample,
-iteration, and benchmark-run flow. The remaining debt is that the row still
-does not prove end to end through the selected V1 runtime contract; broad
-prove-path ownership still sits partly in the older prove pipeline around the
-migrated selected-runtime gate.
-
-The runtime contract now includes an explicit capability-profile and
-semantic-hash-based selector with one real generated overlay registration, but
-the generated benchmark row still depends on direct benchmark-boundary prove
-logic beyond the migrated prove-core boundary.
+The shared V1 prove runtime (`prove_runtime_v1.rs`) now owns the full prove
+path for the generated `wide_fibonacci` row: trace commit, composition
+polynomial generation via selected V1 evaluation program, composition commit,
+sampled values via V1 dispatch, FRI, decommit, and proof assembly. The
+benchmark module calls `execute_prove_core_v1` directly and carries no
+prove-path logic of its own.
 
 Current containment:
 
-- `docs/dn-0008-metal-evaluation-program-v1.md`
+- `crates/stwo-metal/src/backend/metal/prove_runtime_v1.rs`
 - `crates/stwo-metal/src/backend/metal/benchmark.rs`
-- `crates/stwo-metal/src/backend/metal/execution_plan.rs`
-- `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
-- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
 
 Risk if left in place:
 
-The repository can keep improving the current generated lane while failing to
-converge on one stable ABI and execution contract, leaving future generic and
-downstream work tied to benchmark-local behavior.
+Retired — the generated lane now proves through the selected V1 runtime
+contract.
 
 Exit condition:
 
-The active generated lane proves through a selected `MetalEvaluationProgramV1`
-contract for the remaining live prove path rather than using it as a migrated
-gate beside older prove orchestration, and the generic interpreter lane and
-generated overlay lane share that same contract with at least one real overlay
-registration.
+Met: the generated lane proves end to end through the V1 runtime family with
+one real overlay registration.
 
 Target retirement point:
 
-- `G10`
+- `G10` — retired `2026-03-12`
 
 ### TD-0036: Selected V1 runtime authority is now part of prove core, but its live cost is still too high
 
@@ -86,34 +72,32 @@ Target retirement point:
 
 Why it exists now:
 
-The generated `wide_fibonacci` row now treats selected
-`MetalEvaluationProgramV1` execution as a prove-core authority rather than a
-side API. It now owns composition generation for the generated row, not just a
-fail-closed preflight. That is the correct ownership move, but the migrated
-authority currently still adds substantial cost to the live benchmark row and
-does not yet own the full proof path end to end.
-
-The current reproduced generated-lane `log20` baseline on the last good path
-is about `936.16 ms` prove mean / `936.45 ms` total mean with `metal-prod`,
-`warmups=1`, and `samples=3`.
+The V1 runtime is now the sole proving authority — `execute_prove_core_v1`
+drives the full prove path. Composition generation now has per-sub-phase
+timing (`MetalCompositionDetailBreakdown`) to identify which phase dominates
+at different log sizes. The reference sanity check can be skipped via
+`with_skip_reference_sanity_check` for production runs, and quotient
+application uses in-place mutation. However, the overall V1 runtime cost at
+high log sizes remains too high relative to SIMD.
 
 Current containment:
 
+- `crates/stwo-metal/src/backend/metal/prove_runtime_v1.rs`
 - `crates/stwo-metal/src/backend/metal/benchmark.rs`
-- `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
 - `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
 
 Risk if left in place:
 
-The repository can continue migrating the prove path onto the V1 contract
-while regressing the active generated benchmark row enough to obscure whether
-the selected-runtime architecture is converging on a viable proving path.
+The composition detail breakdown now enables targeted optimization, but until
+the dominant sub-phase at `log21..23` is identified and addressed, the V1
+runtime will continue to lose to SIMD at the log sizes that matter most for
+throughput.
 
 Exit condition:
 
 Selected-runtime-owned prove boundaries remain in place, but the explicit
-`prove_core_evaluation_program_v1_ms` budget is reduced to a non-dominant part
-of the generated `wide_fibonacci` row.
+composition sub-phase budget is reduced to make the generated lane competitive
+with SIMD across the full `log16..23` sweep.
 
 Target retirement point:
 
@@ -121,54 +105,37 @@ Target retirement point:
 
 ### TD-0037: The generated row still needs broader convergence onto the shared V1 runtime family
 
-- Status: `active`
+- Status: `retired`
 - Category: `generated-lane convergence gap`
 - Introduced: `2026-03-11`
 - Owner area: `G10 post-composition migration`
 
 Why it exists now:
 
-The generated `wide_fibonacci` row now uses selected
-`MetalEvaluationProgramV1` output as the authority for composition generation,
-and the repository now has an explicit `OwnedMetalSampledValuesV1` ABI plus
-both a correctness-first reference lane and a first Metal runtime lane for the
-live post-composition sampled-values shape. `stwo-metal` now also owns the
-post-composition runtime boundary itself, carrying the prepared
-sampled-values phase, sampled-values ABI object, post-composition evaluation,
-dispatch kind, and proof/result ownership under one backend contract. It now
-also owns explicit prepared-finish and prepared tree-decommit boundaries above
-that sampled-values runtime. The remaining debt is no longer vendored
-post-composition finishing for the generated row; it is that the generated
-benchmark path still remains more specialized than the intended shared V1
-runtime family and still needs broader convergence and performance tuning under
-that contract.
+The shared V1 prove runtime (`prove_runtime_v1.rs`) now owns the full
+generated prove path. The benchmark module has been reduced to reporting-only:
+all thin wrapper methods and type aliases removed, benchmark calls
+`execute_prove_core_v1` directly, and the prove runtime module is the single
+authority for composition generation, post-composition sampled values, and
+proof assembly.
 
 Current containment:
 
+- `crates/stwo-metal/src/backend/metal/prove_runtime_v1.rs`
 - `crates/stwo-metal/src/backend/metal/benchmark.rs`
-- `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
-- `crates/stwo-metal/src/backend/metal/sampled_values_v1.rs`
-- `vendor/stwo-upstream-dev-62b228e/crates/stwo/src/prover/pcs/mod.rs`
-- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
 
 Risk if left in place:
 
-The repository can keep a truthful ABI and reference lane in place while still
-failing to migrate the live prove-values/decommit path onto the selected V1
-runtime contract, leaving the generated row architecturally mixed and slower
-than it should be. Post-composition sanity is no longer part of this debt,
-because it now runs entirely through the sampled-values ABI family.
+Retired — the generated row now converges onto the shared V1 runtime family.
 
 Exit condition:
 
-The selected V1 runtime contract consumes the live post-composition
-sampled-values ABI directly through the Metal lane, and the generated
-`wide_fibonacci` row no longer needs vendored PCS quotient/FRI finishing or
-tree-decommit ownership beyond V1-owned composition generation.
+Met: the benchmark path no longer carries specialized prove orchestration; the
+shared V1 runtime is the single proving authority.
 
 Target retirement point:
 
-- `G10`
+- `G10` — retired `2026-03-12`
 
 ### TD-0038: The generated lane still scales poorly at high log sizes even after V1 convergence work
 
@@ -181,9 +148,12 @@ Why it exists now:
 
 The current generated-Metal `wide_fibonacci` sweep shows a strong low-log
 story and a weak high-log story. The lane beats SIMD at `log16..20`, then
-falls behind at `log21..23`. That means the current blocker is no longer just
-proof ownership migration. The backend-owned runtime family now needs
-convergence-driven optimization for scaling behavior.
+falls behind at `log21..23`. The V1 prove runtime now has per-sub-phase
+composition timing (`MetalCompositionDetailBreakdown`) to identify which phase
+dominates at high log sizes. Quotient application uses in-place mutation, and
+the reference sanity check is skippable. The next step is to profile the
+composition detail breakdown at `log21..23` and optimize the dominant
+sub-phase.
 
 Current containment:
 
@@ -209,7 +179,7 @@ Target retirement point:
 
 - `G10`
 
-### TD-0039: The downstream `stwo-cairo` / `VIRTUAL_SNOS` target is defined in docs but not yet attached to the converged V1 runtime
+### TD-0039: The downstream `stwo-cairo` / `VIRTUAL_SNOS` target is defined in docs but not yet fully hardened against the converged V1 runtime
 
 - Status: `active`
 - Category: `downstream hardening gap`
@@ -218,23 +188,31 @@ Target retirement point:
 
 Why it exists now:
 
-The program now has a clear downstream target: `stwo-cairo`, with
-`VIRTUAL_SNOS` as the first named proving row and `starknet-privacy` as the
-concrete consumer to keep in mind. That target is frozen in design/control
-docs, but it is not yet exercised by the converged V1 runtime family.
+`VIRTUAL_SNOS` is now registered in the planner manifest under the
+`stwo_cairo` workload family with FriOnly support tier, CPU-owned stages
+(except Metal-native FRI), and `RegisteredProve` as the only supported route.
+Integration tests validate planner recognition, `stwo_cairo` inventory
+exposure, fail-closed behavior for benchmark and workload-boundary routes, and
+Metal-native FRI stage assignment. Evaluation program lowering intentionally
+fails closed since no concrete `stwo-cairo` constraint set has been lowered
+yet.
+
+The remaining work is producing the first real `stwo-cairo` input artifact and
+evaluating it through the V1 runtime contract.
 
 Current containment:
 
 - `docs/dn-0011-stwo-cairo-and-virtual-snos-target.md`
-- `docs/roadmap.md`
-- `docs/program-plan.md`
-- `docs/controller.md`
+- `crates/stwo-metal/src/backend/metal/planner_manifest_v1_generated.rs`
+- `crates/stwo-metal/src/backend/metal/execution_plan.rs`
+- `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
 
 Risk if left in place:
 
-The repository can finish more V1 convergence work while still lacking a
-concrete downstream integration row, which would make it easier for the active
-runtime shape and the actual end goal to drift apart again.
+The planner now recognizes `virtual_snos` and fail-closed integration is
+validated, but the V1 runtime has not yet evaluated an actual `stwo-cairo`
+constraint set. The risk is that the V1 ABI drifts from what `stwo-cairo`
+actually produces.
 
 Exit condition:
 

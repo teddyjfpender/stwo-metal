@@ -52,51 +52,32 @@ Invariants:
 
 ## Current blockers
 
-- the repository now has a minimal `MetalEvaluationProgramV1` ABI module,
-  validator, first generated `fibonacci_example` lowering, a deterministic
-  reference interpreter, and a fail-closed first Metal `.metal` interpreter
-  lane for the currently lowered `fibonacci_example` subset
-- the active generated `wide_fibonacci` row can now lower its benchmark target
-  into a validated V1 program and execute that program on the live generated
-  trace through both the reference and Metal device lanes, but the actual prove
-  path is still only partially migrated: the generated sample now enters
-  backend-owned trace generation, trace commit, prove core, proof
-  verification, generated iteration timing, and generated warmup/timed sample
-  orchestration through `MetalWideFibonacciBenchmarkBoundary`, and the V1
-  runtime now has an explicit overlay lookup and dispatch-selection law keyed
-  by semantic hash and capability profile with a first real `wide_fibonacci`
-  generated overlay registration; prove core now derives the generated
-  `wide_fibonacci` composition polynomial from selected V1 runtime output on
-  the eval domain instead of recomputing composition through the older
-  component-prover path, but the benchmark row still does not prove end to end
-  through the selected V1 runtime contract, and the remaining migrated
-  authority still carries measurable performance cost that remains active G10
-  work
-- the repository now has an explicit `OwnedMetalSampledValuesV1` contract plus
-  both a correctness-first reference lane and a first Metal runtime lane for
-  the live generated post-composition sampled-values shape, so the blocker is
-  no longer “missing ABI” or “missing device execution”; the active blocker is
-  no longer vendored post-composition finishing for the generated row; the
-  active blocker has shifted to broader G10/G11 convergence and performance
-  tuning of the backend-owned runtime family, even though the monolithic
-  `commitment_scheme.prove_values(...)` call has now been split and
-  `stwo-metal` owns the backend post-composition runtime boundary, the
-  sampled-values preparation boundary, the
-  prepared-finish boundary, the prepared tree-decommit boundary, the
-  post-composition sampled-values result contract, generated-lane proof
-  reporting metadata, and post-composition sanity checking entirely inside the
-  sampled-values ABI family rather than legacy proof extraction
-- the current generated-lane benchmark sweep shows the shared runtime family is
-  already ahead of SIMD through `log20` and then scales poorly at `log21..23`,
-  so the active blocker is no longer “can Metal win at all?” but “can the
-  converged V1 runtime family keep its low-log wins while fixing high-log
-  scaling?”
-- the V1 contract now has both a correctness-first reference interpreter and a
-  first Metal `.metal` interpreter lane, but the active generated benchmark
-  row still does not prove through that V1 runtime contract
-- the current acceptance matrix still proves backend viability, but it does not
-  yet validate one shared lowered-program contract across generic and generated
-  execution modes
+- the shared V1 prove runtime (`prove_runtime_v1.rs`) now owns composition
+  generation, post-composition sampled values, prove values, and prove core as
+  a single contract consumed by the generated benchmark row; the benchmark
+  module is reporting-only and no longer carries thin wrapper methods or alias
+  types — it calls `execute_prove_core_v1` directly
+- the generated `wide_fibonacci` prove path now runs end to end through the
+  shared V1 runtime contract: trace commit → composition polynomial via
+  selected V1 evaluation program → composition commit → sampled values via
+  selected V1 dispatch → FRI → decommit → proof assembly, all owned by
+  `prove_runtime_v1`
+- composition generation now has per-sub-phase timing
+  (`MetalCompositionDetailBreakdown`: twiddle, trace extension, eval program,
+  quotient application, interpolation) for diagnosing scaling degradation at
+  high log sizes; quotient application uses in-place mutation instead of
+  map+collect; the reference sanity check can be skipped via
+  `MetalProveRuntimeContextV1::with_skip_reference_sanity_check` for
+  production/benchmark runs
+- the current generated-lane benchmark sweep still shows strong low-log and
+  weak high-log scaling (`log16..20` ahead, `log21..23` behind SIMD); the
+  composition detail breakdown is now available to identify which sub-phase
+  dominates at high logs
+- `VIRTUAL_SNOS` is now registered in the planner manifest under the
+  `stwo_cairo` workload family with FriOnly support tier, CPU-owned stages
+  (except Metal-native FRI), and fail-closed lowering behavior; integration
+  tests validate planner recognition, inventory exposure, and fail-closed
+  behavior for unsupported routes
 - host/device ABI reflection checks for shared Metal boundary records are not
   yet part of the implemented runtime contract
 - internal Rust vocabulary is still CUDA-first in many places
@@ -109,14 +90,12 @@ Invariants:
 
 ## Next three deliverables
 
-1. Collapse the remaining generated-lane proof flow onto shared V1/runtime
-   contracts so the backend-owned implementation path becomes the primary
-   prove-path authority rather than one generated-lane-specialized path.
-2. Reduce the specialized benchmark-only orchestration that still remains so
-   the benchmark binary becomes reporting-only for the generated lane.
-3. Keep the converged runtime and docs aligned with the actual downstream goal:
-   `stwo-cairo`, with `VIRTUAL_SNOS` as the first named hardening row once G10
-   closes.
+1. Profile the composition detail breakdown at `log21..23` and reduce the
+   dominant sub-phase to bring high-log scaling closer to SIMD parity.
+2. Add ABI reflection checks to the V1 runtime contract so host/device
+   boundary records are verified at lowering time.
+3. Begin `G11` hardening: produce the first `stwo-cairo` input artifact and
+   evaluate it against the converged V1 runtime through `virtual_snos`.
 
 ## Explicitly not doing now
 

@@ -135,28 +135,21 @@ The superseded `T0` through `T8` sequence now lives in:
 
 ## Active work definition
 
-The next active implementation work is not “more example multiplication,” not
-“more benchmark-local seams,” and not more `stark-v` hardening while the V1
-program contract is still unimplemented.
+The shared V1 prove runtime is now the single proving authority for the
+generated lane, the benchmark module is reporting-only, and `VIRTUAL_SNOS` is
+registered in the planner manifest with fail-closed integration checks.
 
 The next active work is:
 
-- collapse more of the generated row onto shared V1 runtime paths instead of
-  leaving generated-row-specialized execution helpers in benchmark code
-- reduce the specialized benchmark-only orchestration that still remains so the
-  binary becomes a thin reporting layer over backend-owned runs
-- optimize the backend-owned runtime family only after that cleaner runtime
-  convergence is in place
-- use the current `wide_fibonacci` generated-lane sweep at `log16..23` as the
-  baseline for this work; the lane is ahead of SIMD at `log16..20` and then
-  falls behind badly at `log21..23`, so runtime convergence and scaling
-  behavior now matter more than isolated micro-optimizations
-- keep the migrated selected-runtime authority measurable and optimize it as
-  the real prove-path authority, not as a side check
-- widen the first generated overlay registration into a durable overlay law
-  instead of leaving it as one benchmark-shape specialization
+- profile the composition detail breakdown (`MetalCompositionDetailBreakdown`)
+  at `log21..23` and reduce the dominant sub-phase to bring high-log scaling
+  closer to SIMD parity
+- add ABI reflection checks to the V1 runtime contract so host/device boundary
+  records are verified at lowering time
+- begin `G11` hardening: produce the first real `stwo-cairo` input artifact
+  and evaluate it through the `virtual_snos` planner entry
 - keep examples as the acceptance matrix for the generic and generated lanes
-- keep `stark-v` iced while the first downstream hardening target shifts to
+- keep `stark-v` iced while the first downstream hardening target is
   `stwo-cairo` and specifically the `VIRTUAL_SNOS` row expected by
   `starknet-privacy`
 

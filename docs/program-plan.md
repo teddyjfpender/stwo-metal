@@ -94,20 +94,21 @@ What remains:
 
 The generated `wide_fibonacci` row now has:
 
-- backend-owned sample execution
-- backend-owned timed iteration and benchmark-run orchestration
-- backend-owned composition generation from selected V1 runtime output
-- backend-owned sampled-values ABI and runtime
-- backend-owned prepared-finish and prepared tree-decommit contracts
-- backend-owned proof/result reporting metadata
+- a shared V1 prove runtime (`prove_runtime_v1.rs`) owning the full prove path:
+  trace commit, composition polynomial via selected V1 evaluation program,
+  composition commit, sampled values via V1 dispatch, FRI, decommit, and proof
+  assembly
+- benchmark module reduced to reporting-only (thin wrappers and aliases removed)
+- per-sub-phase composition timing (`MetalCompositionDetailBreakdown`) for
+  scaling diagnosis at high log sizes
+- in-place quotient application and skippable reference sanity check for
+  production runs
 
 What remains:
 
-- collapse the remaining generated-row-specialized orchestration onto shared V1
-  runtime paths
-- make the backend-owned runtime family the clear primary authority, not a
-  migrated layer wrapped around older prove flow
-- improve high-log scaling after that convergence is in place
+- profile the composition detail breakdown at `log21..23` and reduce the
+  dominant sub-phase to bring high-log scaling closer to SIMD parity
+- add ABI reflection checks to the V1 runtime contract
 
 ### G11
 
@@ -117,6 +118,11 @@ The downstream hardening target is now:
 - `VIRTUAL_SNOS` as the first named downstream proving row
 - `starknet-privacy` as the concrete downstream consumer to keep in mind
 
+`VIRTUAL_SNOS` is registered in the planner manifest under the `stwo_cairo`
+workload family. Integration tests validate planner recognition, fail-closed
+lowering, and stage assignments. Evaluation program lowering is intentionally
+absent pending the first real `stwo-cairo` constraint set.
+
 This is intentionally downstream of `G10`. We should not claim `stwo-cairo` or
 `VIRTUAL_SNOS` support on pre-V1 bridge surfaces.
 
@@ -124,12 +130,13 @@ This is intentionally downstream of `G10`. We should not claim `stwo-cairo` or
 
 The active implementation focus is:
 
-- keep collapsing the generated row onto shared V1 runtime paths
-- remove specialized benchmark-only orchestration that still remains
-- optimize the backend-owned runtime family from that cleaner baseline
+- profile and optimize the composition detail breakdown at high log sizes to
+  close the scaling gap with SIMD at `log21..23`
+- add ABI reflection checks to the V1 runtime contract
+- begin `G11` hardening: produce the first real `stwo-cairo` input artifact
+  and evaluate it through the `virtual_snos` planner entry
 - keep examples as the acceptance matrix rather than the producer surface
-- keep `stark-v` iced while the actual downstream target shifts to
-  `stwo-cairo` / `VIRTUAL_SNOS`
+- keep `stark-v` iced
 
 ## Current benchmark evidence
 
@@ -153,11 +160,9 @@ The current generated-lane `wide_fibonacci` sweep motivates this focus:
 
 ## Next three deliverables
 
-1. Collapse the remaining generated-row proof flow onto shared V1/runtime
-   contracts so the backend-owned runtime family becomes the clear primary
-   prove-path authority.
-2. Reduce the specialized benchmark-only orchestration that still remains so
-   the benchmark binaries become reporting-only edges for the generated lane.
-3. Freeze the first `stwo-cairo` / `VIRTUAL_SNOS` hardening inputs and
-   integration checks for `G11` without letting them redefine the backend
-   contract.
+1. Profile the composition detail breakdown at `log21..23` and reduce the
+   dominant sub-phase to bring high-log scaling closer to SIMD parity.
+2. Add ABI reflection checks to the V1 runtime contract so host/device
+   boundary records are verified at lowering time.
+3. Produce the first `stwo-cairo` input artifact and evaluate it against the
+   converged V1 runtime through the `virtual_snos` planner entry for `G11`.
