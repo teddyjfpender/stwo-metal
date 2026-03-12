@@ -345,6 +345,19 @@ pub enum MetalEvaluationProgramLoweringError {
     UnsupportedComponent { component_name: &'static str },
     InvalidWideFibonacciColumnCount { n_columns: u32 },
     RegisterBudgetOverflow,
+    AbiLayoutMismatch {
+        record: &'static str,
+        expected_size: usize,
+        actual_size: usize,
+    },
+    AbiAlignmentMismatch {
+        record: &'static str,
+        expected_align: usize,
+        actual_align: usize,
+    },
+    AbiFieldOffsetMismatch {
+        record: &'static str,
+    },
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -975,10 +988,140 @@ fn build_owned_program_v1(
     }
 }
 
+/// Validate ABI layout of all `#[repr(C)]` host/device boundary records used
+/// by V1 evaluation programs. Returns `Ok(())` if all sizes, alignments, and
+/// field offsets match the contract expected by Metal shader code.
+///
+/// This check is called at lowering time so that any compiler or platform
+/// layout change is caught before a program is handed to the device.
+pub fn validate_eval_program_abi_layout_v1() -> Result<(), MetalEvaluationProgramLoweringError> {
+    use core::mem::{align_of, offset_of, size_of};
+
+    // MetalEvaluationProgramHeaderV1: 96 bytes, 8-byte align
+    if size_of::<MetalEvaluationProgramHeaderV1>() != 96 {
+        return Err(MetalEvaluationProgramLoweringError::AbiLayoutMismatch {
+            record: "MetalEvaluationProgramHeaderV1",
+            expected_size: 96,
+            actual_size: size_of::<MetalEvaluationProgramHeaderV1>(),
+        });
+    }
+    if align_of::<MetalEvaluationProgramHeaderV1>() != 8 {
+        return Err(MetalEvaluationProgramLoweringError::AbiAlignmentMismatch {
+            record: "MetalEvaluationProgramHeaderV1",
+            expected_align: 8,
+            actual_align: align_of::<MetalEvaluationProgramHeaderV1>(),
+        });
+    }
+    // Header field offsets
+    if offset_of!(MetalEvaluationProgramHeaderV1, magic) != 0
+        || offset_of!(MetalEvaluationProgramHeaderV1, abi_major) != 4
+        || offset_of!(MetalEvaluationProgramHeaderV1, abi_minor) != 6
+        || offset_of!(MetalEvaluationProgramHeaderV1, n_sections) != 8
+        || offset_of!(MetalEvaluationProgramHeaderV1, flags) != 12
+        || offset_of!(MetalEvaluationProgramHeaderV1, semantic_hash) != 16
+        || offset_of!(MetalEvaluationProgramHeaderV1, capability_bits) != 24
+        || offset_of!(MetalEvaluationProgramHeaderV1, n_interactions) != 32
+        || offset_of!(MetalEvaluationProgramHeaderV1, n_base_params) != 36
+        || offset_of!(MetalEvaluationProgramHeaderV1, n_ext_params) != 40
+        || offset_of!(MetalEvaluationProgramHeaderV1, n_constraints) != 44
+        || offset_of!(MetalEvaluationProgramHeaderV1, max_base_regs) != 48
+        || offset_of!(MetalEvaluationProgramHeaderV1, max_ext_regs) != 52
+        || offset_of!(MetalEvaluationProgramHeaderV1, secure_ext_degree) != 56
+        || offset_of!(MetalEvaluationProgramHeaderV1, reserved) != 60
+    {
+        return Err(MetalEvaluationProgramLoweringError::AbiFieldOffsetMismatch {
+            record: "MetalEvaluationProgramHeaderV1",
+        });
+    }
+
+    // MetalEvaluationProgramSectionDescV1: 24 bytes, 8-byte align
+    if size_of::<MetalEvaluationProgramSectionDescV1>() != 24 {
+        return Err(MetalEvaluationProgramLoweringError::AbiLayoutMismatch {
+            record: "MetalEvaluationProgramSectionDescV1",
+            expected_size: 24,
+            actual_size: size_of::<MetalEvaluationProgramSectionDescV1>(),
+        });
+    }
+    if align_of::<MetalEvaluationProgramSectionDescV1>() != 8 {
+        return Err(MetalEvaluationProgramLoweringError::AbiAlignmentMismatch {
+            record: "MetalEvaluationProgramSectionDescV1",
+            expected_align: 8,
+            actual_align: align_of::<MetalEvaluationProgramSectionDescV1>(),
+        });
+    }
+    if offset_of!(MetalEvaluationProgramSectionDescV1, kind) != 0
+        || offset_of!(MetalEvaluationProgramSectionDescV1, elem_size) != 4
+        || offset_of!(MetalEvaluationProgramSectionDescV1, offset_bytes) != 8
+        || offset_of!(MetalEvaluationProgramSectionDescV1, count) != 16
+    {
+        return Err(MetalEvaluationProgramLoweringError::AbiFieldOffsetMismatch {
+            record: "MetalEvaluationProgramSectionDescV1",
+        });
+    }
+
+    // MetalEvaluationProgramBaseInstV1: 16 bytes, 4-byte align
+    if size_of::<MetalEvaluationProgramBaseInstV1>() != 16 {
+        return Err(MetalEvaluationProgramLoweringError::AbiLayoutMismatch {
+            record: "MetalEvaluationProgramBaseInstV1",
+            expected_size: 16,
+            actual_size: size_of::<MetalEvaluationProgramBaseInstV1>(),
+        });
+    }
+    if align_of::<MetalEvaluationProgramBaseInstV1>() != 4 {
+        return Err(MetalEvaluationProgramLoweringError::AbiAlignmentMismatch {
+            record: "MetalEvaluationProgramBaseInstV1",
+            expected_align: 4,
+            actual_align: align_of::<MetalEvaluationProgramBaseInstV1>(),
+        });
+    }
+    if offset_of!(MetalEvaluationProgramBaseInstV1, op) != 0
+        || offset_of!(MetalEvaluationProgramBaseInstV1, interaction) != 1
+        || offset_of!(MetalEvaluationProgramBaseInstV1, dst) != 2
+        || offset_of!(MetalEvaluationProgramBaseInstV1, a) != 4
+        || offset_of!(MetalEvaluationProgramBaseInstV1, b) != 8
+        || offset_of!(MetalEvaluationProgramBaseInstV1, imm) != 12
+    {
+        return Err(MetalEvaluationProgramLoweringError::AbiFieldOffsetMismatch {
+            record: "MetalEvaluationProgramBaseInstV1",
+        });
+    }
+
+    // MetalEvaluationProgramExtInstV1: 20 bytes, 4-byte align
+    if size_of::<MetalEvaluationProgramExtInstV1>() != 20 {
+        return Err(MetalEvaluationProgramLoweringError::AbiLayoutMismatch {
+            record: "MetalEvaluationProgramExtInstV1",
+            expected_size: 20,
+            actual_size: size_of::<MetalEvaluationProgramExtInstV1>(),
+        });
+    }
+    if align_of::<MetalEvaluationProgramExtInstV1>() != 4 {
+        return Err(MetalEvaluationProgramLoweringError::AbiAlignmentMismatch {
+            record: "MetalEvaluationProgramExtInstV1",
+            expected_align: 4,
+            actual_align: align_of::<MetalEvaluationProgramExtInstV1>(),
+        });
+    }
+    if offset_of!(MetalEvaluationProgramExtInstV1, op) != 0
+        || offset_of!(MetalEvaluationProgramExtInstV1, reserved0) != 1
+        || offset_of!(MetalEvaluationProgramExtInstV1, dst) != 2
+        || offset_of!(MetalEvaluationProgramExtInstV1, a) != 4
+        || offset_of!(MetalEvaluationProgramExtInstV1, b) != 8
+        || offset_of!(MetalEvaluationProgramExtInstV1, c) != 12
+        || offset_of!(MetalEvaluationProgramExtInstV1, d) != 16
+    {
+        return Err(MetalEvaluationProgramLoweringError::AbiFieldOffsetMismatch {
+            record: "MetalEvaluationProgramExtInstV1",
+        });
+    }
+
+    Ok(())
+}
+
 pub fn lower_registered_metal_evaluation_program_v1(
     component_name: &'static str,
     specialization: MetalEvaluationProgramSpecializationV1,
 ) -> Result<OwnedMetalEvaluationProgramV1, MetalEvaluationProgramLoweringError> {
+    validate_eval_program_abi_layout_v1()?;
     match component_name {
         "fibonacci_example" => lower_wide_fibonacci_evaluation_program_v1(specialization),
         _ => Err(MetalEvaluationProgramLoweringError::UnsupportedComponent { component_name }),
@@ -2461,5 +2604,10 @@ mod tests {
                 offset: 1
             }
         );
+    }
+
+    #[test]
+    fn eval_program_abi_layout_v1_passes() {
+        validate_eval_program_abi_layout_v1().unwrap();
     }
 }

@@ -74,8 +74,9 @@ pub mod program {
         interpret_metal_evaluation_program_v1, lookup_metal_evaluation_program_overlay_v1,
         lower_registered_metal_evaluation_program_v1, lower_wide_fibonacci_evaluation_program_v1,
         metal_evaluation_program_overlays_v1, metal_evaluation_program_semantic_hash_v1,
-        select_metal_evaluation_program_dispatch_v1, validate_metal_evaluation_program_v1,
-        MetalEvaluationProgramBaseInstV1, MetalEvaluationProgramBaseOpcodeV1,
+        select_metal_evaluation_program_dispatch_v1, validate_eval_program_abi_layout_v1,
+        validate_metal_evaluation_program_v1, MetalEvaluationProgramBaseInstV1,
+        MetalEvaluationProgramBaseOpcodeV1,
         MetalEvaluationProgramBudgetV1, MetalEvaluationProgramCapabilityProfileV1,
         MetalEvaluationProgramDispatchKindV1, MetalEvaluationProgramExecutionError,
         MetalEvaluationProgramExtInstV1, MetalEvaluationProgramExtOpcodeV1,
@@ -101,6 +102,7 @@ pub mod program {
         STWO_METAL_SAMPLED_VALUES_MAGIC_V1, execute_selected_metal_sampled_values_v1,
         interpret_metal_sampled_values_v1, interpret_metal_sampled_values_v1_reference,
         lower_metal_sampled_values_v1, select_metal_sampled_values_dispatch_v1,
+        validate_sampled_values_abi_layout_v1,
     };
 }
 
@@ -194,8 +196,9 @@ pub use program::{
     lookup_metal_evaluation_program_overlay_v1, lower_registered_metal_evaluation_program_v1,
     lower_wide_fibonacci_evaluation_program_v1, metal_evaluation_program_overlays_v1,
     metal_evaluation_program_semantic_hash_v1, select_metal_evaluation_program_dispatch_v1,
-    validate_metal_evaluation_program_v1, MetalEvaluationProgramBaseInstV1,
-    MetalEvaluationProgramBaseOpcodeV1, MetalEvaluationProgramBudgetV1,
+    validate_eval_program_abi_layout_v1, validate_metal_evaluation_program_v1,
+    MetalEvaluationProgramBaseInstV1, MetalEvaluationProgramBaseOpcodeV1,
+    MetalEvaluationProgramBudgetV1,
     MetalEvaluationProgramCapabilityProfileV1, MetalEvaluationProgramDispatchKindV1,
     MetalEvaluationProgramExecutionError, MetalEvaluationProgramExtInstV1,
     MetalEvaluationProgramExtOpcodeV1, MetalEvaluationProgramHeaderV1,
@@ -220,6 +223,7 @@ pub use program::{
     STWO_METAL_SAMPLED_VALUES_MAGIC_V1, execute_selected_metal_sampled_values_v1,
     interpret_metal_sampled_values_v1, interpret_metal_sampled_values_v1_reference,
     lower_metal_sampled_values_v1, select_metal_sampled_values_dispatch_v1,
+    validate_sampled_values_abi_layout_v1,
 };
 #[cfg(feature = "prover")]
 pub use quotient::{

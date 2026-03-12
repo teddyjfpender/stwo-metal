@@ -281,6 +281,19 @@ pub enum MetalSampledValuesLoweringError {
     TreeCountOverflow,
     ColumnCountOverflow,
     ValueCountOverflow,
+    AbiLayoutMismatch {
+        record: &'static str,
+        expected_size: usize,
+        actual_size: usize,
+    },
+    AbiAlignmentMismatch {
+        record: &'static str,
+        expected_align: usize,
+        actual_align: usize,
+    },
+    AbiFieldOffsetMismatch {
+        record: &'static str,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -328,9 +341,93 @@ struct WideFibonacciPostCompositionShapeV1 {
     first_column: usize,
 }
 
+/// Validate ABI layout of all `#[repr(C)]` host/device boundary records used
+/// by V1 sampled-values. Returns `Ok(())` if all sizes, alignments, and field
+/// offsets match the contract expected by Metal shader code.
+pub fn validate_sampled_values_abi_layout_v1() -> Result<(), MetalSampledValuesLoweringError> {
+    use core::mem::{align_of, offset_of, size_of};
+
+    // MetalSampledValuesHeaderV1: 36 bytes, 4-byte align
+    if size_of::<MetalSampledValuesHeaderV1>() != 36 {
+        return Err(MetalSampledValuesLoweringError::AbiLayoutMismatch {
+            record: "MetalSampledValuesHeaderV1",
+            expected_size: 36,
+            actual_size: size_of::<MetalSampledValuesHeaderV1>(),
+        });
+    }
+    if align_of::<MetalSampledValuesHeaderV1>() != 4 {
+        return Err(MetalSampledValuesLoweringError::AbiAlignmentMismatch {
+            record: "MetalSampledValuesHeaderV1",
+            expected_align: 4,
+            actual_align: align_of::<MetalSampledValuesHeaderV1>(),
+        });
+    }
+    if offset_of!(MetalSampledValuesHeaderV1, magic) != 0
+        || offset_of!(MetalSampledValuesHeaderV1, abi_major) != 4
+        || offset_of!(MetalSampledValuesHeaderV1, abi_minor) != 6
+        || offset_of!(MetalSampledValuesHeaderV1, n_trees) != 8
+        || offset_of!(MetalSampledValuesHeaderV1, n_columns) != 12
+        || offset_of!(MetalSampledValuesHeaderV1, n_values) != 16
+        || offset_of!(MetalSampledValuesHeaderV1, reserved) != 20
+    {
+        return Err(MetalSampledValuesLoweringError::AbiFieldOffsetMismatch {
+            record: "MetalSampledValuesHeaderV1",
+        });
+    }
+
+    // MetalSampledValuesTreeDescV1: 8 bytes, 4-byte align
+    if size_of::<MetalSampledValuesTreeDescV1>() != 8 {
+        return Err(MetalSampledValuesLoweringError::AbiLayoutMismatch {
+            record: "MetalSampledValuesTreeDescV1",
+            expected_size: 8,
+            actual_size: size_of::<MetalSampledValuesTreeDescV1>(),
+        });
+    }
+    if offset_of!(MetalSampledValuesTreeDescV1, first_column) != 0
+        || offset_of!(MetalSampledValuesTreeDescV1, n_columns) != 4
+    {
+        return Err(MetalSampledValuesLoweringError::AbiFieldOffsetMismatch {
+            record: "MetalSampledValuesTreeDescV1",
+        });
+    }
+
+    // MetalSampledValuesColumnDescV1: 8 bytes, 4-byte align
+    if size_of::<MetalSampledValuesColumnDescV1>() != 8 {
+        return Err(MetalSampledValuesLoweringError::AbiLayoutMismatch {
+            record: "MetalSampledValuesColumnDescV1",
+            expected_size: 8,
+            actual_size: size_of::<MetalSampledValuesColumnDescV1>(),
+        });
+    }
+    if offset_of!(MetalSampledValuesColumnDescV1, first_value) != 0
+        || offset_of!(MetalSampledValuesColumnDescV1, n_values) != 4
+    {
+        return Err(MetalSampledValuesLoweringError::AbiFieldOffsetMismatch {
+            record: "MetalSampledValuesColumnDescV1",
+        });
+    }
+
+    // MetalSecureFieldValueV1: 16 bytes, 4-byte align
+    if size_of::<MetalSecureFieldValueV1>() != 16 {
+        return Err(MetalSampledValuesLoweringError::AbiLayoutMismatch {
+            record: "MetalSecureFieldValueV1",
+            expected_size: 16,
+            actual_size: size_of::<MetalSecureFieldValueV1>(),
+        });
+    }
+    if offset_of!(MetalSecureFieldValueV1, limbs) != 0 {
+        return Err(MetalSampledValuesLoweringError::AbiFieldOffsetMismatch {
+            record: "MetalSecureFieldValueV1",
+        });
+    }
+
+    Ok(())
+}
+
 pub fn lower_metal_sampled_values_v1(
     sampled_values: &TreeVec<Vec<Vec<SecureField>>>,
 ) -> Result<OwnedMetalSampledValuesV1, MetalSampledValuesLoweringError> {
+    validate_sampled_values_abi_layout_v1()?;
     let mut tree_descs = Vec::with_capacity(sampled_values.0.len());
     let mut column_descs = Vec::new();
     let mut values = Vec::new();
@@ -601,5 +698,10 @@ mod tests {
             ),
             _ => assert_eq!(dispatch, MetalSampledValuesDispatchKindV1::ReferenceInterpreter),
         }
+    }
+
+    #[test]
+    fn sampled_values_abi_layout_v1_passes() {
+        validate_sampled_values_abi_layout_v1().unwrap();
     }
 }

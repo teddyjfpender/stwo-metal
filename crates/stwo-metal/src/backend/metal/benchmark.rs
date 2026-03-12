@@ -350,6 +350,11 @@ impl MetalWideFibonacciBenchmarkBoundary {
             MetalEvaluationProgramLoweringError::RegisterBudgetOverflow => {
                 MetalBenchmarkProgramError::RegisterBudgetOverflow { workload_name }
             }
+            MetalEvaluationProgramLoweringError::AbiLayoutMismatch { .. }
+            | MetalEvaluationProgramLoweringError::AbiAlignmentMismatch { .. }
+            | MetalEvaluationProgramLoweringError::AbiFieldOffsetMismatch { .. } => {
+                MetalBenchmarkProgramError::InvalidProgramContract { workload_name }
+            }
         })?;
 
         program
