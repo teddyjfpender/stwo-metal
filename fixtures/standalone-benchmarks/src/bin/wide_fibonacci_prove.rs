@@ -42,11 +42,13 @@ use stwo_examples::wide_fibonacci::{
 use stwo_metal::{
     declare_exemplar_metal_workload_boundary, declare_wide_fibonacci_benchmark_boundary,
     MetalBackend, MetalBenchmarkOperation, MetalBenchmarkReferencePlatform,
-    MetalBenchmarkProofMetadata as BackendProofMetadata,
-    MetalBenchmarkProofSizeBreakdown as BackendProofSizeBreakdown,
     MetalBenchmarkTarget, MetalExecutionIntent, MetalGeneratedWideFibonacciBenchmarkIteration,
     MetalGeneratedWideFibonacciBenchmarkRun,
     MetalGeneratedWideFibonacciBenchmarkSample,
+};
+use stwo_metal::prove_runtime::{
+    MetalProofMetadata as BackendProofMetadata,
+    MetalProofSizeBreakdown as BackendProofSizeBreakdown,
 };
 #[cfg(feature = "metal-runtime")]
 use stwo_metal_fixture_shims::acceptance_bridge_catalog;

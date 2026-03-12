@@ -14,10 +14,7 @@ use stwo_metal::{
     BaseFieldVec, CudaBackend, CudaBackendSurface, CudaBackendSurfaceStatus, CudaExecutionIntent,
     CudaExecutionPlan, MetalBackend, MetalBaseFieldColumnBatch, MetalBaseFieldVec,
     MetalBenchmarkInputError, MetalBenchmarkProgramError, MetalBenchmarkProgramExecutionError,
-    MetalBenchmarkProofMetadata, MetalBenchmarkProofSizeBreakdown,
-    MetalBenchmarkProveCoreBreakdown, MetalBenchmarkProveCoreError,
-    MetalBenchmarkProveValuesBreakdown, MetalBenchmarkProveValuesResult,
-    MetalBenchmarkProveValuesStaging, MetalBenchmarkTarget, MetalBenchmarkTraceShapeError,
+    MetalBenchmarkProveCoreError, MetalBenchmarkTarget, MetalBenchmarkTraceShapeError,
     MetalCpuQuotientEvaluationInput,
     MetalCpuWideFibonacciWitnessInput, MetalEvaluationProgramBaseInstV1,
     MetalEvaluationProgramBudgetV1, MetalEvaluationProgramCapabilityProfileV1,
@@ -54,6 +51,10 @@ use stwo_metal::{
     WIDE_FIBONACCI_PROVE_LOG20_TARGET, execute_selected_metal_sampled_values_v1,
     interpret_metal_sampled_values_v1, interpret_metal_sampled_values_v1_reference,
     lower_metal_sampled_values_v1, select_metal_sampled_values_dispatch_v1,
+};
+use stwo_metal::prove_runtime::{
+    MetalProofMetadata, MetalProofSizeBreakdown, MetalProveCoreBreakdown,
+    MetalProveValuesBreakdown, MetalProveValuesResult, MetalProveValuesStaging,
 };
 
 #[test]
@@ -253,13 +254,13 @@ fn companion_surface_exports_metal_evaluation_program_v1_api() {
     .unwrap();
     let _ = std::mem::size_of::<MetalBenchmarkProgramError>();
     let _ = std::mem::size_of::<MetalBenchmarkProgramExecutionError>();
-    let _ = std::mem::size_of::<MetalBenchmarkProofMetadata>();
-    let _ = std::mem::size_of::<MetalBenchmarkProofSizeBreakdown>();
-    let _ = std::mem::size_of::<MetalBenchmarkProveCoreBreakdown>();
+    let _ = std::mem::size_of::<MetalProofMetadata>();
+    let _ = std::mem::size_of::<MetalProofSizeBreakdown>();
+    let _ = std::mem::size_of::<MetalProveCoreBreakdown>();
     let _ = std::mem::size_of::<MetalBenchmarkProveCoreError>();
-    let _ = std::mem::size_of::<MetalBenchmarkProveValuesBreakdown>();
-    let _ = std::mem::size_of::<MetalBenchmarkProveValuesResult>();
-    let _ = std::mem::size_of::<MetalBenchmarkProveValuesStaging>();
+    let _ = std::mem::size_of::<MetalProveValuesBreakdown>();
+    let _ = std::mem::size_of::<MetalProveValuesResult>();
+    let _ = std::mem::size_of::<MetalProveValuesStaging>();
     let _ = std::mem::size_of::<MetalGeneratedWideFibonacciBenchmarkBreakdown>();
     let _ = std::mem::size_of::<MetalGeneratedWideFibonacciBenchmarkError>();
     let _ = std::mem::size_of::<MetalGeneratedWideFibonacciBenchmarkIteration>();

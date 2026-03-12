@@ -1,8 +1,9 @@
 use stwo::core::air::Component;
-use stwo::core::channel::{Blake2sChannel, Channel};
+use stwo::core::channel::Blake2sChannel;
 use stwo::core::constraints::coset_vanishing;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
+#[allow(unused_imports)]
 use stwo::core::fields::FieldExpOps;
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
@@ -11,8 +12,7 @@ use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleH
 use stwo::core::verifier::{verify, VerificationError, PREPROCESSED_TRACE_IDX};
 use stwo::prover::poly::circle::PolyOps;
 use stwo::prover::{
-    AccumulationOps, CommitmentSchemeProver, ComponentProver, ComponentProvers,
-    DomainEvaluationAccumulator, ProvingError, Trace,
+    CommitmentSchemeProver, ComponentProver, DomainEvaluationAccumulator, Trace,
 };
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
@@ -31,44 +31,18 @@ use super::execution_plan::{
 use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::poly::evaluate_polys_on_domain_batch;
 use super::prove_runtime_v1::{
-    self, commit_trace_with_breakdown as runtime_commit_trace_with_breakdown,
-    execute_prove_core_v1, execute_prove_values_v1, stage_prove_values_v1,
-    validate_prove_runtime_lane_v1, MetalPostCompositionSampledValuesV1,
-    MetalProveCoreBreakdown, MetalProveCoreError, MetalProveRuntimeContextV1,
-    MetalProveRuntimeLaneError, MetalProveValuesBreakdown, MetalProveValuesResult,
-    MetalProveValuesStaging,
+    commit_trace_with_breakdown as runtime_commit_trace_with_breakdown, execute_prove_core_v1,
+    MetalProofMetadata, MetalProveCoreError, MetalProveRuntimeContextV1, MetalProveValuesResult,
 };
 use super::quotient::{
     accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
     MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciQuotientRequest,
 };
-use super::sampled_values_v1::{
-    lower_metal_sampled_values_v1, MetalSampledValuesDispatchKindV1,
-    MetalSampledValuesInterpreterError, MetalSampledValuesLoweringError,
-};
 use super::witness::{MetalWideFibonacciTrace, MetalWideFibonacciTraceError};
 use super::workload::{declare_exemplar_metal_workload_boundary, MetalWorkloadBoundary};
-use super::workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
 use super::MetalBackend;
-use crate::stwo_metal::base_field_vec::BaseFieldVec;
 
 const MAIN_TRACE_IDX: usize = 1;
-
-// ---------------------------------------------------------------------------
-// Backward-compatibility type aliases
-// ---------------------------------------------------------------------------
-// These types now live in prove_runtime_v1. The benchmark module re-exports
-// them under the old names so that existing consumers (binary, lib.rs) do not
-// need to change in this pass.
-
-pub type MetalBenchmarkProveValuesStaging = MetalProveValuesStaging;
-pub type MetalBenchmarkProveCoreBreakdown = MetalProveCoreBreakdown;
-pub type MetalBenchmarkProveValuesBreakdown = MetalProveValuesBreakdown;
-pub type MetalBenchmarkProveValuesResult = MetalProveValuesResult;
-pub type MetalBenchmarkPostCompositionSampledValuesV1 = MetalPostCompositionSampledValuesV1;
-pub type MetalBenchmarkProofMetadata = prove_runtime_v1::MetalProofMetadata;
-pub type MetalBenchmarkProofSizeBreakdown = prove_runtime_v1::MetalProofSizeBreakdown;
-pub type MetalBenchmarkLaneError = MetalProveRuntimeLaneError;
 
 // ---------------------------------------------------------------------------
 // Benchmark-specific types
@@ -159,7 +133,7 @@ impl MetalGeneratedWideFibonacciBenchmarkSample {
         &self.prove_values_result
     }
 
-    pub fn proof_metadata(&self) -> MetalBenchmarkProofMetadata {
+    pub fn proof_metadata(&self) -> MetalProofMetadata {
         self.prove_values_result.proof_metadata()
     }
 
@@ -293,21 +267,9 @@ pub enum MetalBenchmarkProveCoreError {
     ProgramContract {
         source: MetalBenchmarkProgramError,
     },
-    ProgramExecution {
-        source: MetalBenchmarkProgramExecutionError,
-    },
     ProveRuntime {
         source: MetalProveCoreError,
     },
-    Proving {
-        source: ProvingError,
-    },
-}
-
-impl From<ProvingError> for MetalBenchmarkProveCoreError {
-    fn from(source: ProvingError) -> Self {
-        Self::Proving { source }
-    }
 }
 
 impl From<MetalProveCoreError> for MetalBenchmarkProveCoreError {
@@ -357,135 +319,6 @@ impl MetalWideFibonacciBenchmarkBoundary {
             program,
             self.target.log_n_instances,
         ))
-    }
-
-    pub fn validate_prove_values_lane(
-        &self,
-    ) -> Result<&'static str, MetalBenchmarkLaneError> {
-        let workload_name = self.workload_boundary.workload_name();
-        validate_prove_runtime_lane_v1(
-            workload_name,
-            self.execution_seed.plan,
-            self.execution_seed
-                .stage_ownership(MetalWorkloadStage::WitnessMain),
-            self.execution_seed
-                .stage_ownership(MetalWorkloadStage::FriBlake2s),
-        )?;
-        Ok(workload_name)
-    }
-
-    pub fn stage_prove_values(
-        &self,
-        component_provers: &ComponentProvers<'_, super::MetalBackend>,
-        channel: &mut Blake2sChannel,
-        commitment_scheme: &CommitmentSchemeProver<'_, super::MetalBackend, Blake2sMerkleChannel>,
-    ) -> Result<MetalBenchmarkProveValuesStaging, MetalBenchmarkLaneError> {
-        self.validate_prove_values_lane()?;
-        Ok(stage_prove_values_v1(
-            component_provers,
-            channel,
-            commitment_scheme,
-        ))
-    }
-
-    pub fn execute_prove_values(
-        &self,
-        channel: &mut Blake2sChannel,
-        commitment_scheme: CommitmentSchemeProver<'_, super::MetalBackend, Blake2sMerkleChannel>,
-        staging: MetalBenchmarkProveValuesStaging,
-    ) -> Result<
-        (
-            MetalBenchmarkProveValuesResult,
-            MetalBenchmarkProveValuesBreakdown,
-        ),
-        ProvingError,
-    > {
-        execute_prove_values_v1(channel, commitment_scheme, staging)
-    }
-
-    pub fn execute_prove_core(
-        &self,
-        components: &[&dyn stwo::prover::ComponentProver<super::MetalBackend>],
-        channel: &mut Blake2sChannel,
-        commitment_scheme: CommitmentSchemeProver<
-            '_,
-            super::MetalBackend,
-            Blake2sMerkleChannel,
-        >,
-    ) -> Result<
-        (
-            MetalBenchmarkProveValuesResult,
-            MetalBenchmarkProveCoreBreakdown,
-        ),
-        MetalBenchmarkProveCoreError,
-    > {
-        let ctx = self
-            .prove_runtime_context_v1()
-            .map_err(|source| MetalBenchmarkProveCoreError::ProgramContract { source })?;
-        execute_prove_core_v1(&ctx, components, channel, commitment_scheme)
-            .map_err(MetalBenchmarkProveCoreError::from)
-    }
-
-    pub fn lower_post_composition_sampled_values_v1(
-        &self,
-        proof: &StarkProof<Blake2sMerkleHasher>,
-    ) -> Result<MetalBenchmarkPostCompositionSampledValuesV1, MetalSampledValuesLoweringError>
-    {
-        self.lower_post_composition_sampled_values_v1_from_tree(&proof.sampled_values)
-    }
-
-    pub fn lower_post_composition_sampled_values_v1_from_tree(
-        &self,
-        sampled_values: &TreeVec<Vec<Vec<SecureField>>>,
-    ) -> Result<MetalBenchmarkPostCompositionSampledValuesV1, MetalSampledValuesLoweringError>
-    {
-        prove_runtime_v1::lower_post_composition_sampled_values_v1(sampled_values)
-    }
-
-    pub fn interpret_post_composition_sampled_values_v1(
-        &self,
-        components: &stwo::core::air::Components<'_>,
-        point: stwo::core::circle::CirclePoint<SecureField>,
-        sampled_values: &MetalBenchmarkPostCompositionSampledValuesV1,
-        random_coeff: SecureField,
-        max_log_degree_bound: u32,
-    ) -> Result<SecureField, MetalSampledValuesInterpreterError> {
-        prove_runtime_v1::interpret_post_composition_sampled_values_v1(
-            components,
-            point,
-            sampled_values,
-            random_coeff,
-            max_log_degree_bound,
-        )
-    }
-
-    pub fn interpret_post_composition_sampled_values_v1_reference(
-        &self,
-        point: stwo::core::circle::CirclePoint<SecureField>,
-        sampled_values: &MetalBenchmarkPostCompositionSampledValuesV1,
-        max_log_degree_bound: u32,
-    ) -> Result<SecureField, super::sampled_values_v1::MetalSampledValuesExecutionError> {
-        prove_runtime_v1::interpret_post_composition_sampled_values_v1_reference(
-            point,
-            sampled_values,
-            max_log_degree_bound,
-        )
-    }
-
-    pub fn execute_post_composition_sampled_values_v1(
-        &self,
-        point: stwo::core::circle::CirclePoint<SecureField>,
-        sampled_values: &MetalBenchmarkPostCompositionSampledValuesV1,
-        max_log_degree_bound: u32,
-    ) -> Result<
-        (SecureField, MetalSampledValuesDispatchKindV1),
-        super::sampled_values_v1::MetalSampledValuesExecutionError,
-    > {
-        prove_runtime_v1::execute_post_composition_sampled_values_v1(
-            point,
-            sampled_values,
-            max_log_degree_bound,
-        )
     }
 
     pub fn evaluation_program_v1(
@@ -760,14 +593,17 @@ impl MetalWideFibonacciBenchmarkBoundary {
             self.target.log_n_instances,
             self.target.n_columns as usize,
         );
+        let ctx = self.prove_runtime_context_v1().map_err(|source| {
+            MetalGeneratedWideFibonacciBenchmarkError::ProveCore {
+                source: MetalBenchmarkProveCoreError::ProgramContract { source },
+            }
+        })?;
         let prove_core_start = std::time::Instant::now();
-        let (prove_values_result, prove_core_breakdown) = self
-            .execute_prove_core(
-                &[&component],
-                prover_channel,
-                commitment_scheme,
-            )
-            .map_err(|source| MetalGeneratedWideFibonacciBenchmarkError::ProveCore { source })?;
+        let (prove_values_result, prove_core_breakdown) =
+            execute_prove_core_v1(&ctx, &[&component], prover_channel, commitment_scheme)
+                .map_err(|source| MetalGeneratedWideFibonacciBenchmarkError::ProveCore {
+                    source: MetalBenchmarkProveCoreError::from(source),
+                })?;
         let prove_core_ms = prove_core_start.elapsed().as_secs_f64() * 1000.0;
 
         Ok(MetalGeneratedWideFibonacciBenchmarkSample {
@@ -1154,21 +990,27 @@ mod tests {
     use stwo::core::pcs::quotients::CommitmentSchemeProof;
     use stwo::core::proof::StarkProof;
 
+    use stwo::prover::ComponentProvers;
+
     use super::{
-        declare_wide_fibonacci_benchmark_boundary, lower_metal_sampled_values_v1,
-        ComponentProvers, MetalBenchmarkInputError,
-        MetalBenchmarkLaneError, MetalBenchmarkOperation, MetalBenchmarkProgramExecutionError,
-        MetalBenchmarkPostCompositionSampledValuesV1, MetalBenchmarkReferencePlatform,
-        MetalExecutionIntent, WideFibonacciBenchmarkComponent, WIDE_FIBONACCI_PROVE_LOG20_TARGET,
-        WIDE_FIBONACCI_TRACE_LOG20_TARGET,
+        declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError,
+        MetalBenchmarkOperation, MetalBenchmarkProgramExecutionError,
+        MetalBenchmarkReferencePlatform, MetalExecutionIntent, WideFibonacciBenchmarkComponent,
+        WIDE_FIBONACCI_PROVE_LOG20_TARGET, WIDE_FIBONACCI_TRACE_LOG20_TARGET,
     };
     use crate::backend::metal::artifact::MetalGeneratedRouteKind;
+    use crate::backend::metal::prove_runtime_v1::{
+        interpret_post_composition_sampled_values_v1, MetalPostCompositionSampledValuesV1,
+        MetalProveRuntimeLaneError, validate_prove_runtime_lane_v1,
+    };
+    use crate::backend::metal::sampled_values_v1::{
+        lower_metal_sampled_values_v1, MetalSampledValuesDispatchKindV1,
+    };
     use crate::backend::metal::{
         metal_runtime_support, MetalEvaluationProgramDispatchKindV1, MetalExecutionPlan,
         MetalPlannerError, MetalRuntimeSupport, MetalWorkloadOwnership, MetalWorkloadStage,
         UnsupportedGeneratedMetalRoute,
     };
-    use super::MetalSampledValuesDispatchKindV1;
 
     #[test]
     fn wide_fibonacci_targets_are_fixed_to_log20_and_rtx4090_reference() {
@@ -1219,10 +1061,17 @@ mod tests {
                 .specialization_keys,
             &["log_n_instances", "n_columns"]
         );
-        assert_eq!(
-            boundary.validate_prove_values_lane(),
-            Ok("fibonacci_example")
-        );
+        validate_prove_runtime_lane_v1(
+            boundary.workload_boundary().workload_name(),
+            boundary.workload_boundary().plan(),
+            boundary
+                .workload_boundary()
+                .stage_ownership(MetalWorkloadStage::WitnessMain),
+            boundary
+                .workload_boundary()
+                .stage_ownership(MetalWorkloadStage::FriBlake2s),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1420,15 +1269,14 @@ mod tests {
         let lowered = lower_metal_sampled_values_v1(&sampled_values).unwrap();
         let random_coeff = SecureField::from_u32_unchecked(3, 5, 7, 11);
 
-        let interpreted = boundary
-            .interpret_post_composition_sampled_values_v1(
-                &component_provers.components(),
-                point,
-                &MetalBenchmarkPostCompositionSampledValuesV1::from_owned(lowered),
-                random_coeff,
-                max_log_degree_bound,
-            )
-            .unwrap();
+        let interpreted = interpret_post_composition_sampled_values_v1(
+            &component_provers.components(),
+            point,
+            &MetalPostCompositionSampledValuesV1::from_owned(lowered),
+            random_coeff,
+            max_log_degree_bound,
+        )
+        .unwrap();
         let legacy = component_provers.components().eval_composition_polynomial_at_point(
             point,
             &sampled_values,
@@ -1448,8 +1296,17 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            boundary.validate_prove_values_lane(),
-            Err(MetalBenchmarkLaneError::PlanNotMetalCapable { .. })
+            validate_prove_runtime_lane_v1(
+                boundary.workload_boundary().workload_name(),
+                boundary.workload_boundary().plan(),
+                boundary
+                    .workload_boundary()
+                    .stage_ownership(MetalWorkloadStage::WitnessMain),
+                boundary
+                    .workload_boundary()
+                    .stage_ownership(MetalWorkloadStage::FriBlake2s),
+            ),
+            Err(MetalProveRuntimeLaneError::PlanNotMetalCapable { .. })
         ));
     }
 

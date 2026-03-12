@@ -32,17 +32,13 @@ mod workload_contract;
 
 pub use backend::MetalBackend;
 pub use benchmark::{
-    declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError, MetalBenchmarkLaneError,
+    declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError,
     MetalBenchmarkOperation, MetalBenchmarkProgramError, MetalBenchmarkProgramExecutionError,
-    MetalBenchmarkProofMetadata, MetalBenchmarkProofSizeBreakdown,
-    MetalBenchmarkProveCoreBreakdown, MetalBenchmarkProveCoreError,
-    MetalBenchmarkProveValuesBreakdown, MetalBenchmarkProveValuesResult,
-    MetalBenchmarkProveValuesStaging,
+    MetalBenchmarkProveCoreError,
     MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalBenchmarkTraceShapeError,
     MetalGeneratedWideFibonacciBenchmarkBreakdown, MetalGeneratedWideFibonacciBenchmarkError,
     MetalGeneratedWideFibonacciBenchmarkIteration, MetalGeneratedWideFibonacciBenchmarkRun,
     MetalGeneratedWideFibonacciBenchmarkSample,
-    MetalBenchmarkPostCompositionSampledValuesV1,
     MetalWideFibonacciBenchmarkBoundary, MetalWideFibonacciWitnessInputs,
     WIDE_FIBONACCI_PROVE_LOG20_TARGET,
     WIDE_FIBONACCI_TRACE_LOG20_TARGET,

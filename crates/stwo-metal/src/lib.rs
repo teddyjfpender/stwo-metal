@@ -37,12 +37,9 @@ pub mod capability {
 pub mod benchmark {
     pub use crate::backend::metal::{
         declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError,
-        MetalBenchmarkLaneError, MetalBenchmarkOperation, MetalBenchmarkProgramError,
-        MetalBenchmarkProgramExecutionError, MetalBenchmarkProveCoreBreakdown,
-        MetalBenchmarkPostCompositionSampledValuesV1, MetalBenchmarkProveCoreError,
-        MetalBenchmarkProofMetadata, MetalBenchmarkProofSizeBreakdown,
-        MetalBenchmarkProveValuesBreakdown, MetalBenchmarkProveValuesResult,
-        MetalBenchmarkProveValuesStaging, MetalBenchmarkReferencePlatform, MetalBenchmarkTarget,
+        MetalBenchmarkOperation, MetalBenchmarkProgramError,
+        MetalBenchmarkProgramExecutionError, MetalBenchmarkProveCoreError,
+        MetalBenchmarkReferencePlatform, MetalBenchmarkTarget,
         MetalBenchmarkTraceShapeError, MetalGeneratedWideFibonacciBenchmarkBreakdown,
         MetalGeneratedWideFibonacciBenchmarkError,
         MetalGeneratedWideFibonacciBenchmarkIteration, MetalGeneratedWideFibonacciBenchmarkRun,
@@ -164,13 +161,9 @@ pub use abi::{
 };
 #[cfg(feature = "prover")]
 pub use benchmark::{
-    declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError, MetalBenchmarkLaneError,
+    declare_wide_fibonacci_benchmark_boundary, MetalBenchmarkInputError,
     MetalBenchmarkOperation, MetalBenchmarkProgramError, MetalBenchmarkProgramExecutionError,
-    MetalBenchmarkPostCompositionSampledValuesV1, MetalBenchmarkProveCoreBreakdown,
-    MetalBenchmarkProofMetadata, MetalBenchmarkProofSizeBreakdown,
     MetalBenchmarkProveCoreError,
-    MetalBenchmarkProveValuesBreakdown, MetalBenchmarkProveValuesResult,
-    MetalBenchmarkProveValuesStaging,
     MetalBenchmarkReferencePlatform, MetalBenchmarkTarget, MetalBenchmarkTraceShapeError,
     MetalGeneratedWideFibonacciBenchmarkBreakdown, MetalGeneratedWideFibonacciBenchmarkError,
     MetalGeneratedWideFibonacciBenchmarkIteration, MetalGeneratedWideFibonacciBenchmarkRun,

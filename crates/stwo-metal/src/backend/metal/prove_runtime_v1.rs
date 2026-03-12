@@ -13,6 +13,7 @@ use stwo::core::channel::{Blake2sChannel, Channel};
 use stwo::core::constraints::coset_vanishing;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+#[allow(unused_imports)]
 use stwo::core::fields::FieldExpOps;
 use stwo::core::pcs::quotients::CommitmentSchemeProof;
 use stwo::core::pcs::utils::{get_lifting_log_size, prepare_query_positions_for_tree};
@@ -328,6 +329,7 @@ fn execute_evaluation_program_v1_on_trace_interactions(
     .map_err(|source| MetalProveRuntimeCompositionError::ProgramExecution { source })
 }
 
+#[allow(dead_code)]
 fn interpret_evaluation_program_v1_on_trace_interactions(
     program: &OwnedMetalEvaluationProgramV1,
     trace_interactions: &[&[&[BaseField]]],
