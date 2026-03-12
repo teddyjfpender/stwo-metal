@@ -143,6 +143,45 @@ Superseded by:
 
 - none
 
+### DEC-0177: Generated post-composition finishing is now backend-implemented behind the explicit runtime contracts
+
+- Date: `2026-03-11`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
+
+Decision:
+
+For the generated `wide_fibonacci` row, quotient/FRI finishing and tree-decommit
+must now be implemented by `stwo-metal` on top of lower-level proving
+primitives instead of delegating to vendored prepared-finish implementations.
+
+Context:
+
+After `DEC-0176`, the generated row already crossed explicit sampled-values,
+prepared-finish, and prepared tree-decommit contracts. The next
+semantics-preserving step was to remove the remaining vendored implementation
+dependency behind those contracts while keeping the same proof bytes and public
+benchmark contract.
+
+Alternatives rejected:
+
+- keep the explicit contracts but continue calling vendored `prepare_finish()`
+  and `finish()` for the live generated row
+- defer backend-owned finishing until a fully generic V1 prove path exists
+
+Impact:
+
+- the generated row no longer depends on vendored quotient/FRI finish and tree
+  decommit implementation
+- the remaining G10/G11 work shifts from “remove vendored implementation” to
+  “broaden convergence onto the shared V1 runtime family and tune performance”
+
+Superseded by:
+
+- none
+
 ### DEC-0173: Generated prove-values ownership now crosses a prepared sampled-values phase before vendored proof finishing
 
 - Date: `2026-03-11`

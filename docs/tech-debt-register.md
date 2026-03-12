@@ -119,10 +119,10 @@ Target retirement point:
 
 - `G10`
 
-### TD-0037: The current V1 contract stops at composition generation and cannot yet consume the live post-composition sampled-values ABI
+### TD-0037: The generated row still needs broader convergence onto the shared V1 runtime family
 
 - Status: `active`
-- Category: `generated-lane ABI gap`
+- Category: `generated-lane convergence gap`
 - Introduced: `2026-03-11`
 - Owner area: `G10 post-composition migration`
 
@@ -137,14 +137,11 @@ post-composition runtime boundary itself, carrying the prepared
 sampled-values phase, sampled-values ABI object, post-composition evaluation,
 dispatch kind, and proof/result ownership under one backend contract. It now
 also owns explicit prepared-finish and prepared tree-decommit boundaries above
-that sampled-values runtime. The
-remaining debt is that the vendored PCS quotient/FRI finishing path and the
-following tree-decommit generation still provide the implementation behind that runtime
-boundary, so the generated prove path cannot yet stay on the V1/overlay
-contract end to end. The monolithic `commitment_scheme.prove_values(...)`
-call is no longer the live authority in the generated row; it has been split
-into a prepared sampled-values phase, a later prepared-finish phase, and a
-final prepared tree-decommit phase.
+that sampled-values runtime. The remaining debt is no longer vendored
+post-composition finishing for the generated row; it is that the generated
+benchmark path still remains more specialized than the intended shared V1
+runtime family and still needs broader convergence and performance tuning under
+that contract.
 
 Current containment:
 

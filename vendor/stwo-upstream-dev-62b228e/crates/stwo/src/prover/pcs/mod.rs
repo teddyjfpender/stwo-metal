@@ -72,6 +72,16 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel>
         &self.sampled_values
     }
 
+    pub fn into_parts(
+        self,
+    ) -> (
+        CommitmentSchemeProver<'a, B, MC>,
+        TreeVec<Vec<Vec<PointSample>>>,
+        TreeVec<Vec<Vec<SecureField>>>,
+    ) {
+        (self.commitment_scheme, self.samples, self.sampled_values)
+    }
+
     pub fn prepare_finish(self, channel: &mut MC::C) -> PreparedCommitmentSchemeFinish<'a, B, MC> {
         let debug_prove_values = std::env::var_os("STWO_CUDA_DEBUG_PROVE_VALUES").is_some();
         let profile_prove_values = std::env::var_os("STWO_METAL_PROFILE_PROVE_VALUES").is_some();
@@ -378,6 +388,31 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 
     pub fn roots(&self) -> TreeVec<<MC::H as MerkleHasherLifted>::Hash> {
         self.trees.as_ref().map(|tree| tree.commitment.root())
+    }
+
+    pub fn lifting_log_size(&self) -> u32 {
+        self.trees
+            .last()
+            .expect("commitment scheme must have at least one tree")
+            .commitment
+            .layers
+            .len() as u32
+            - 1
+    }
+
+    pub fn twiddles(&self) -> &'a TwiddleTree<B> {
+        self.twiddles
+    }
+
+    pub fn recycle_owned_tree_columns(&mut self) {
+        for tree in &mut self.trees.0 {
+            if let MaybeOwned::Owned(tree) = tree {
+                for poly in tree.polynomials.drain(..) {
+                    let log_size = poly.evals.domain.log_size();
+                    self.base_column_pool.give_back(log_size, poly.evals.values);
+                }
+            }
+        }
     }
 
     pub fn polynomials(&self) -> TreeVec<ColumnVec<&Poly<B>>> {
@@ -746,6 +781,16 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
             .map(|poly| &poly.evals.values)
             .collect_vec();
         self.commitment.decommit(queries, eval_vec)
+    }
+
+    pub fn decommit_queries(
+        &self,
+        queries: &[usize],
+    ) -> (
+        ColumnVec<Vec<BaseField>>,
+        ExtendedMerkleDecommitmentLifted<MC::H>,
+    ) {
+        self.decommit(queries)
     }
 }
 

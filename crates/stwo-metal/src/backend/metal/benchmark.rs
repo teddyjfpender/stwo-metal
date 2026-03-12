@@ -4,22 +4,25 @@ use stwo::core::constraints::coset_vanishing;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo::core::fields::FieldExpOps;
+use stwo::core::pcs::quotients::CommitmentSchemeProof;
+use stwo::core::pcs::utils::prepare_query_positions_for_tree;
 use stwo::core::pcs::utils::get_lifting_log_size;
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::{StarkProof, StarkProofSizeBreakdown};
+use stwo::core::proof_of_work::GrindOps;
 use stwo::core::utils::MaybeOwned;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::verifier::{verify, VerificationError, PREPROCESSED_TRACE_IDX};
 use stwo::prover::poly::circle::{CircleEvaluation, PolyOps, SecureCirclePoly, SecureEvaluation};
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::fri::{FriDecommitResult, FriProver};
 use stwo::prover::vcs_lifted::ops::MerkleOpsLifted;
 use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
 use stwo::prover::{
     AccumulationOps, CommitmentSchemeProver, CommitmentTreeProver, ComponentProver,
-    ComponentProvers, DomainEvaluationAccumulator, PreparedCommitmentSchemeFinish,
-    PreparedCommitmentSchemeProveValues, PreparedCommitmentSchemeTreeDecommit, ProvingError,
-    Trace,
+    compute_fri_quotients, ComponentProvers, DomainEvaluationAccumulator,
+    PreparedCommitmentSchemeProveValues, ProvingError, Trace,
 };
 
 use super::artifact::{MetalGeneratedRouteKind, MetalRegisteredBenchmarkOperation};
@@ -277,16 +280,24 @@ struct MetalBenchmarkPostCompositionRuntime<'a> {
 }
 
 struct MetalBenchmarkPostCompositionFinishRuntime<'a> {
-    prepared_finish:
-        PreparedCommitmentSchemeFinish<'a, super::MetalBackend, Blake2sMerkleChannel>,
+    commitment_scheme: CommitmentSchemeProver<'a, super::MetalBackend, Blake2sMerkleChannel>,
+    sampled_values_tree: TreeVec<Vec<Vec<SecureField>>>,
+    commitments: TreeVec<<Blake2sMerkleHasher as stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted>::Hash>,
+    proof_of_work: u64,
+    fri_proof: stwo::core::fri::ExtendedFriProof<Blake2sMerkleHasher>,
+    tree_query_positions: Vec<Vec<usize>>,
     sampled_values: MetalBenchmarkPostCompositionSampledValuesV1,
     post_composition_eval: SecureField,
     sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
 }
 
 struct MetalBenchmarkPostCompositionTreeDecommitRuntime<'a> {
-    prepared_tree_decommit:
-        PreparedCommitmentSchemeTreeDecommit<'a, super::MetalBackend, Blake2sMerkleChannel>,
+    commitment_scheme: CommitmentSchemeProver<'a, super::MetalBackend, Blake2sMerkleChannel>,
+    sampled_values_tree: TreeVec<Vec<Vec<SecureField>>>,
+    commitments: TreeVec<<Blake2sMerkleHasher as stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted>::Hash>,
+    proof_of_work: u64,
+    fri_proof: stwo::core::fri::ExtendedFriProof<Blake2sMerkleHasher>,
+    tree_query_positions: Vec<Vec<usize>>,
     sampled_values: MetalBenchmarkPostCompositionSampledValuesV1,
     post_composition_eval: SecureField,
     sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
@@ -708,9 +719,53 @@ impl MetalWideFibonacciBenchmarkBoundary {
         post_composition_eval: SecureField,
         sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
     ) -> Result<MetalBenchmarkPostCompositionFinishRuntime<'a>, ProvingError> {
-        let prepared_finish = runtime.prepared_prove_values.prepare_finish(channel);
+        let (commitment_scheme, samples, sampled_values_tree) =
+            runtime.prepared_prove_values.into_parts();
+        let columns = commitment_scheme.evaluations();
+        let lifting_log_size = commitment_scheme.lifting_log_size();
+        let quotients = compute_fri_quotients(
+            &columns,
+            &samples,
+            channel.draw_secure_felt(),
+            lifting_log_size,
+            commitment_scheme.config.fri_config.log_blowup_factor,
+        );
+        let fri_prover = FriProver::<super::MetalBackend, Blake2sMerkleChannel>::commit(
+            channel,
+            commitment_scheme.config.fri_config,
+            &quotients,
+            commitment_scheme.twiddles(),
+        );
+        let proof_of_work = super::MetalBackend::grind(channel, commitment_scheme.config.pow_bits);
+        channel.mix_u64(proof_of_work);
+        let FriDecommitResult {
+            fri_proof,
+            query_positions,
+            unsorted_query_locations: _unsorted_query_locations,
+        } = fri_prover.decommit(channel);
+        let tree_log_sizes = commitment_scheme
+            .trees
+            .iter()
+            .map(|tree| tree.commitment.layers.len() as u32 - 1)
+            .collect::<Vec<_>>();
+        let tree_query_positions = tree_log_sizes
+            .iter()
+            .map(|&tree_log_size| {
+                prepare_query_positions_for_tree(
+                    &query_positions,
+                    lifting_log_size,
+                    tree_log_size,
+                )
+            })
+            .collect();
+        let commitments = commitment_scheme.roots();
         Ok(MetalBenchmarkPostCompositionFinishRuntime {
-            prepared_finish,
+            commitment_scheme,
+            sampled_values_tree,
+            commitments,
+            proof_of_work,
+            fri_proof,
+            tree_query_positions,
             sampled_values: runtime.sampled_values,
             post_composition_eval,
             sampled_values_dispatch,
@@ -729,9 +784,13 @@ impl MetalWideFibonacciBenchmarkBoundary {
         &self,
         runtime: MetalBenchmarkPostCompositionFinishRuntime<'a>,
     ) -> MetalBenchmarkPostCompositionTreeDecommitRuntime<'a> {
-        let prepared_tree_decommit = runtime.prepared_finish.prepare_tree_decommit();
         MetalBenchmarkPostCompositionTreeDecommitRuntime {
-            prepared_tree_decommit,
+            commitment_scheme: runtime.commitment_scheme,
+            sampled_values_tree: runtime.sampled_values_tree,
+            commitments: runtime.commitments,
+            proof_of_work: runtime.proof_of_work,
+            fri_proof: runtime.fri_proof,
+            tree_query_positions: runtime.tree_query_positions,
             sampled_values: runtime.sampled_values,
             post_composition_eval: runtime.post_composition_eval,
             sampled_values_dispatch: runtime.sampled_values_dispatch,
@@ -740,10 +799,32 @@ impl MetalWideFibonacciBenchmarkBoundary {
 
     fn execute_post_composition_tree_decommit_runtime(
         &self,
-        runtime: MetalBenchmarkPostCompositionTreeDecommitRuntime<'_>,
+        mut runtime: MetalBenchmarkPostCompositionTreeDecommitRuntime<'_>,
     ) -> MetalBenchmarkProveValuesResult {
-        let commitment_scheme_proof = runtime.prepared_tree_decommit.finish();
-        let proof = StarkProof(commitment_scheme_proof.proof);
+        let mut queried_values = Vec::with_capacity(runtime.commitment_scheme.trees.len());
+        let mut decommitments = Vec::with_capacity(runtime.commitment_scheme.trees.len());
+        for (tree, query_positions) in runtime
+            .commitment_scheme
+            .trees
+            .as_ref()
+            .0
+            .into_iter()
+            .zip(runtime.tree_query_positions.iter())
+        {
+            let (values, decommit_result) = tree.decommit_queries(query_positions);
+            queried_values.push(values);
+            decommitments.push(decommit_result.decommitment);
+        }
+        runtime.commitment_scheme.recycle_owned_tree_columns();
+        let proof = StarkProof(CommitmentSchemeProof {
+            config: runtime.commitment_scheme.config,
+            commitments: runtime.commitments,
+            sampled_values: runtime.sampled_values_tree,
+            decommitments: TreeVec(decommitments),
+            queried_values: TreeVec(queried_values),
+            proof_of_work: runtime.proof_of_work,
+            fri_proof: runtime.fri_proof.proof,
+        });
         MetalBenchmarkProveValuesResult {
             proof,
             sampled_values: runtime.sampled_values,
