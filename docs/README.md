@@ -46,6 +46,9 @@ is planned, controlled, reviewed, and changed.
 - [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md):
   formal basis for the next shared ABI step after V1-owned composition
   generation
+- [`dn-0010-generated-row-convergence-and-runtime-optimization.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0010-generated-row-convergence-and-runtime-optimization.md):
+  formal basis for collapsing the generated row onto shared V1 runtime paths
+  and optimizing from that cleaner baseline
 
 ## Rules
 

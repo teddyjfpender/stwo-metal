@@ -76,6 +76,7 @@ The active formal basis is:
 - [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
 - [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
 - [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
+- [`dn-0010-generated-row-convergence-and-runtime-optimization.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0010-generated-row-convergence-and-runtime-optimization.md)
 
 ## Current implementation focus
 
@@ -83,11 +84,18 @@ The active implementation focus is now:
 
 - freeze `MetalEvaluationProgramV1` as the stable generated and generic
   execution contract
-- build the first ABI crate/module and validator for that contract
-- define the generic interpreter lane and generated overlay lane as two
-  execution modes of the same program contract
+- collapse more of the generated row onto shared V1 runtime paths
+- remove the specialized benchmark-only orchestration that still remains
+- optimize the backend-owned runtime family from that cleaner baseline
 - keep examples as the acceptance matrix rather than the producer surface
 - keep `stark-v` iced until the V1 contract exists in code
+
+The current generated-lane benchmark baseline that motivates this focus is:
+
+- `wide_fibonacci` generated-metal beats SIMD from `log16` through `log20`
+- the same lane falls behind at `log21..23`
+- the next work is therefore a runtime-convergence and scaling problem, not
+  just a low-log micro-optimization problem
 
 ## Immediate sequencing rules for G9
 

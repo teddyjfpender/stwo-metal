@@ -170,6 +170,45 @@ Target retirement point:
 
 - `G10`
 
+### TD-0038: The generated lane still scales poorly at high log sizes even after V1 convergence work
+
+- Status: `active`
+- Category: `measured runtime scaling gap`
+- Introduced: `2026-03-12`
+- Owner area: `G10 generated-lane optimization`
+
+Why it exists now:
+
+The current generated-Metal `wide_fibonacci` sweep shows a strong low-log
+story and a weak high-log story. The lane beats SIMD at `log16..20`, then
+falls behind at `log21..23`. That means the current blocker is no longer just
+proof ownership migration. The backend-owned runtime family now needs
+convergence-driven optimization for scaling behavior.
+
+Current containment:
+
+- `docs/dn-0010-generated-row-convergence-and-runtime-optimization.md`
+- `crates/stwo-metal/src/backend/metal/benchmark.rs`
+- `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
+- `crates/stwo-metal/src/backend/metal/sampled_values_v1.rs`
+- `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
+
+Risk if left in place:
+
+The repository can finish the architectural migration onto the V1 runtime
+family while still keeping a generated lane that wins at small and mid logs but
+fails to scale to the larger rows that matter most for throughput.
+
+Exit condition:
+
+The generated-lane benchmark remains ahead of or competitive with SIMD across
+the supported `wide_fibonacci` sweep, and the main remaining work is no longer
+shared-runtime scaling behavior.
+
+Target retirement point:
+
+- `G10`
+
 ### TD-0033: FRI and workload handoff surfaces still own CPU-shaped evaluation transitions above the native last-layer path
 
 - Status: `active`

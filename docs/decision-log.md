@@ -28,6 +28,48 @@ Superseded by:
 
 ## Entries
 
+### DEC-0178: Generated-lane runtime convergence now takes precedence over isolated micro-optimizations
+
+- Date: `2026-03-12`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0010-generated-row-convergence-and-runtime-optimization.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0010-generated-row-convergence-and-runtime-optimization.md)
+
+Decision:
+
+The next generated-lane engineering work must proceed in this order:
+
+1. collapse more of the generated row onto shared V1 runtime paths
+2. reduce the specialized benchmark-only orchestration that still remains
+3. optimize the backend-owned runtime family from that cleaner baseline
+
+Context:
+
+The current `wide_fibonacci` generated-Metal sweep is ahead of SIMD from
+`log16..20` and behind at `log21..23`. That makes the active engineering
+problem one of runtime convergence and scaling behavior, not just another round
+of local kernel micro-optimizations.
+
+Alternatives rejected:
+
+- continue treating benchmark-local orchestration as acceptable while only
+  tuning kernels
+- optimize the mixed path first and postpone convergence onto the shared V1
+  runtime family
+
+Impact:
+
+- benchmark-local code is now formally demoted to reporting-only work
+- runtime-family convergence is the first-order prerequisite for the next
+  serious speed work
+- high-log scaling behavior is now explicit program debt rather than implicit
+  benchmark disappointment
+
+Superseded by:
+
+- none
+
 ### DEC-0174: Generated post-composition ownership now flows through one backend runtime boundary
 
 - Date: `2026-03-11`

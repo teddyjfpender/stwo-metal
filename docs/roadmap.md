@@ -139,27 +139,20 @@ program contract is still unimplemented.
 
 The next active work is:
 
-- move one live generated prove-phase boundary in `wide_fibonacci_prove` from
-  benchmark-specialized staging onto the already validated
-  `MetalEvaluationProgramV1` runtime contract
-- keep the remaining fixture shims as non-authoritative wrappers once the same
-  benchmark law exists inside `stwo-metal`
-- expand the live generated benchmark row from “selected V1 side execution plus
-  backend-owned prove core and backend-owned generated sample orchestration”
-  toward end-to-end selected V1 runtime ownership; prove core is now
-  selected-runtime-owned for composition generation rather than merely
-  selected-runtime-gated, the binary is no longer the main generated-sample or
-  generated-iteration authority, and the generated lane's warmup/timed run
-  orchestration now also enters through the backend boundary
-- keep widening G10 from the now-landed post-composition sampled-values ABI:
-  the repository has a correctness-first reference lane for the live generated
-  post-composition shape, and the next step is the Metal runtime lane plus
-  migration of the remaining prove-values/decommit flow onto that contract
-- keep the migrated selected-runtime authority measurable and optimize it once
-  it becomes part of the live prove path, instead of treating V1 as a free side
-  check
+- collapse more of the generated row onto shared V1 runtime paths instead of
+  leaving generated-row-specialized execution helpers in benchmark code
+- reduce the specialized benchmark-only orchestration that still remains so the
+  binary becomes a thin reporting layer over backend-owned runs
+- optimize the backend-owned runtime family only after that cleaner runtime
+  convergence is in place
+- use the current `wide_fibonacci` generated-lane sweep at `log16..23` as the
+  baseline for this work; the lane is ahead of SIMD at `log16..20` and then
+  falls behind badly at `log21..23`, so runtime convergence and scaling
+  behavior now matter more than isolated micro-optimizations
+- keep the migrated selected-runtime authority measurable and optimize it as
+  the real prove-path authority, not as a side check
 - widen the first generated overlay registration into a durable overlay law
-  instead of leaving it as one benchmark-shape registration
+  instead of leaving it as one benchmark-shape specialization
 - keep examples as the acceptance matrix for the generic and generated lanes
 - keep `stark-v` iced until the V1 contract is available to test downstream
   honestly

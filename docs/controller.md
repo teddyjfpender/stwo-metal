@@ -43,6 +43,8 @@ Invariants:
   [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
   and
   [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
+  and
+  [`dn-0010-generated-row-convergence-and-runtime-optimization.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0010-generated-row-convergence-and-runtime-optimization.md)
 - Current owner area:
   `V1 contract and runtime planning`
 
@@ -82,6 +84,11 @@ Invariants:
   post-composition sampled-values result contract, generated-lane proof
   reporting metadata, and post-composition sanity checking entirely inside the
   sampled-values ABI family rather than legacy proof extraction
+- the current generated-lane benchmark sweep shows the shared runtime family is
+  already ahead of SIMD through `log20` and then scales poorly at `log21..23`,
+  so the active blocker is no longer “can Metal win at all?” but “can the
+  converged V1 runtime family keep its low-log wins while fixing high-log
+  scaling?”
 - the V1 contract now has both a correctness-first reference interpreter and a
   first Metal `.metal` interpreter lane, but the active generated benchmark
   row still does not prove through that V1 runtime contract
@@ -102,12 +109,11 @@ Invariants:
 1. Collapse the remaining generated-lane proof flow onto shared V1/runtime
    contracts so the backend-owned implementation path becomes the primary
    prove-path authority rather than one generated-lane-specialized path.
-2. Add layout/reflection verification for the V1 host/device boundary records
-   once the first live Metal runtime consumer exists, so the ABI surface is
-   checked both statically and against compiled Metal metadata.
-3. Keep collapsing the post-composition proof path onto the selected
-   V1/overlay contract so the generated row converges on one prove-path
-   authority end to end.
+2. Reduce the specialized benchmark-only orchestration that still remains so
+   the benchmark binary becomes reporting-only for the generated lane.
+3. Optimize the backend-owned runtime family from that cleaner baseline,
+   starting with composition generation, sampled-values evaluation/decommit,
+   and then trace commit if it still matters materially.
 
 ## Explicitly not doing now
 
