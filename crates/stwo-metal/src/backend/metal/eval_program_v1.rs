@@ -2174,6 +2174,22 @@ mod tests {
     }
 
     #[test]
+    fn virtual_snos_lowering_fails_closed() {
+        assert_eq!(
+            lower_registered_metal_evaluation_program_v1(
+                "virtual_snos",
+                MetalEvaluationProgramSpecializationV1 {
+                    log_n_rows: 16,
+                    n_columns: 1,
+                },
+            ),
+            Err(MetalEvaluationProgramLoweringError::UnsupportedComponent {
+                component_name: "virtual_snos",
+            })
+        );
+    }
+
+    #[test]
     fn wide_fibonacci_interpreter_matches_manual_row_residues() {
         let columns = wide_fibonacci_trace(8, 6);
         let trace_columns = columns.iter().map(Vec::as_slice).collect::<Vec<_>>();

@@ -133,6 +133,65 @@ const FRAMEWORK_ACCEPTANCE_ABI_SYMBOLS: &[&str] = &["metal.acceptance.framework_
 const SIMD_ACCEPTANCE_ABI_SYMBOLS: &[&str] = &["metal.acceptance.simd_bridge.v1"];
 const NO_SPECIALIZATION_KEYS: &[&str] = &[];
 
+// ---------------------------------------------------------------------------
+// Downstream hardening: stwo-cairo / VIRTUAL_SNOS (DN-0011, G11)
+// ---------------------------------------------------------------------------
+
+const VIRTUAL_SNOS_DECLARED_CAPABILITIES: &[MetalComponentCapability] = &[
+    MetalComponentCapability::FriBlake2sSubpath,
+    MetalComponentCapability::WitnessMain,
+    MetalComponentCapability::WitnessInteraction,
+    MetalComponentCapability::QuotientEval,
+    MetalComponentCapability::PcsCommitment,
+];
+
+const VIRTUAL_SNOS_REQUIRED_PROVE_CAPABILITIES: &[MetalComponentCapability] = &[
+    MetalComponentCapability::FriBlake2sSubpath,
+    MetalComponentCapability::WitnessMain,
+    MetalComponentCapability::WitnessInteraction,
+    MetalComponentCapability::QuotientEval,
+    MetalComponentCapability::PcsCommitment,
+];
+
+const VIRTUAL_SNOS_SUPPORTED_GENERATED_ROUTES: &[MetalGeneratedRouteKind] = &[
+    MetalGeneratedRouteKind::RegisteredProve,
+];
+
+const VIRTUAL_SNOS_ABI_SYMBOLS: &[&str] = &[
+    "metal.stwo_cairo.virtual_snos.v1",
+    "metal.fri.blake2s.v1",
+];
+const VIRTUAL_SNOS_BUILD_MODULES: &[&str] = &["planner_manifest_v1_generated"];
+const VIRTUAL_SNOS_SPECIALIZATION_KEYS: &[&str] = &["log_n_rows"];
+
+const VIRTUAL_SNOS_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::WitnessMain,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "The main VIRTUAL_SNOS witness is produced by stwo-cairo and arrives CPU-side.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::WitnessInteraction,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "The interaction trace for VIRTUAL_SNOS remains CPU-owned pending V1 contract hardening.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::QuotientEval,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "Constraint quotient evaluation remains CPU-owned until the V1 evaluation program supports VIRTUAL_SNOS lowering.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::PcsCommitment,
+        ownership: MetalWorkloadOwnership::CpuOwned,
+        detail: "PCS commitment remains CPU-side pending downstream hardening.",
+    },
+    MetalWorkloadStageAssignment {
+        stage: MetalWorkloadStage::FriBlake2s,
+        ownership: MetalWorkloadOwnership::MetalNative,
+        detail: "The bounded Blake2s FRI sub-path is Metal-native for VIRTUAL_SNOS, matching the converged V1 runtime.",
+    },
+];
+
 const FIBONACCI_EXAMPLE_STAGE_ASSIGNMENTS: &[MetalWorkloadStageAssignment] = &[
     MetalWorkloadStageAssignment {
         stage: MetalWorkloadStage::WitnessMain,
@@ -338,6 +397,32 @@ pub const STWO_METAL_PLANNER_COMPONENTS_V1: &[GeneratedMetalPlannerComponent] = 
             build_modules: ACCEPTANCE_BRIDGE_BUILD_MODULES,
             witness_hook: None,
             specialization_keys: NO_SPECIALIZATION_KEYS,
+        },
+    },
+    // -----------------------------------------------------------------------
+    // Downstream hardening target: stwo-cairo / VIRTUAL_SNOS (DN-0011, G11)
+    //
+    // This is the first named downstream proving row. It is registered in the
+    // planner manifest so the V1 contract can be validated against it, but
+    // evaluation-program lowering is intentionally absent — attempts to lower
+    // must fail closed (MetalEvaluationProgramLoweringError::UnsupportedComponent).
+    // -----------------------------------------------------------------------
+    GeneratedMetalPlannerComponent {
+        component_name: "virtual_snos",
+        workload_family: "stwo_cairo",
+        support_tier: MetalSupportTier::FriOnly,
+        declared_capabilities: VIRTUAL_SNOS_DECLARED_CAPABILITIES,
+        required_prove_capabilities: VIRTUAL_SNOS_REQUIRED_PROVE_CAPABILITIES,
+        supported_benchmark_operations: NO_BENCHMARK_OPERATIONS,
+        supported_generated_routes: VIRTUAL_SNOS_SUPPORTED_GENERATED_ROUTES,
+        stage_assignments: VIRTUAL_SNOS_STAGE_ASSIGNMENTS,
+        generated_inventory: GeneratedMetalInventoryEntry {
+            registration_key: "virtual_snos",
+            abi_family: "stwo_cairo",
+            abi_symbols: VIRTUAL_SNOS_ABI_SYMBOLS,
+            build_modules: VIRTUAL_SNOS_BUILD_MODULES,
+            witness_hook: None,
+            specialization_keys: VIRTUAL_SNOS_SPECIALIZATION_KEYS,
         },
     },
 ];

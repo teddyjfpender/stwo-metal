@@ -861,4 +861,99 @@ mod tests {
         );
         assert!(!seed.supports_hybrid_fri_lane());
     }
+
+    // -----------------------------------------------------------------------
+    // Downstream hardening: stwo-cairo / VIRTUAL_SNOS (DN-0011, G11)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn virtual_snos_is_recognized_by_planner_for_registered_prove() {
+        let plan = plan_registered_metal_prove(
+            MetalExecutionIntent::PreferMetal,
+            &["virtual_snos"],
+        )
+        .unwrap();
+
+        assert_eq!(plan.plan, MetalExecutionPlan::MetalFriHybrid);
+    }
+
+    #[test]
+    fn virtual_snos_exposes_stwo_cairo_inventory() {
+        let registration = registered_generated_component(
+            "virtual_snos",
+            MetalGeneratedRouteKind::RegisteredProve,
+        )
+        .unwrap();
+
+        assert_eq!(registration.component_name(), "virtual_snos");
+        assert_eq!(registration.generated_inventory().abi_family, "stwo_cairo");
+        assert_eq!(
+            registration.generated_inventory().registration_key,
+            "virtual_snos"
+        );
+        assert_eq!(
+            registration.generated_inventory().abi_symbols,
+            &["metal.stwo_cairo.virtual_snos.v1", "metal.fri.blake2s.v1"]
+        );
+        assert_eq!(
+            registration.generated_inventory().specialization_keys,
+            &["log_n_rows"]
+        );
+        assert!(registration.generated_inventory().witness_hook.is_none());
+    }
+
+    #[test]
+    fn virtual_snos_fails_closed_for_benchmark_routes() {
+        let error = registered_generated_component(
+            "virtual_snos",
+            MetalGeneratedRouteKind::BenchmarkProveVerify,
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            MetalPlannerError::UnsupportedGeneratedRoute(UnsupportedGeneratedMetalRoute {
+                component_name: "virtual_snos",
+                route: MetalGeneratedRouteKind::BenchmarkProveVerify,
+            })
+        );
+    }
+
+    #[test]
+    fn virtual_snos_fails_closed_for_workload_boundary_route() {
+        let error = registered_generated_component(
+            "virtual_snos",
+            MetalGeneratedRouteKind::WorkloadBoundary,
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            MetalPlannerError::UnsupportedGeneratedRoute(UnsupportedGeneratedMetalRoute {
+                component_name: "virtual_snos",
+                route: MetalGeneratedRouteKind::WorkloadBoundary,
+            })
+        );
+    }
+
+    #[test]
+    fn virtual_snos_stage_assignments_declare_fri_as_metal_native() {
+        let registration = registered_generated_component(
+            "virtual_snos",
+            MetalGeneratedRouteKind::RegisteredProve,
+        )
+        .unwrap();
+        let runtime_input = registration.runtime_plan_input(MetalOperationKind::Prove);
+
+        assert_eq!(runtime_input.stage_assignments.len(), 5);
+        let fri_stage = runtime_input
+            .stage_assignments
+            .iter()
+            .find(|a| a.stage == crate::backend::metal::workload_contract::MetalWorkloadStage::FriBlake2s)
+            .expect("FriBlake2s stage must be declared");
+        assert_eq!(
+            fri_stage.ownership,
+            crate::backend::metal::workload_contract::MetalWorkloadOwnership::MetalNative
+        );
+    }
 }
