@@ -146,28 +146,31 @@ Target retirement point:
 
 Why it exists now:
 
-The current generated-Metal `wide_fibonacci` sweep shows a strong low-log
-story and a weak high-log story. The lane beats SIMD at `log16..20`, then
-falls behind at `log21..23`. The V1 prove runtime now has per-sub-phase
-composition timing (`MetalCompositionDetailBreakdown`) to identify which phase
-dominates at high log sizes. Quotient application uses in-place mutation, and
-the reference sanity check is skippable. The next step is to profile the
-composition detail breakdown at `log21..23` and optimize the dominant
-sub-phase.
+Full prove-core profiling (`MetalCompositionDetailBreakdown` +
+`MetalProveValuesDetailBreakdown`) has identified three dominant bottlenecks at
+log23, together consuming 89.7% of prove-core time:
+
+1. `eval_program` (38.2%, 7.96x scaling log22→23) — GPU dispatch memory-bound
+2. `fri_and_decommit` (31.4%, 7.09x scaling) — FRI quotient, commit, POW
+3. `prepare` (20.1%, 11.99x scaling) — OODS sampling and ABI lowering
+
+The FRI timing gap (where `prepare_post_composition_finish_runtime` was
+untracked) has been fixed. The scaling is healthy at log21→22 (close to 2x)
+but pathological at log22→23, suggesting the working set exceeds GPU memory or
+cache capacity at that transition.
 
 Current containment:
 
 - `docs/dn-0010-generated-row-convergence-and-runtime-optimization.md`
+- `crates/stwo-metal/src/backend/metal/prove_runtime_v1.rs`
 - `crates/stwo-metal/src/backend/metal/benchmark.rs`
-- `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
-- `crates/stwo-metal/src/backend/metal/sampled_values_v1.rs`
 - `fixtures/standalone-benchmarks/src/bin/wide_fibonacci_prove.rs`
+- `logs/benchmarks/20260312T120000Z/wide_fibonacci_metal_generated/`
 
 Risk if left in place:
 
-The repository can finish the architectural migration onto the V1 runtime
-family while still keeping a generated lane that wins at small and mid logs but
-fails to scale to the larger rows that matter most for throughput.
+The generated lane wins at small and mid logs (`log16..21`) but falls behind
+SIMD at the larger rows (`log22..23`) that matter most for throughput.
 
 Exit condition:
 
@@ -179,7 +182,7 @@ Target retirement point:
 
 - `G10`
 
-### TD-0039: The downstream `stwo-cairo` / `VIRTUAL_SNOS` target is defined in docs but not yet fully hardened against the converged V1 runtime
+### TD-0039: The downstream `stwo-cairo` / `VIRTUAL_SNOS` target needs end-to-end prove/verify validation
 
 - Status: `active`
 - Category: `downstream hardening gap`
@@ -188,17 +191,20 @@ Target retirement point:
 
 Why it exists now:
 
-`VIRTUAL_SNOS` is now registered in the planner manifest under the
-`stwo_cairo` workload family with FriOnly support tier, CPU-owned stages
-(except Metal-native FRI), and `RegisteredProve` as the only supported route.
-Integration tests validate planner recognition, `stwo_cairo` inventory
-exposure, fail-closed behavior for benchmark and workload-boundary routes, and
-Metal-native FRI stage assignment. Evaluation program lowering intentionally
-fails closed since no concrete `stwo-cairo` constraint set has been lowered
-yet.
+`VIRTUAL_SNOS` is registered in the planner manifest and now has a real
+lowering function (`lower_virtual_snos_evaluation_program_v1`) that produces a
+V1 evaluation program exercising multi-interaction traces, Param opcode, and
+constraint aggregation. ABI reflection checks
+(`validate_eval_program_abi_layout_v1`, `validate_sampled_values_abi_layout_v1`)
+run fail-closed at lowering time, verifying all 8 `#[repr(C)]` host/device
+boundary records.
 
-The remaining work is producing the first real `stwo-cairo` input artifact and
-evaluating it through the V1 runtime contract.
+The remaining work is:
+1. Extend the lowering to exercise additional V1 capabilities (ExtMul, Inv,
+   PreprocessedCol)
+2. Produce the first end-to-end prove/verify cycle through the registered
+   planner entry
+3. Validate the generated program against the Metal device interpreter
 
 Current containment:
 
@@ -206,19 +212,20 @@ Current containment:
 - `crates/stwo-metal/src/backend/metal/planner_manifest_v1_generated.rs`
 - `crates/stwo-metal/src/backend/metal/execution_plan.rs`
 - `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
+- `crates/stwo-metal/src/backend/metal/sampled_values_v1.rs`
 
 Risk if left in place:
 
-The planner now recognizes `virtual_snos` and fail-closed integration is
-validated, but the V1 runtime has not yet evaluated an actual `stwo-cairo`
-constraint set. The risk is that the V1 ABI drifts from what `stwo-cairo`
-actually produces.
+The V1 contract is partially validated against `virtual_snos` through lowering
+and interpretation, but a full end-to-end prove/verify cycle has not been
+demonstrated. The risk is that integration assumptions fail at the proving
+boundary.
 
 Exit condition:
 
 At least one `stwo-cairo`-produced row, with `VIRTUAL_SNOS` as the intended
-first target, is evaluated against the converged V1 runtime contract through a
-formal hardening workflow.
+first target, completes an end-to-end prove/verify cycle against the converged
+V1 runtime contract.
 
 Target retirement point:
 

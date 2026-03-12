@@ -76,8 +76,8 @@ The examples remain valuable, but only as acceptance workloads.
 | `state_machine` | acceptance | `complete` | validates multi-tree and multi-component support |
 | `wide_fibonacci` | acceptance and perf reference | `complete` | validates generic path and supports benchmark tracking |
 | `xor` | acceptance | `complete` | validates mixed-component and MLE/GKR support |
-| `stwo-cairo` | downstream hardening target | `planned` | validates the converged V1 runtime against real proving-system inputs |
-| `VIRTUAL_SNOS` | first named downstream proving row | `planned` | validates the first concrete `stwo-cairo` row needed by `starknet-privacy` |
+| `stwo-cairo` | downstream hardening target | `in_progress` | validates the converged V1 runtime against real proving-system inputs |
+| `VIRTUAL_SNOS` | first named downstream proving row | `in_progress` | validates the first concrete `stwo-cairo` row needed by `starknet-privacy` |
 | `stark-v` | secondary future hardening workload | `iced` | remains available as a later downstream contract check once V1 convergence is complete |
 
 ## Benchmark lane
@@ -131,23 +131,23 @@ The superseded `T0` through `T8` sequence now lives in:
 | G8 | Harden the contract against `stark-v` workloads | `iced` | a real downstream Stwo consumer uses the same generic/generated contract successfully |
 | G9 | Freeze and implement `MetalEvaluationProgramV1` | `in_progress` | generated and generic Metal execution both consume the same validated lowered program contract |
 | G10 | Migrate benchmark-specialized rows onto the V1 program contract | `in_progress` | the active generated benchmark path is driven by the V1 artifact and overlay contract rather than bespoke benchmark-only lowering |
-| G11 | Harden the converged V1 contract against `stwo-cairo` inputs | `planned` | the V1 program contract is exercised against `stwo-cairo`, with `VIRTUAL_SNOS` as the first named downstream row |
+| G11 | Harden the converged V1 contract against `stwo-cairo` inputs | `in_progress` | the V1 program contract is exercised against `stwo-cairo`, with `VIRTUAL_SNOS` as the first named downstream row |
 
 ## Active work definition
 
-The shared V1 prove runtime is now the single proving authority for the
-generated lane, the benchmark module is reporting-only, and `VIRTUAL_SNOS` is
-registered in the planner manifest with fail-closed integration checks.
+The shared V1 prove runtime is the single proving authority for the generated
+lane. Full prove-core profiling (`MetalCompositionDetailBreakdown` +
+`MetalProveValuesDetailBreakdown`) identifies three dominant bottlenecks at
+log23. ABI reflection checks run fail-closed at lowering time. `VIRTUAL_SNOS`
+is the first lowered stwo-cairo constraint set via
+`lower_virtual_snos_evaluation_program_v1`.
 
 The next active work is:
 
-- profile the composition detail breakdown (`MetalCompositionDetailBreakdown`)
-  at `log21..23` and reduce the dominant sub-phase to bring high-log scaling
-  closer to SIMD parity
-- add ABI reflection checks to the V1 runtime contract so host/device boundary
-  records are verified at lowering time
-- begin `G11` hardening: produce the first real `stwo-cairo` input artifact
-  and evaluate it through the `virtual_snos` planner entry
+- optimize the three dominant prove-core bottlenecks: `eval_program` (38%),
+  `fri_and_decommit` (31%), and `prepare` (20%) at log23
+- extend `virtual_snos` lowering to exercise additional V1 capabilities
+  (ExtMul, Inv, PreprocessedCol) and run end-to-end prove/verify
 - keep examples as the acceptance matrix for the generic and generated lanes
 - keep `stark-v` iced while the first downstream hardening target is
   `stwo-cairo` and specifically the `VIRTUAL_SNOS` row expected by

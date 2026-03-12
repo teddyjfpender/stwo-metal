@@ -52,50 +52,44 @@ Invariants:
 
 ## Current blockers
 
-- the shared V1 prove runtime (`prove_runtime_v1.rs`) now owns composition
-  generation, post-composition sampled values, prove values, and prove core as
-  a single contract consumed by the generated benchmark row; the benchmark
-  module is reporting-only and no longer carries thin wrapper methods or alias
-  types — it calls `execute_prove_core_v1` directly
-- the generated `wide_fibonacci` prove path now runs end to end through the
-  shared V1 runtime contract: trace commit → composition polynomial via
-  selected V1 evaluation program → composition commit → sampled values via
-  selected V1 dispatch → FRI → decommit → proof assembly, all owned by
-  `prove_runtime_v1`
-- composition generation now has per-sub-phase timing
-  (`MetalCompositionDetailBreakdown`: twiddle, trace extension, eval program,
-  quotient application, interpolation) for diagnosing scaling degradation at
-  high log sizes; quotient application uses in-place mutation instead of
-  map+collect; the reference sanity check can be skipped via
-  `MetalProveRuntimeContextV1::with_skip_reference_sanity_check` for
-  production/benchmark runs
+- the shared V1 prove runtime (`prove_runtime_v1.rs`) owns the full prove
+  pipeline for the generated row: trace commit, composition via V1 evaluation
+  program, composition commit, sampled values via V1 dispatch, FRI, decommit,
+  and proof assembly — all through `execute_prove_core_v1`
+- full prove-core profiling is now available through
+  `MetalCompositionDetailBreakdown` and `MetalProveValuesDetailBreakdown`,
+  identifying three dominant bottlenecks at log23 (89.7% of prove-core):
+  `eval_program` (38%, 7.96x scaling), `fri_and_decommit` (31%, 7.09x
+  scaling), and `prepare` (20%, 11.99x scaling); the fix for the FRI timing
+  gap (`prepare_post_composition_finish_runtime` was previously untracked) is
+  deployed
+- ABI reflection checks (`validate_eval_program_abi_layout_v1`,
+  `validate_sampled_values_abi_layout_v1`) now run fail-closed at lowering
+  time, verifying size, alignment, and field offsets of all 8 `#[repr(C)]`
+  host/device boundary records
+- `VIRTUAL_SNOS` is now lowered through the V1 evaluation program contract via
+  `lower_virtual_snos_evaluation_program_v1`, exercising multi-interaction
+  traces, Param opcode, and constraint aggregation; it is no longer a
+  fail-closed stub
 - the current generated-lane benchmark sweep still shows strong low-log and
-  weak high-log scaling (`log16..20` ahead, `log21..23` behind SIMD); the
-  composition detail breakdown is now available to identify which sub-phase
-  dominates at high logs
-- `VIRTUAL_SNOS` is now registered in the planner manifest under the
-  `stwo_cairo` workload family with FriOnly support tier, CPU-owned stages
-  (except Metal-native FRI), and fail-closed lowering behavior; integration
-  tests validate planner recognition, inventory exposure, and fail-closed
-  behavior for unsupported routes
-- host/device ABI reflection checks for shared Metal boundary records are not
-  yet part of the implemented runtime contract
+  weak high-log scaling; profiling has identified the three dominant sub-phases
+  but optimization work has not yet started
 - internal Rust vocabulary is still CUDA-first in many places
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
-  limitation, so it remains an upstream protocol blocker rather than the next
-  backend row
-- `stark-v` is intentionally iced while the real downstream target shifts to
-  `stwo-cairo`, specifically the `VIRTUAL_SNOS` row expected by
-  `starknet-privacy`
+  limitation
+- `stark-v` is intentionally iced while the real downstream target is
+  `stwo-cairo`/`VIRTUAL_SNOS`
 
 ## Next three deliverables
 
-1. Profile the composition detail breakdown at `log21..23` and reduce the
-   dominant sub-phase to bring high-log scaling closer to SIMD parity.
-2. Add ABI reflection checks to the V1 runtime contract so host/device
-   boundary records are verified at lowering time.
-3. Begin `G11` hardening: produce the first `stwo-cairo` input artifact and
-   evaluate it against the converged V1 runtime through `virtual_snos`.
+1. Optimize the three dominant prove-core bottlenecks identified by profiling:
+   `eval_program` GPU dispatch (38% at log23), `fri_and_decommit` (31%),
+   and `prepare` allocation pressure (20%).
+2. Extend `virtual_snos` lowering to exercise additional V1 capabilities
+   (ExtMul, Inv, PreprocessedCol) and validate end-to-end against the
+   interpreter.
+3. Produce the first `virtual_snos` end-to-end prove/verify cycle through the
+   registered planner entry and V1 runtime.
 
 ## Explicitly not doing now
 
