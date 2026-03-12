@@ -19,6 +19,7 @@ mod planner_manifest_v1_generated;
 mod poly;
 mod proof;
 mod proof_slice;
+mod prove_runtime_v1;
 mod prover;
 mod quotient;
 mod row;
@@ -124,6 +125,18 @@ pub use workload::{
     MetalAcceptanceLaneError, MetalCpuQuotientEvaluationInput, MetalCpuWideFibonacciWitnessInput,
     MetalFriReadyEvaluationInput, MetalHybridFriWorkload, MetalQuotientEvaluationInput,
     MetalWorkloadBoundary, MetalWorkloadHandoffError,
+};
+pub use prove_runtime_v1::{
+    commit_trace_with_breakdown, compute_composition_polynomial_v1, execute_prove_core_v1,
+    execute_prove_values_v1, lower_post_composition_sampled_values_v1,
+    interpret_post_composition_sampled_values_v1,
+    interpret_post_composition_sampled_values_v1_reference,
+    execute_post_composition_sampled_values_v1,
+    stage_prove_values_v1, validate_prove_runtime_lane_v1,
+    MetalPostCompositionSampledValuesV1, MetalProofMetadata, MetalProofSizeBreakdown,
+    MetalProveCoreBreakdown, MetalProveCoreError, MetalProveRuntimeCompositionError,
+    MetalProveRuntimeContextV1, MetalProveRuntimeLaneError, MetalProveValuesBreakdown,
+    MetalProveValuesResult, MetalProveValuesStaging, TraceCommitBreakdown,
 };
 pub use workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
 
