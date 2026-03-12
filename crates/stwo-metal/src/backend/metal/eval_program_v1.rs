@@ -344,6 +344,7 @@ pub struct MetalEvaluationProgramSpecializationV1 {
 pub enum MetalEvaluationProgramLoweringError {
     UnsupportedComponent { component_name: &'static str },
     InvalidWideFibonacciColumnCount { n_columns: u32 },
+    InvalidVirtualSnosColumnCount { n_columns: u32 },
     RegisterBudgetOverflow,
     AbiLayoutMismatch {
         record: &'static str,
@@ -1124,6 +1125,7 @@ pub fn lower_registered_metal_evaluation_program_v1(
     validate_eval_program_abi_layout_v1()?;
     match component_name {
         "fibonacci_example" => lower_wide_fibonacci_evaluation_program_v1(specialization),
+        "virtual_snos" => lower_virtual_snos_evaluation_program_v1(specialization),
         _ => Err(MetalEvaluationProgramLoweringError::UnsupportedComponent { component_name }),
     }
 }
@@ -1254,6 +1256,139 @@ pub fn lower_wide_fibonacci_evaluation_program_v1(
         2,
         0,
         0,
+        base_regs_required,
+        ext_regs_required,
+        Vec::new(),
+        Vec::new(),
+        base_insts,
+        ext_insts,
+        constraint_roots,
+    ))
+}
+
+/// Lower a synthetic `virtual_snos` constraint set representing the first
+/// stwo-cairo downstream hardening target (G11 / DN-0011).
+///
+/// The constraint set models a parametric column-pair sum check that exercises
+/// V1 contract capabilities beyond wide-fibonacci:
+/// - Multi-interaction traces (interaction 0 = preprocessed, interaction 1 = main)
+/// - Base parameter access (Param opcode)
+/// - Column-pair arithmetic (Add, Sub)
+///
+/// For each consecutive column pair (col_i, col_{i+1}) in interaction 1:
+///   constraint_k = col_i + col_{i+1} - base_param_0
+///
+/// Requires n_columns >= 2 (at least one column pair).
+pub fn lower_virtual_snos_evaluation_program_v1(
+    specialization: MetalEvaluationProgramSpecializationV1,
+) -> Result<OwnedMetalEvaluationProgramV1, MetalEvaluationProgramLoweringError> {
+    if specialization.n_columns < 2 {
+        return Err(
+            MetalEvaluationProgramLoweringError::InvalidVirtualSnosColumnCount {
+                n_columns: specialization.n_columns,
+            },
+        );
+    }
+
+    let n_constraints = specialization.n_columns - 1;
+    // Per constraint: param(1) + trace_col_a(1) + trace_col_b(1) + add(1) + sub(1) = 5 regs
+    let base_regs_required = n_constraints
+        .checked_mul(5)
+        .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+    let ext_regs_required = n_constraints;
+
+    let mut base_insts = Vec::with_capacity(base_regs_required as usize);
+    let mut ext_insts = Vec::with_capacity(ext_regs_required as usize);
+    let mut constraint_roots = Vec::with_capacity(n_constraints as usize);
+
+    let mut next_base_reg = 0u16;
+    let mut next_ext_reg = 0u16;
+
+    for col in 0..n_constraints {
+        // Load base_param_0 into a register
+        let reg_param = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1 {
+            op: MetalEvaluationProgramBaseOpcodeV1::Param as u8,
+            interaction: 0,
+            dst: reg_param,
+            a: 0, // param slot 0
+            b: 0,
+            imm: 0,
+        });
+
+        // Load col_i from interaction 1
+        let reg_a = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1::trace_col(
+            reg_a,
+            1,
+            col,
+            0,
+        ));
+
+        // Load col_{i+1} from interaction 1
+        let reg_b = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1::trace_col(
+            reg_b,
+            1,
+            col + 1,
+            0,
+        ));
+
+        // sum = col_i + col_{i+1}
+        let reg_sum = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
+            MetalEvaluationProgramBaseOpcodeV1::Add,
+            reg_sum,
+            reg_a as u32,
+            reg_b as u32,
+        ));
+
+        // constraint = sum - param_0
+        let reg_constraint = next_base_reg;
+        next_base_reg = next_base_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
+            MetalEvaluationProgramBaseOpcodeV1::Sub,
+            reg_constraint,
+            reg_sum as u32,
+            reg_param as u32,
+        ));
+
+        // Lift to secure field for constraint root
+        let ext_reg = next_ext_reg;
+        next_ext_reg = next_ext_reg
+            .checked_add(1)
+            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
+        ext_insts.push(MetalEvaluationProgramExtInstV1::secure_col(
+            ext_reg,
+            reg_constraint as u32,
+            0, // pad with zero-valued base registers (unused)
+            0,
+            0,
+        ));
+        constraint_roots.push(ext_reg as u32);
+    }
+
+    Ok(build_owned_program_v1(
+        STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1
+            | STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1
+            | STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
+        2, // n_interactions: preprocessed + main
+        1, // n_base_params: one parameter (the expected sum)
+        0, // n_ext_params
         base_regs_required,
         ext_regs_required,
         Vec::new(),
@@ -2317,19 +2452,90 @@ mod tests {
     }
 
     #[test]
-    fn virtual_snos_lowering_fails_closed() {
+    fn virtual_snos_lowering_succeeds_with_valid_columns() {
+        let program = lower_registered_metal_evaluation_program_v1(
+            "virtual_snos",
+            MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 4,
+                n_columns: 4,
+            },
+        )
+        .unwrap();
+
+        let header = program.header();
+        assert_eq!(header.n_interactions, 2);
+        assert_eq!(header.n_base_params, 1);
+        assert_eq!(header.n_ext_params, 0);
+        assert_eq!(header.n_constraints, 3); // n_columns - 1 = 3
+    }
+
+    #[test]
+    fn virtual_snos_lowering_rejects_single_column() {
         assert_eq!(
-            lower_registered_metal_evaluation_program_v1(
-                "virtual_snos",
-                MetalEvaluationProgramSpecializationV1 {
-                    log_n_rows: 16,
-                    n_columns: 1,
-                },
-            ),
-            Err(MetalEvaluationProgramLoweringError::UnsupportedComponent {
-                component_name: "virtual_snos",
+            lower_virtual_snos_evaluation_program_v1(MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 4,
+                n_columns: 1,
+            }),
+            Err(MetalEvaluationProgramLoweringError::InvalidVirtualSnosColumnCount {
+                n_columns: 1,
             })
         );
+    }
+
+    #[test]
+    fn virtual_snos_interpreter_produces_zero_for_satisfied_constraints() {
+        let n_rows = 8usize;
+        let n_columns = 4u32;
+        let param_value = BaseField::from_u32_unchecked(5);
+        // Build columns where col_i + col_{i+1} = param_value for all rows
+        let columns: Vec<Vec<BaseField>> = (0..n_columns)
+            .map(|i| {
+                (0..n_rows)
+                    .map(|_| {
+                        if i % 2 == 0 {
+                            BaseField::from_u32_unchecked(2)
+                        } else {
+                            BaseField::from_u32_unchecked(3) // 2 + 3 = 5
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+        let trace_columns = columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let trace_interactions = [&[][..], trace_columns.as_slice()];
+        let n_constraints = (n_columns - 1) as usize;
+        let random_coeff_powers: Vec<SecureField> = (0..n_constraints)
+            .map(|i| SecureField::from(BaseField::from_u32_unchecked((i + 1) as u32)))
+            .collect();
+        let program =
+            lower_virtual_snos_evaluation_program_v1(MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 3,
+                n_columns,
+            })
+            .unwrap();
+
+        let interpreted = interpret_metal_evaluation_program_v1(
+            &program,
+            MetalEvaluationProgramRuntimeInputsV1 {
+                trace: MetalEvaluationProgramTraceViewV1 {
+                    trace_interactions: &trace_interactions,
+                    preprocessed_columns: &[],
+                },
+                base_params: &[param_value],
+                ext_params: &[],
+                random_coeff_powers: &random_coeff_powers,
+            },
+        )
+        .unwrap();
+
+        // All constraints satisfied → all residues should be zero
+        for (i, residue) in interpreted.iter().enumerate() {
+            assert_eq!(
+                *residue,
+                SecureField::from_u32_unchecked(0, 0, 0, 0),
+                "residue at row {i} should be zero for satisfied constraints"
+            );
+        }
     }
 
     #[test]

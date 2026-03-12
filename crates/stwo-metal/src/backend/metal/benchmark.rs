@@ -341,7 +341,8 @@ impl MetalWideFibonacciBenchmarkBoundary {
             MetalEvaluationProgramLoweringError::UnsupportedComponent { .. } => {
                 MetalBenchmarkProgramError::UnsupportedComponent { workload_name }
             }
-            MetalEvaluationProgramLoweringError::InvalidWideFibonacciColumnCount { n_columns } => {
+            MetalEvaluationProgramLoweringError::InvalidWideFibonacciColumnCount { n_columns }
+            | MetalEvaluationProgramLoweringError::InvalidVirtualSnosColumnCount { n_columns } => {
                 MetalBenchmarkProgramError::InvalidSpecialization {
                     workload_name,
                     n_columns,
