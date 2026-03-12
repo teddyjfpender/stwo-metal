@@ -76,7 +76,9 @@ The examples remain valuable, but only as acceptance workloads.
 | `state_machine` | acceptance | `complete` | validates multi-tree and multi-component support |
 | `wide_fibonacci` | acceptance and perf reference | `complete` | validates generic path and supports benchmark tracking |
 | `xor` | acceptance | `complete` | validates mixed-component and MLE/GKR support |
-| `stark-v` | future hardening workload | `planned` | validates the stable contract against a real downstream consumer |
+| `stwo-cairo` | downstream hardening target | `planned` | validates the converged V1 runtime against real proving-system inputs |
+| `VIRTUAL_SNOS` | first named downstream proving row | `planned` | validates the first concrete `stwo-cairo` row needed by `starknet-privacy` |
+| `stark-v` | secondary future hardening workload | `iced` | remains available as a later downstream contract check once V1 convergence is complete |
 
 ## Benchmark lane
 
@@ -129,7 +131,7 @@ The superseded `T0` through `T8` sequence now lives in:
 | G8 | Harden the contract against `stark-v` workloads | `iced` | a real downstream Stwo consumer uses the same generic/generated contract successfully |
 | G9 | Freeze and implement `MetalEvaluationProgramV1` | `in_progress` | generated and generic Metal execution both consume the same validated lowered program contract |
 | G10 | Migrate benchmark-specialized rows onto the V1 program contract | `in_progress` | the active generated benchmark path is driven by the V1 artifact and overlay contract rather than bespoke benchmark-only lowering |
-| G11 | Re-open downstream hardening on the V1 contract | `planned` | downstream consumers such as `stark-v` are evaluated against the V1 program contract instead of a pre-V1 bridge surface |
+| G11 | Harden the converged V1 contract against `stwo-cairo` inputs | `planned` | the V1 program contract is exercised against `stwo-cairo`, with `VIRTUAL_SNOS` as the first named downstream row |
 
 ## Active work definition
 
@@ -154,8 +156,9 @@ The next active work is:
 - widen the first generated overlay registration into a durable overlay law
   instead of leaving it as one benchmark-shape specialization
 - keep examples as the acceptance matrix for the generic and generated lanes
-- keep `stark-v` iced until the V1 contract is available to test downstream
-  honestly
+- keep `stark-v` iced while the first downstream hardening target shifts to
+  `stwo-cairo` and specifically the `VIRTUAL_SNOS` row expected by
+  `starknet-privacy`
 
 ## Native runtime direction
 

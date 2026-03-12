@@ -28,6 +28,78 @@ Superseded by:
 
 ## Entries
 
+### DEC-0179: The first downstream hardening target is now `stwo-cairo`, with `VIRTUAL_SNOS` as the first named row
+
+- Date: `2026-03-12`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - [`dn-0011-stwo-cairo-and-virtual-snos-target.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0011-stwo-cairo-and-virtual-snos-target.md)
+
+Decision:
+
+The next downstream hardening target after V1 convergence is `stwo-cairo`.
+Within that target, `VIRTUAL_SNOS` is the first named proving row to support
+and validate. `stark-v` remains iced and is no longer the primary downstream
+driver.
+
+Context:
+
+The architecture is now converging on shared V1 runtime paths, and the project
+needs a concrete downstream target that matches the real proving purpose rather
+than another example fixture. The relevant downstream requirement is not just
+"some large workload", but a `stwo-cairo` proving row that can serve the
+`VIRTUAL_SNOS` expectations of `starknet-privacy`.
+
+Alternatives rejected:
+
+- continue treating `stark-v` as the primary downstream target
+- leave the downstream target implicit while G10 continues
+
+Impact:
+
+- `G11` is now defined against `stwo-cairo` and `VIRTUAL_SNOS`
+- active docs must stay aligned with that downstream purpose
+- benchmark and acceptance work remain supporting evidence, not the end goal
+
+Superseded by:
+
+- none
+
+### DEC-0180: Active program documents carry current state, not chronological tranche history
+
+- Date: `2026-03-12`
+- Status: `accepted`
+- Owners: `project team`
+- Related design note:
+  - none
+
+Decision:
+
+`program-plan.md` and the other active control docs should describe the current
+state, current tranche, and next work only. Detailed chronology belongs in the
+decision log or archived milestone history.
+
+Context:
+
+The older G9/G10 sections in `program-plan.md` had become a long running
+implementation narrative. That made the file harder to use as a live program
+control surface and increased the risk of drift from the actual runtime shape.
+
+Alternatives rejected:
+
+- keep the long tranche-by-tranche narrative inside `program-plan.md`
+- move no history and rely on readers to infer current state from old slices
+
+Impact:
+
+- the active plan is shorter and easier to keep aligned with code
+- chronology remains preserved, but in the right documents
+
+Superseded by:
+
+- none
+
 ### DEC-0178: Generated-lane runtime convergence now takes precedence over isolated micro-optimizations
 
 - Date: `2026-03-12`

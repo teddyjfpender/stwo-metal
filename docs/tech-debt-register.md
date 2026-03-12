@@ -209,6 +209,43 @@ Target retirement point:
 
 - `G10`
 
+### TD-0039: The downstream `stwo-cairo` / `VIRTUAL_SNOS` target is defined in docs but not yet attached to the converged V1 runtime
+
+- Status: `active`
+- Category: `downstream hardening gap`
+- Introduced: `2026-03-12`
+- Owner area: `G11 downstream hardening`
+
+Why it exists now:
+
+The program now has a clear downstream target: `stwo-cairo`, with
+`VIRTUAL_SNOS` as the first named proving row and `starknet-privacy` as the
+concrete consumer to keep in mind. That target is frozen in design/control
+docs, but it is not yet exercised by the converged V1 runtime family.
+
+Current containment:
+
+- `docs/dn-0011-stwo-cairo-and-virtual-snos-target.md`
+- `docs/roadmap.md`
+- `docs/program-plan.md`
+- `docs/controller.md`
+
+Risk if left in place:
+
+The repository can finish more V1 convergence work while still lacking a
+concrete downstream integration row, which would make it easier for the active
+runtime shape and the actual end goal to drift apart again.
+
+Exit condition:
+
+At least one `stwo-cairo`-produced row, with `VIRTUAL_SNOS` as the intended
+first target, is evaluated against the converged V1 runtime contract through a
+formal hardening workflow.
+
+Target retirement point:
+
+- `G11`
+
 ### TD-0033: FRI and workload handoff surfaces still own CPU-shaped evaluation transitions above the native last-layer path
 
 - Status: `active`

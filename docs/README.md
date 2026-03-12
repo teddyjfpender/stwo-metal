@@ -49,6 +49,9 @@ is planned, controlled, reviewed, and changed.
 - [`dn-0010-generated-row-convergence-and-runtime-optimization.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0010-generated-row-convergence-and-runtime-optimization.md):
   formal basis for collapsing the generated row onto shared V1 runtime paths
   and optimizing from that cleaner baseline
+- [`dn-0011-stwo-cairo-and-virtual-snos-target.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0011-stwo-cairo-and-virtual-snos-target.md):
+  formal basis for the downstream `stwo-cairo` target and the first
+  `VIRTUAL_SNOS` hardening row
 
 ## Rules
 

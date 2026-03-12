@@ -45,6 +45,8 @@ Invariants:
   [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
   and
   [`dn-0010-generated-row-convergence-and-runtime-optimization.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0010-generated-row-convergence-and-runtime-optimization.md)
+  and
+  [`dn-0011-stwo-cairo-and-virtual-snos-target.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0011-stwo-cairo-and-virtual-snos-target.md)
 - Current owner area:
   `V1 contract and runtime planning`
 
@@ -101,8 +103,9 @@ Invariants:
 - `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
   limitation, so it remains an upstream protocol blocker rather than the next
   backend row
-- `stark-v` is intentionally iced while the V1 contract is still being brought
-  into code; downstream hardening is no longer the active path
+- `stark-v` is intentionally iced while the real downstream target shifts to
+  `stwo-cairo`, specifically the `VIRTUAL_SNOS` row expected by
+  `starknet-privacy`
 
 ## Next three deliverables
 
@@ -111,9 +114,9 @@ Invariants:
    prove-path authority rather than one generated-lane-specialized path.
 2. Reduce the specialized benchmark-only orchestration that still remains so
    the benchmark binary becomes reporting-only for the generated lane.
-3. Optimize the backend-owned runtime family from that cleaner baseline,
-   starting with composition generation, sampled-values evaluation/decommit,
-   and then trace commit if it still matters materially.
+3. Keep the converged runtime and docs aligned with the actual downstream goal:
+   `stwo-cairo`, with `VIRTUAL_SNOS` as the first named hardening row once G10
+   closes.
 
 ## Explicitly not doing now
 
