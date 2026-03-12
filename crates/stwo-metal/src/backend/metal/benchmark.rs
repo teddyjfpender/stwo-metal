@@ -33,7 +33,7 @@ use super::poly::evaluate_polys_on_domain_batch;
 use super::prove_runtime_v1::{
     commit_trace_with_breakdown as runtime_commit_trace_with_breakdown, execute_prove_core_v1,
     MetalCompositionDetailBreakdown, MetalProofMetadata, MetalProveCoreError,
-    MetalProveRuntimeContextV1, MetalProveValuesResult,
+    MetalProveRuntimeContextV1, MetalProveValuesDetailBreakdown, MetalProveValuesResult,
 };
 use super::quotient::{
     accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
@@ -198,6 +198,8 @@ pub struct MetalGeneratedWideFibonacciBenchmarkBreakdown {
     pub prove_core_sanity_check_ms: f64,
     /// Sub-phase timing within composition generation.
     pub prove_core_composition_detail: MetalCompositionDetailBreakdown,
+    /// Sub-phase timing within prove values.
+    pub prove_core_prove_values_detail: MetalProveValuesDetailBreakdown,
 }
 
 // ---------------------------------------------------------------------------
@@ -627,6 +629,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
                 prove_core_prove_values_ms: prove_core_breakdown.prove_values_ms,
                 prove_core_sanity_check_ms: prove_core_breakdown.sanity_check_ms,
                 prove_core_composition_detail: prove_core_breakdown.composition_detail,
+                prove_core_prove_values_detail: prove_core_breakdown.prove_values_detail,
             },
         })
     }
@@ -1388,6 +1391,11 @@ mod tests {
                         eval_program_ms: 8.0,
                         quotient_application_ms: 0.3,
                         interpolation_ms: 0.7,
+                    },
+                    prove_core_prove_values_detail: super::super::prove_runtime_v1::MetalProveValuesDetailBreakdown {
+                        prepare_ms: 1.0,
+                        sampled_values_v1_ms: 2.0,
+                        fri_and_decommit_ms: 8.0,
                     },
                 },
             },

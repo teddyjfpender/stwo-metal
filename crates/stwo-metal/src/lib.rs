@@ -58,7 +58,7 @@ pub mod prove_runtime {
         interpret_post_composition_sampled_values_v1_reference,
         lower_post_composition_sampled_values_v1, stage_prove_values_v1,
         validate_prove_runtime_lane_v1, MetalCompositionDetailBreakdown,
-        MetalPostCompositionSampledValuesV1,
+        MetalProveValuesDetailBreakdown, MetalPostCompositionSampledValuesV1,
         MetalProofMetadata, MetalProofSizeBreakdown, MetalProveCoreBreakdown,
         MetalProveCoreError, MetalProveRuntimeCompositionError, MetalProveRuntimeContextV1,
         MetalProveRuntimeLaneError, MetalProveValuesBreakdown, MetalProveValuesResult,

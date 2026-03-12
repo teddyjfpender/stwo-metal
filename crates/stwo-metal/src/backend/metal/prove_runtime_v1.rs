@@ -132,6 +132,8 @@ pub struct MetalProveCoreBreakdown {
     pub sanity_check_ms: f64,
     /// Detailed sub-phase timing within composition generation.
     pub composition_detail: MetalCompositionDetailBreakdown,
+    /// Detailed sub-phase timing within prove values.
+    pub prove_values_detail: MetalProveValuesDetailBreakdown,
 }
 
 /// Sub-phase timing within composition polynomial generation.
@@ -151,6 +153,20 @@ pub struct MetalCompositionDetailBreakdown {
     pub interpolation_ms: f64,
 }
 
+/// Sub-phase timing within prove-values execution.
+///
+/// Covers the full prove-values cost: preparation, sampled-values dispatch,
+/// FRI commit/decommit, and tree decommit.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MetalProveValuesDetailBreakdown {
+    /// Sampling and lowering to V1 sampled-values ABI.
+    pub prepare_ms: f64,
+    /// V1 sampled-values dispatch execution.
+    pub sampled_values_v1_ms: f64,
+    /// FRI quotient computation, FRI commit, proof-of-work, and decommit.
+    pub fri_and_decommit_ms: f64,
+}
+
 /// Breakdown of prove-values timing.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MetalProveValuesBreakdown {
@@ -158,6 +174,7 @@ pub struct MetalProveValuesBreakdown {
     pub sampled_values_v1_ms: f64,
     pub sampled_values_dispatch: MetalSampledValuesDispatchKindV1,
     pub sanity_check_ms: f64,
+    pub fri_and_decommit_ms: f64,
 }
 
 /// Post-composition sampled values in V1 ABI.
@@ -691,23 +708,24 @@ fn execute_post_composition_runtime(
     }
     let sanity_check_ms = sanity_check_start.elapsed().as_secs_f64() * 1000.0;
 
+    let fri_and_decommit_start = std::time::Instant::now();
     let finish_runtime = prepare_post_composition_finish_runtime(
         channel,
         runtime,
         post_composition_eval,
         sampled_values_dispatch,
     )?;
-    let finish_start = std::time::Instant::now();
     let result = execute_post_composition_finish_runtime(finish_runtime);
-    let finish_ms = finish_start.elapsed().as_secs_f64() * 1000.0;
+    let fri_and_decommit_ms = fri_and_decommit_start.elapsed().as_secs_f64() * 1000.0;
 
     Ok((
         result,
         MetalProveValuesBreakdown {
-            prove_values_ms: finish_ms,
+            prove_values_ms: 0.0, // overwritten by caller with preparation time
             sampled_values_v1_ms,
             sampled_values_dispatch,
             sanity_check_ms,
+            fri_and_decommit_ms,
         },
     ))
 }
@@ -909,6 +927,7 @@ pub fn execute_prove_core_v1(
 
     let prove_values_stage =
         stage_prove_values_v1(&component_provers, channel, &commitment_scheme);
+    let prove_values_total_start = std::time::Instant::now();
     let (prove_values_result, prove_values_breakdown) =
         execute_prove_values_v1_with_opts(
             channel,
@@ -917,6 +936,7 @@ pub fn execute_prove_core_v1(
             ctx.skip_reference_sanity_check,
         )
         .map_err(MetalProveCoreError::from)?;
+    let prove_values_total_ms = prove_values_total_start.elapsed().as_secs_f64() * 1000.0;
 
     Ok((
         prove_values_result,
@@ -925,9 +945,14 @@ pub fn execute_prove_core_v1(
             evaluation_program_v1_dispatch,
             composition_generation_ms,
             composition_commit_ms,
-            prove_values_ms: prove_values_breakdown.prove_values_ms,
+            prove_values_ms: prove_values_total_ms,
             sanity_check_ms: prove_values_breakdown.sanity_check_ms,
             composition_detail,
+            prove_values_detail: MetalProveValuesDetailBreakdown {
+                prepare_ms: prove_values_breakdown.prove_values_ms,
+                sampled_values_v1_ms: prove_values_breakdown.sampled_values_v1_ms,
+                fri_and_decommit_ms: prove_values_breakdown.fri_and_decommit_ms,
+            },
         },
     ))
 }

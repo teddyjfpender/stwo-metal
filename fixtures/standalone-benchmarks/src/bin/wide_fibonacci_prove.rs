@@ -175,6 +175,9 @@ struct ProveBreakdownSampleTimings {
     composition_eval_program_ms: Vec<f64>,
     composition_quotient_application_ms: Vec<f64>,
     composition_interpolation_ms: Vec<f64>,
+    prove_values_prepare_ms: Vec<f64>,
+    prove_values_sampled_values_v1_ms: Vec<f64>,
+    prove_values_fri_and_decommit_ms: Vec<f64>,
 }
 
 #[derive(Serialize)]
@@ -196,6 +199,9 @@ struct ProveBreakdownSummaryTimings {
     composition_eval_program_ms: SummaryStats,
     composition_quotient_application_ms: SummaryStats,
     composition_interpolation_ms: SummaryStats,
+    prove_values_prepare_ms: SummaryStats,
+    prove_values_sampled_values_v1_ms: SummaryStats,
+    prove_values_fri_and_decommit_ms: SummaryStats,
 }
 
 #[derive(Serialize)]
@@ -217,6 +223,9 @@ struct SingleProveBreakdownTimings {
     composition_eval_program_ms: f64,
     composition_quotient_application_ms: f64,
     composition_interpolation_ms: f64,
+    prove_values_prepare_ms: f64,
+    prove_values_sampled_values_v1_ms: f64,
+    prove_values_fri_and_decommit_ms: f64,
 }
 
 #[cfg(feature = "metal-runtime")]
@@ -339,6 +348,18 @@ fn prove_breakdown_samples_from_samples(samples: &[ProveBreakdown]) -> ProveBrea
         .iter()
         .map(|sample| sample.composition_interpolation_ms)
         .collect::<Vec<_>>();
+    let prove_values_prepare_ms = samples
+        .iter()
+        .map(|sample| sample.prove_values_prepare_ms)
+        .collect::<Vec<_>>();
+    let prove_values_sampled_values_v1_ms = samples
+        .iter()
+        .map(|sample| sample.prove_values_sampled_values_v1_ms)
+        .collect::<Vec<_>>();
+    let prove_values_fri_and_decommit_ms = samples
+        .iter()
+        .map(|sample| sample.prove_values_fri_and_decommit_ms)
+        .collect::<Vec<_>>();
 
     ProveBreakdownSampleTimings {
         setup_and_preprocessed_commit_ms,
@@ -358,6 +379,9 @@ fn prove_breakdown_samples_from_samples(samples: &[ProveBreakdown]) -> ProveBrea
         composition_eval_program_ms,
         composition_quotient_application_ms,
         composition_interpolation_ms,
+        prove_values_prepare_ms,
+        prove_values_sampled_values_v1_ms,
+        prove_values_fri_and_decommit_ms,
     }
 }
 
@@ -468,6 +492,24 @@ fn prove_breakdown_summary_from_samples(
                 .map(|sample| sample.composition_interpolation_ms)
                 .collect::<Vec<_>>(),
         ),
+        prove_values_prepare_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.prove_values_prepare_ms)
+                .collect::<Vec<_>>(),
+        ),
+        prove_values_sampled_values_v1_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.prove_values_sampled_values_v1_ms)
+                .collect::<Vec<_>>(),
+        ),
+        prove_values_fri_and_decommit_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.prove_values_fri_and_decommit_ms)
+                .collect::<Vec<_>>(),
+        ),
     }
 }
 
@@ -493,6 +535,9 @@ fn single_prove_breakdown_timings_from_sample(
         composition_eval_program_ms: sample.composition_eval_program_ms,
         composition_quotient_application_ms: sample.composition_quotient_application_ms,
         composition_interpolation_ms: sample.composition_interpolation_ms,
+        prove_values_prepare_ms: sample.prove_values_prepare_ms,
+        prove_values_sampled_values_v1_ms: sample.prove_values_sampled_values_v1_ms,
+        prove_values_fri_and_decommit_ms: sample.prove_values_fri_and_decommit_ms,
     }
 }
 
@@ -901,6 +946,9 @@ fn run_one_generic_sample(
             composition_eval_program_ms: 0.0,
             composition_quotient_application_ms: 0.0,
             composition_interpolation_ms: 0.0,
+            prove_values_prepare_ms: 0.0,
+            prove_values_sampled_values_v1_ms: 0.0,
+            prove_values_fri_and_decommit_ms: 0.0,
         }),
         proof_metadata,
         sentinel: sentinel_from_inputs(input_a_host, input_b_host, n_columns),
@@ -927,6 +975,9 @@ struct ProveBreakdown {
     composition_eval_program_ms: f64,
     composition_quotient_application_ms: f64,
     composition_interpolation_ms: f64,
+    prove_values_prepare_ms: f64,
+    prove_values_sampled_values_v1_ms: f64,
+    prove_values_fri_and_decommit_ms: f64,
 }
 
 #[cfg(feature = "metal-runtime")]
@@ -951,6 +1002,9 @@ fn prove_breakdown_from_generated_sample(
         composition_eval_program_ms: sample.breakdown.prove_core_composition_detail.eval_program_ms,
         composition_quotient_application_ms: sample.breakdown.prove_core_composition_detail.quotient_application_ms,
         composition_interpolation_ms: sample.breakdown.prove_core_composition_detail.interpolation_ms,
+        prove_values_prepare_ms: sample.breakdown.prove_core_prove_values_detail.prepare_ms,
+        prove_values_sampled_values_v1_ms: sample.breakdown.prove_core_prove_values_detail.sampled_values_v1_ms,
+        prove_values_fri_and_decommit_ms: sample.breakdown.prove_core_prove_values_detail.fri_and_decommit_ms,
     }
 }
 
