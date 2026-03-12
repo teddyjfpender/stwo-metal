@@ -32,7 +32,8 @@ use super::planner::{MetalExecutionIntent, MetalPlannerError};
 use super::poly::evaluate_polys_on_domain_batch;
 use super::prove_runtime_v1::{
     commit_trace_with_breakdown as runtime_commit_trace_with_breakdown, execute_prove_core_v1,
-    MetalProofMetadata, MetalProveCoreError, MetalProveRuntimeContextV1, MetalProveValuesResult,
+    MetalCompositionDetailBreakdown, MetalProofMetadata, MetalProveCoreError,
+    MetalProveRuntimeContextV1, MetalProveValuesResult,
 };
 use super::quotient::{
     accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
@@ -195,6 +196,8 @@ pub struct MetalGeneratedWideFibonacciBenchmarkBreakdown {
     pub prove_core_composition_commit_ms: f64,
     pub prove_core_prove_values_ms: f64,
     pub prove_core_sanity_check_ms: f64,
+    /// Sub-phase timing within composition generation.
+    pub prove_core_composition_detail: MetalCompositionDetailBreakdown,
 }
 
 // ---------------------------------------------------------------------------
@@ -623,6 +626,7 @@ impl MetalWideFibonacciBenchmarkBoundary {
                 prove_core_composition_commit_ms: prove_core_breakdown.composition_commit_ms,
                 prove_core_prove_values_ms: prove_core_breakdown.prove_values_ms,
                 prove_core_sanity_check_ms: prove_core_breakdown.sanity_check_ms,
+                prove_core_composition_detail: prove_core_breakdown.composition_detail,
             },
         })
     }
@@ -1378,6 +1382,13 @@ mod tests {
                     prove_core_composition_commit_ms: 10.0,
                     prove_core_prove_values_ms: 11.0,
                     prove_core_sanity_check_ms: 12.0,
+                    prove_core_composition_detail: super::super::prove_runtime_v1::MetalCompositionDetailBreakdown {
+                        twiddle_ms: 0.5,
+                        trace_extension_ms: 1.5,
+                        eval_program_ms: 8.0,
+                        quotient_application_ms: 0.3,
+                        interpolation_ms: 0.7,
+                    },
                 },
             },
             prove_elapsed_ms: 13.0,

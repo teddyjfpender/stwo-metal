@@ -170,6 +170,11 @@ struct ProveBreakdownSampleTimings {
     prove_core_composition_commit_ms: Vec<f64>,
     prove_core_prove_values_ms: Vec<f64>,
     prove_core_sanity_check_ms: Vec<f64>,
+    composition_twiddle_ms: Vec<f64>,
+    composition_trace_extension_ms: Vec<f64>,
+    composition_eval_program_ms: Vec<f64>,
+    composition_quotient_application_ms: Vec<f64>,
+    composition_interpolation_ms: Vec<f64>,
 }
 
 #[derive(Serialize)]
@@ -186,6 +191,11 @@ struct ProveBreakdownSummaryTimings {
     prove_core_composition_commit_ms: SummaryStats,
     prove_core_prove_values_ms: SummaryStats,
     prove_core_sanity_check_ms: SummaryStats,
+    composition_twiddle_ms: SummaryStats,
+    composition_trace_extension_ms: SummaryStats,
+    composition_eval_program_ms: SummaryStats,
+    composition_quotient_application_ms: SummaryStats,
+    composition_interpolation_ms: SummaryStats,
 }
 
 #[derive(Serialize)]
@@ -202,6 +212,11 @@ struct SingleProveBreakdownTimings {
     prove_core_composition_commit_ms: f64,
     prove_core_prove_values_ms: f64,
     prove_core_sanity_check_ms: f64,
+    composition_twiddle_ms: f64,
+    composition_trace_extension_ms: f64,
+    composition_eval_program_ms: f64,
+    composition_quotient_application_ms: f64,
+    composition_interpolation_ms: f64,
 }
 
 #[cfg(feature = "metal-runtime")]
@@ -304,6 +319,26 @@ fn prove_breakdown_samples_from_samples(samples: &[ProveBreakdown]) -> ProveBrea
         .iter()
         .map(|sample| sample.prove_core_sanity_check_ms)
         .collect::<Vec<_>>();
+    let composition_twiddle_ms = samples
+        .iter()
+        .map(|sample| sample.composition_twiddle_ms)
+        .collect::<Vec<_>>();
+    let composition_trace_extension_ms = samples
+        .iter()
+        .map(|sample| sample.composition_trace_extension_ms)
+        .collect::<Vec<_>>();
+    let composition_eval_program_ms = samples
+        .iter()
+        .map(|sample| sample.composition_eval_program_ms)
+        .collect::<Vec<_>>();
+    let composition_quotient_application_ms = samples
+        .iter()
+        .map(|sample| sample.composition_quotient_application_ms)
+        .collect::<Vec<_>>();
+    let composition_interpolation_ms = samples
+        .iter()
+        .map(|sample| sample.composition_interpolation_ms)
+        .collect::<Vec<_>>();
 
     ProveBreakdownSampleTimings {
         setup_and_preprocessed_commit_ms,
@@ -318,6 +353,11 @@ fn prove_breakdown_samples_from_samples(samples: &[ProveBreakdown]) -> ProveBrea
         prove_core_composition_commit_ms,
         prove_core_prove_values_ms,
         prove_core_sanity_check_ms,
+        composition_twiddle_ms,
+        composition_trace_extension_ms,
+        composition_eval_program_ms,
+        composition_quotient_application_ms,
+        composition_interpolation_ms,
     }
 }
 
@@ -398,6 +438,36 @@ fn prove_breakdown_summary_from_samples(
                 .map(|sample| sample.prove_core_sanity_check_ms)
                 .collect::<Vec<_>>(),
         ),
+        composition_twiddle_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.composition_twiddle_ms)
+                .collect::<Vec<_>>(),
+        ),
+        composition_trace_extension_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.composition_trace_extension_ms)
+                .collect::<Vec<_>>(),
+        ),
+        composition_eval_program_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.composition_eval_program_ms)
+                .collect::<Vec<_>>(),
+        ),
+        composition_quotient_application_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.composition_quotient_application_ms)
+                .collect::<Vec<_>>(),
+        ),
+        composition_interpolation_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.composition_interpolation_ms)
+                .collect::<Vec<_>>(),
+        ),
     }
 }
 
@@ -418,6 +488,11 @@ fn single_prove_breakdown_timings_from_sample(
         prove_core_composition_commit_ms: sample.prove_core_composition_commit_ms,
         prove_core_prove_values_ms: sample.prove_core_prove_values_ms,
         prove_core_sanity_check_ms: sample.prove_core_sanity_check_ms,
+        composition_twiddle_ms: sample.composition_twiddle_ms,
+        composition_trace_extension_ms: sample.composition_trace_extension_ms,
+        composition_eval_program_ms: sample.composition_eval_program_ms,
+        composition_quotient_application_ms: sample.composition_quotient_application_ms,
+        composition_interpolation_ms: sample.composition_interpolation_ms,
     }
 }
 
@@ -821,6 +896,11 @@ fn run_one_generic_sample(
             prove_core_composition_commit_ms: 0.0,
             prove_core_prove_values_ms: 0.0,
             prove_core_sanity_check_ms: 0.0,
+            composition_twiddle_ms: 0.0,
+            composition_trace_extension_ms: 0.0,
+            composition_eval_program_ms: 0.0,
+            composition_quotient_application_ms: 0.0,
+            composition_interpolation_ms: 0.0,
         }),
         proof_metadata,
         sentinel: sentinel_from_inputs(input_a_host, input_b_host, n_columns),
@@ -842,6 +922,11 @@ struct ProveBreakdown {
     prove_core_composition_commit_ms: f64,
     prove_core_prove_values_ms: f64,
     prove_core_sanity_check_ms: f64,
+    composition_twiddle_ms: f64,
+    composition_trace_extension_ms: f64,
+    composition_eval_program_ms: f64,
+    composition_quotient_application_ms: f64,
+    composition_interpolation_ms: f64,
 }
 
 #[cfg(feature = "metal-runtime")]
@@ -861,6 +946,11 @@ fn prove_breakdown_from_generated_sample(
         prove_core_composition_commit_ms: sample.breakdown.prove_core_composition_commit_ms,
         prove_core_prove_values_ms: sample.breakdown.prove_core_prove_values_ms,
         prove_core_sanity_check_ms: sample.breakdown.prove_core_sanity_check_ms,
+        composition_twiddle_ms: sample.breakdown.prove_core_composition_detail.twiddle_ms,
+        composition_trace_extension_ms: sample.breakdown.prove_core_composition_detail.trace_extension_ms,
+        composition_eval_program_ms: sample.breakdown.prove_core_composition_detail.eval_program_ms,
+        composition_quotient_application_ms: sample.breakdown.prove_core_composition_detail.quotient_application_ms,
+        composition_interpolation_ms: sample.breakdown.prove_core_composition_detail.interpolation_ms,
     }
 }
 

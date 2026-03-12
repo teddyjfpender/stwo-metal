@@ -69,11 +69,16 @@ const MAIN_TRACE_IDX: usize = 1;
 pub struct MetalProveRuntimeContextV1 {
     program: OwnedMetalEvaluationProgramV1,
     log_n_rows: u32,
+    skip_reference_sanity_check: bool,
 }
 
 impl MetalProveRuntimeContextV1 {
     pub fn new(program: OwnedMetalEvaluationProgramV1, log_n_rows: u32) -> Self {
-        Self { program, log_n_rows }
+        Self {
+            program,
+            log_n_rows,
+            skip_reference_sanity_check: false,
+        }
     }
 
     pub fn program(&self) -> &OwnedMetalEvaluationProgramV1 {
@@ -86,6 +91,22 @@ impl MetalProveRuntimeContextV1 {
 
     pub fn n_constraints(&self) -> u32 {
         self.program.header().n_constraints
+    }
+
+    /// Enable skipping the reference-interpreter sanity check during prove.
+    ///
+    /// When set, `execute_post_composition_runtime` will not run the reference
+    /// interpreter to cross-check the selected dispatch result. This reduces
+    /// the prove-values cost at the expense of losing the safety net.
+    /// Intended for production/benchmark runs where the dispatch has been
+    /// validated separately.
+    pub fn with_skip_reference_sanity_check(mut self, skip: bool) -> Self {
+        self.skip_reference_sanity_check = skip;
+        self
+    }
+
+    pub fn skip_reference_sanity_check(&self) -> bool {
+        self.skip_reference_sanity_check
     }
 }
 
@@ -109,6 +130,25 @@ pub struct MetalProveCoreBreakdown {
     pub composition_commit_ms: f64,
     pub prove_values_ms: f64,
     pub sanity_check_ms: f64,
+    /// Detailed sub-phase timing within composition generation.
+    pub composition_detail: MetalCompositionDetailBreakdown,
+}
+
+/// Sub-phase timing within composition polynomial generation.
+///
+/// Allows identifying which phase of composition scales poorly at high logs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MetalCompositionDetailBreakdown {
+    /// Twiddle precomputation for the eval domain.
+    pub twiddle_ms: f64,
+    /// Trace extension to eval domain (if coefficients path was used).
+    pub trace_extension_ms: f64,
+    /// V1 evaluation program execution on GPU.
+    pub eval_program_ms: f64,
+    /// Denominator inverse computation + quotient application.
+    pub quotient_application_ms: f64,
+    /// Composition polynomial interpolation.
+    pub interpolation_ms: f64,
 }
 
 /// Breakdown of prove-values timing.
@@ -351,7 +391,7 @@ fn interpret_evaluation_program_v1_on_trace_interactions(
 /// Compute composition polynomial via selected V1 evaluation program.
 ///
 /// Returns the composition polynomial, the dispatch kind used, and the
-/// evaluation-program runtime in milliseconds.
+/// detailed composition breakdown.
 pub fn compute_composition_polynomial_v1(
     ctx: &MetalProveRuntimeContextV1,
     trace: &Trace<'_, MetalBackend>,
@@ -360,7 +400,7 @@ pub fn compute_composition_polynomial_v1(
     (
         SecureCirclePoly<MetalBackend>,
         MetalEvaluationProgramDispatchKindV1,
-        f64,
+        MetalCompositionDetailBreakdown,
     ),
     MetalProveRuntimeCompositionError,
 > {
@@ -380,8 +420,12 @@ pub fn compute_composition_polynomial_v1(
     let mut random_coeff_powers =
         <MetalBackend as AccumulationOps>::generate_secure_powers(random_coeff, n_constraints);
     random_coeff_powers.reverse();
-    let twiddles = MetalBackend::precompute_twiddles(eval_domain.half_coset);
 
+    let twiddle_start = std::time::Instant::now();
+    let twiddles = MetalBackend::precompute_twiddles(eval_domain.half_coset);
+    let twiddle_ms = twiddle_start.elapsed().as_secs_f64() * 1000.0;
+
+    let trace_extension_start = std::time::Instant::now();
     let eval_domain_storage = if trace_columns
         .iter()
         .all(|poly| poly.evals.domain == eval_domain)
@@ -407,6 +451,8 @@ pub fn compute_composition_polynomial_v1(
         )?;
         Some(batch.to_columns())
     };
+    let trace_extension_ms = trace_extension_start.elapsed().as_secs_f64() * 1000.0;
+
     let trace_column_refs: Vec<&[BaseField]> = if let Some(storage) = &eval_domain_storage {
         storage.iter().map(BaseFieldVec::host_slice).collect()
     } else {
@@ -417,13 +463,13 @@ pub fn compute_composition_polynomial_v1(
     };
     let trace_interactions = [&[][..], trace_column_refs.as_slice()];
 
-    let runtime_start = std::time::Instant::now();
-    let (row_res, dispatch) = execute_evaluation_program_v1_on_trace_interactions(
+    let eval_program_start = std::time::Instant::now();
+    let (mut row_res, dispatch) = execute_evaluation_program_v1_on_trace_interactions(
         &ctx.program,
         &trace_interactions,
         &random_coeff_powers,
     )?;
-    let runtime_ms = runtime_start.elapsed().as_secs_f64() * 1000.0;
+    let eval_program_ms = eval_program_start.elapsed().as_secs_f64() * 1000.0;
 
     if row_res.len() != eval_domain.size() {
         return Err(MetalProveRuntimeCompositionError::CompositionShape {
@@ -435,18 +481,35 @@ pub fn compute_composition_polynomial_v1(
         });
     }
 
-    let denominator_inverses = denominator_inverses_for_eval_domain(ctx.log_n_rows, eval_domain.log_size());
-    let quotient_values = row_res
-        .into_iter()
-        .enumerate()
-        .map(|(row_index, value)| value * denominator_inverses[row_index >> ctx.log_n_rows])
-        .collect();
+    let quotient_start = std::time::Instant::now();
+    let denominator_inverses =
+        denominator_inverses_for_eval_domain(ctx.log_n_rows, eval_domain.log_size());
+    // Apply denominator inverses in-place to avoid a second allocation.
+    let log_n_rows = ctx.log_n_rows;
+    for (row_index, value) in row_res.iter_mut().enumerate() {
+        *value = *value * denominator_inverses[row_index >> log_n_rows];
+    }
+    let quotient_application_ms = quotient_start.elapsed().as_secs_f64() * 1000.0;
+
+    let interpolation_start = std::time::Instant::now();
     let composition_eval = SecureEvaluation::new(
         eval_domain,
-        metal_secure_column_from_values(quotient_values),
+        metal_secure_column_from_values(row_res),
     );
     let composition_poly = composition_eval.interpolate_with_twiddles(&twiddles);
-    Ok((composition_poly, dispatch, runtime_ms))
+    let interpolation_ms = interpolation_start.elapsed().as_secs_f64() * 1000.0;
+
+    Ok((
+        composition_poly,
+        dispatch,
+        MetalCompositionDetailBreakdown {
+            twiddle_ms,
+            trace_extension_ms,
+            eval_program_ms,
+            quotient_application_ms,
+            interpolation_ms,
+        },
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -601,15 +664,8 @@ fn prepare_post_composition_runtime<'a>(
 fn execute_post_composition_runtime(
     channel: &mut Blake2sChannel,
     runtime: PostCompositionRuntime<'_>,
+    skip_reference_sanity_check: bool,
 ) -> Result<(MetalProveValuesResult, MetalProveValuesBreakdown), ProvingError> {
-    let reference_sampled_values_eval =
-        interpret_post_composition_sampled_values_v1_reference(
-            runtime.oods_point,
-            &runtime.sampled_values,
-            runtime.max_log_degree_bound,
-        )
-        .map_err(|_| ProvingError::ConstraintsNotSatisfied)?;
-
     let sampled_values_v1_start = std::time::Instant::now();
     let (post_composition_eval, sampled_values_dispatch) =
         execute_post_composition_sampled_values_v1(
@@ -621,8 +677,17 @@ fn execute_post_composition_runtime(
     let sampled_values_v1_ms = sampled_values_v1_start.elapsed().as_secs_f64() * 1000.0;
 
     let sanity_check_start = std::time::Instant::now();
-    if reference_sampled_values_eval != post_composition_eval {
-        return Err(ProvingError::ConstraintsNotSatisfied);
+    if !skip_reference_sanity_check {
+        let reference_sampled_values_eval =
+            interpret_post_composition_sampled_values_v1_reference(
+                runtime.oods_point,
+                &runtime.sampled_values,
+                runtime.max_log_degree_bound,
+            )
+            .map_err(|_| ProvingError::ConstraintsNotSatisfied)?;
+        if reference_sampled_values_eval != post_composition_eval {
+            return Err(ProvingError::ConstraintsNotSatisfied);
+        }
     }
     let sanity_check_ms = sanity_check_start.elapsed().as_secs_f64() * 1000.0;
 
@@ -766,10 +831,20 @@ pub fn execute_prove_values_v1(
     commitment_scheme: CommitmentSchemeProver<'_, MetalBackend, Blake2sMerkleChannel>,
     staging: MetalProveValuesStaging,
 ) -> Result<(MetalProveValuesResult, MetalProveValuesBreakdown), ProvingError> {
+    execute_prove_values_v1_with_opts(channel, commitment_scheme, staging, false)
+}
+
+fn execute_prove_values_v1_with_opts(
+    channel: &mut Blake2sChannel,
+    commitment_scheme: CommitmentSchemeProver<'_, MetalBackend, Blake2sMerkleChannel>,
+    staging: MetalProveValuesStaging,
+    skip_reference_sanity_check: bool,
+) -> Result<(MetalProveValuesResult, MetalProveValuesBreakdown), ProvingError> {
     let prove_values_start = std::time::Instant::now();
     let runtime = prepare_post_composition_runtime(channel, commitment_scheme, staging)?;
     let prove_values_ms = prove_values_start.elapsed().as_secs_f64() * 1000.0;
-    let (result, mut breakdown) = execute_post_composition_runtime(channel, runtime)?;
+    let (result, mut breakdown) =
+        execute_post_composition_runtime(channel, runtime, skip_reference_sanity_check)?;
     breakdown.prove_values_ms = prove_values_ms;
     Ok((result, breakdown))
 }
@@ -818,7 +893,7 @@ pub fn execute_prove_core_v1(
 
     let random_coeff = channel.draw_secure_felt();
     let composition_generation_start = std::time::Instant::now();
-    let (composition_poly, evaluation_program_v1_dispatch, evaluation_program_v1_ms) =
+    let (composition_poly, evaluation_program_v1_dispatch, composition_detail) =
         compute_composition_polynomial_v1(ctx, &trace, random_coeff)
             .map_err(|source| MetalProveCoreError::CompositionGeneration { source })?;
     let composition_generation_ms =
@@ -835,18 +910,24 @@ pub fn execute_prove_core_v1(
     let prove_values_stage =
         stage_prove_values_v1(&component_provers, channel, &commitment_scheme);
     let (prove_values_result, prove_values_breakdown) =
-        execute_prove_values_v1(channel, commitment_scheme, prove_values_stage)
-            .map_err(MetalProveCoreError::from)?;
+        execute_prove_values_v1_with_opts(
+            channel,
+            commitment_scheme,
+            prove_values_stage,
+            ctx.skip_reference_sanity_check,
+        )
+        .map_err(MetalProveCoreError::from)?;
 
     Ok((
         prove_values_result,
         MetalProveCoreBreakdown {
-            evaluation_program_v1_ms,
+            evaluation_program_v1_ms: composition_detail.eval_program_ms,
             evaluation_program_v1_dispatch,
             composition_generation_ms,
             composition_commit_ms,
             prove_values_ms: prove_values_breakdown.prove_values_ms,
             sanity_check_ms: prove_values_breakdown.sanity_check_ms,
+            composition_detail,
         },
     ))
 }
