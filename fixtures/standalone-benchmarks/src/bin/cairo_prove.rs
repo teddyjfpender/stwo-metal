@@ -1045,8 +1045,8 @@ mod cairo_prove_main {
         let profile = MetalEvaluationProgramCapabilityProfileV1::current();
         let mut total_jit_ms = 0.0f64;
 
-        // JIT-compiled native Metal shaders: opt-in via USE_JIT=1 or TG_SWEEP=1.
-        let use_compiled = std::env::var("USE_JIT").is_ok() || std::env::var("TG_SWEEP").is_ok();
+        // JIT-compiled native Metal shaders: default on, opt-out via NO_JIT=1.
+        let use_compiled = std::env::var("NO_JIT").is_err();
         let mut shader_cache: std::collections::HashMap<u64, (String, String)> =
             std::collections::HashMap::new();
         if use_compiled {
