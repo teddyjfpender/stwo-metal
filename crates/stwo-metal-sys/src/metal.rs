@@ -359,6 +359,37 @@ impl U32Buffer {
         }
     }
 
+    /// Submit RFFT without blocking. Returns a handle to wait on later.
+    /// The GPU work is committed and in-flight; call `handle.wait()` before
+    /// reading the buffer contents.
+    pub fn rfft_evaluate_in_place_async(
+        &mut self,
+        twiddles: &Self,
+    ) -> Result<CommandBufferHandle, MetalError> {
+        assert!(
+            self.len.is_power_of_two(),
+            "RFFT async requires a power-of-two value buffer"
+        );
+        assert_eq!(
+            twiddles.len,
+            self.len / 2,
+            "RFFT async requires a twiddle slice with one half-coset tree tail"
+        );
+        let runtime = shared_runtime()?;
+        let handle = unsafe {
+            ffi::rfft_evaluate_async_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                twiddles.raw.as_ptr(),
+                self.len.ilog2(),
+                error_buffer_mut_ptr,
+            )?
+        };
+        Ok(CommandBufferHandle {
+            raw: NonNull::new(handle).expect("async RFFT returned null handle despite success"),
+        })
+    }
+
     pub fn rfft_evaluate_subbuffer_in_place(
         &mut self,
         value_offset: usize,
@@ -2181,6 +2212,33 @@ impl Clone for U32Buffer {
     }
 }
 
+/// Opaque handle to a committed Metal command buffer.
+/// Allows deferred waiting: submit GPU work without blocking, wait later.
+#[derive(Debug)]
+pub struct CommandBufferHandle {
+    raw: NonNull<c_void>,
+}
+
+// Safety: Metal command buffer objects are internally thread-safe.
+unsafe impl Send for CommandBufferHandle {}
+
+impl CommandBufferHandle {
+    /// Block until the GPU command buffer completes, then check for errors.
+    /// Consumes the handle (releases the retained ObjC reference).
+    pub fn wait(self) -> Result<(), MetalError> {
+        let ptr = self.raw.as_ptr();
+        // Prevent Drop from releasing — wait already transfers ownership.
+        std::mem::forget(self);
+        unsafe { ffi::command_buffer_wait(ptr, error_buffer_mut_ptr) }
+    }
+}
+
+impl Drop for CommandBufferHandle {
+    fn drop(&mut self) {
+        unsafe { ffi::command_buffer_release(self.raw.as_ptr()) };
+    }
+}
+
 impl Drop for U32Buffer {
     fn drop(&mut self) {
         unsafe { ffi::buffer_destroy(self.raw.as_ptr()) };
@@ -2369,6 +2427,20 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_rfft_evaluate_async_u32(
+            runtime: *mut c_void,
+            values: *mut c_void,
+            twiddles: *mut c_void,
+            values_log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> *mut c_void;
+        fn stwo_metal_command_buffer_wait(
+            command_buffer: *mut c_void,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_command_buffer_release(command_buffer: *mut c_void);
         fn stwo_metal_ifft_interpolate_u32(
             runtime: *mut c_void,
             values: *mut c_void,
@@ -3307,6 +3379,45 @@ mod ffi {
         } else {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
+    }
+
+    pub unsafe fn rfft_evaluate_async_u32(
+        runtime: *mut c_void,
+        values: *mut c_void,
+        twiddles: *mut c_void,
+        values_log_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let handle = stwo_metal_rfft_evaluate_async_u32(
+            runtime,
+            values,
+            twiddles,
+            values_log_len,
+            error_ptr(&mut error),
+            error.len(),
+        );
+        if handle.is_null() {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        } else {
+            Ok(handle)
+        }
+    }
+
+    pub unsafe fn command_buffer_wait(
+        handle: *mut c_void,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_command_buffer_wait(handle, error_ptr(&mut error), error.len()) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn command_buffer_release(handle: *mut c_void) {
+        stwo_metal_command_buffer_release(handle);
     }
 
     pub unsafe fn ifft_interpolate_u32(
@@ -5059,6 +5170,29 @@ mod ffi {
             "Metal support was not linked into stwo-metal-sys.",
         ))
     }
+
+    pub unsafe fn rfft_evaluate_async_u32(
+        _runtime: *mut c_void,
+        _values: *mut c_void,
+        _twiddles: *mut c_void,
+        _values_log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn command_buffer_wait(
+        _handle: *mut c_void,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn command_buffer_release(_handle: *mut c_void) {}
 
     pub unsafe fn ifft_interpolate_u32(
         _runtime: *mut c_void,

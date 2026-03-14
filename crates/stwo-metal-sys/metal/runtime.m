@@ -793,6 +793,94 @@ bool stwo_metal_rfft_evaluate_u32(
     }
 }
 
+// --- Async command buffer API ---
+// Returns a retained command buffer handle without waiting for completion.
+// Caller must later call stwo_metal_command_buffer_wait to block + release,
+// or stwo_metal_command_buffer_release to discard.
+
+void *stwo_metal_rfft_evaluate_async_u32(
+    void *runtime_ptr,
+    void *values_ptr,
+    void *twiddles_ptr,
+    uint32_t values_log_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *values = stwo_metal_buffer_box(values_ptr);
+        StwoMetalBufferBox *twiddles = stwo_metal_buffer_box(twiddles_ptr);
+        uint32_t values_len = ((uint32_t)1) << values_log_len;
+        uint32_t eval_domain_size = values_len >> 1;
+        if (values.len != (NSUInteger)values_len || twiddles.len != (NSUInteger)eval_domain_size) {
+            stwo_metal_write_error(error_message, error_message_len, @"RFFT async expects a power-of-two value buffer and a twiddle slice of half that length.");
+            return NULL;
+        }
+
+        id<MTLComputePipelineState> line_pipeline =
+            stwo_metal_pipeline(runtime, @"rfft_line_part_u32", error_message, error_message_len);
+        if (line_pipeline == nil) {
+            return NULL;
+        }
+        id<MTLComputePipelineState> circle_pipeline =
+            stwo_metal_pipeline(runtime, @"rfft_circle_part_u32", error_message, error_message_len);
+        if (circle_pipeline == nil) {
+            return NULL;
+        }
+        id<MTLComputePipelineState> fused_pipeline = (values_log_len >= RFFT_FUSED_TILE_LOG_HOST)
+            ? stwo_metal_pipeline(runtime, @"rfft_tail_fused_u32", error_message, error_message_len)
+            : nil;
+        if (values_log_len >= RFFT_FUSED_TILE_LOG_HOST && fused_pipeline == nil) {
+            return NULL;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return NULL;
+        }
+
+        if (!stwo_metal_rfft_encode_stages(command_buffer, values.buffer, 0, twiddles.buffer,
+                values_log_len, line_pipeline, circle_pipeline, fused_pipeline,
+                error_message, error_message_len)) {
+            return NULL;
+        }
+
+        [command_buffer commit];
+        // Do NOT waitUntilCompleted — return the handle for deferred waiting.
+        return (__bridge_retained void *)command_buffer;
+    }
+}
+
+bool stwo_metal_command_buffer_wait(
+    void *command_buffer_ptr,
+    char *error_message,
+    size_t error_message_len
+) {
+    if (command_buffer_ptr == NULL) {
+        stwo_metal_write_error(error_message, error_message_len, @"NULL command buffer handle.");
+        return false;
+    }
+    @autoreleasepool {
+        id<MTLCommandBuffer> cb = (__bridge_transfer id<MTLCommandBuffer>)command_buffer_ptr;
+        [cb waitUntilCompleted];
+        if (cb.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, cb.error.localizedDescription ?: @"Metal async command buffer failed.");
+            return false;
+        }
+        return true;
+    }
+}
+
+void stwo_metal_command_buffer_release(void *command_buffer_ptr) {
+    if (command_buffer_ptr == NULL) {
+        return;
+    }
+    @autoreleasepool {
+        __unused id released = (__bridge_transfer id)command_buffer_ptr;
+    }
+}
+
 bool stwo_metal_rfft_evaluate_subbuffer_u32(
     void *runtime_ptr,
     void *values_ptr,

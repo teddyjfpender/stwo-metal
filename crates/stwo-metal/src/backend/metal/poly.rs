@@ -588,12 +588,15 @@ impl PolyOps for MetalBackend {
             }
         }
 
+        // Phase 1: Copy coefficients and submit RFFTs without blocking.
+        // All GPU command buffers are committed and in-flight simultaneously,
+        // keeping the GPU fully occupied instead of draining between Rayon waves.
         #[cfg(feature = "parallel")]
         let iter = polynomials.into_par_iter().zip(buffers.into_par_iter());
         #[cfg(not(feature = "parallel"))]
         let iter = polynomials.into_iter().zip(buffers);
 
-        iter.map(|(poly_coeffs, mut buffer)| {
+        let pending: Vec<_> = iter.map(|(poly_coeffs, mut buffer)| {
             let log_eval_size = poly_coeffs.log_size() + log_blowup_factor;
             let domain = CanonicCoset::new(log_eval_size).circle_domain();
 
@@ -608,14 +611,8 @@ impl PolyOps for MetalBackend {
                 );
                 let metal_values = BaseFieldVec::from_vec(cpu_eval.values.clone());
                 buffer.copy_from(&metal_values);
-                let evals = CircleEvaluation::new(cpu_eval.domain, buffer);
-                Poly::new(
-                    store_polynomials_coefficients.then_some(poly_coeffs),
-                    evals,
-                )
+                (poly_coeffs, buffer, domain, None)
             } else {
-                // Skip extend + copy_from (2 temp allocs + 4N data movement).
-                // Instead, copy coefficients directly to pool buffer and zero-fill.
                 let coeff_size = poly_coeffs.coeffs.len();
                 let domain_size = domain.size();
                 buffer
@@ -632,22 +629,34 @@ impl PolyOps for MetalBackend {
                         .copy_range_from(zero_pad, 0, padding, coeff_size)
                         .expect("Metal zero padding copy should succeed");
                 }
-                // Shared twiddle tail buffer instead of per-polynomial allocation.
                 let twiddle_tail = twiddle_cache
                     .get(&log_eval_size)
                     .expect("twiddle cache should have entry for this domain size");
-                buffer
+                // Submit RFFT without blocking — GPU work starts immediately.
+                let handle = buffer
                     .buffer
-                    .rfft_evaluate_in_place(twiddle_tail)
-                    .expect("Metal RFFT should succeed");
+                    .rfft_evaluate_in_place_async(twiddle_tail)
+                    .expect("Metal RFFT async submit should succeed");
+                (poly_coeffs, buffer, domain, Some(handle))
+            }
+        }).collect();
+
+        // Phase 2: Wait for all GPU command buffers and wrap results.
+        // Same-queue command buffers complete in submission order, so after
+        // the first wait returns, most subsequent waits are instant.
+        pending
+            .into_iter()
+            .map(|(poly_coeffs, buffer, domain, handle)| {
+                if let Some(h) = handle {
+                    h.wait().expect("Metal RFFT async wait should succeed");
+                }
                 let evals = CircleEvaluation::new(domain, buffer);
                 Poly::new(
                     store_polynomials_coefficients.then_some(poly_coeffs),
                     evals,
                 )
-            }
-        })
-        .collect()
+            })
+            .collect()
     }
 
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self> {
