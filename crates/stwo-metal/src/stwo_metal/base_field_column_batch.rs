@@ -37,6 +37,12 @@ impl BaseFieldColumnBatch {
         self.n_columns
     }
 
+    /// Consume the batch and return the underlying contiguous GPU buffer.
+    /// The buffer layout is column-major: column 0 data, column 1 data, ...
+    pub fn into_buffer(self) -> U32Buffer {
+        self.buffer
+    }
+
     pub fn to_columns(&self) -> Vec<BaseFieldVec> {
         (0..self.n_columns)
             .map(|column_index| {

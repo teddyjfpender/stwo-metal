@@ -1994,6 +1994,198 @@ fn interpret_metal_evaluation_program_v1_on_metal(
         .collect())
 }
 
+/// Execute a V1 program on Metal with a pre-built GPU trace buffer.
+///
+/// This bypasses the CPU round-trip of `flatten_trace_interactions` + `U32Buffer::from_slice`
+/// by accepting a `U32Buffer` that was assembled directly on the GPU (e.g. via buffer
+/// concatenation). All other parameters are prepared from CPU data as usual.
+///
+/// `interaction_offsets_cpu` contains the column-count prefix sums, e.g. `[0, 0, N]` for
+/// composition where interaction 0 is empty and interaction 1 has N columns.
+pub fn execute_eval_program_v1_with_gpu_trace(
+    program: &OwnedMetalEvaluationProgramV1,
+    gpu_trace_values: U32Buffer,
+    interaction_offsets_cpu: &[u32],
+    n_rows: usize,
+    n_interactions: u32,
+    n_preprocessed_columns: u32,
+    base_params_cpu: &[BaseField],
+    ext_params_cpu: &[SecureField],
+    random_coeff_powers_cpu: &[SecureField],
+) -> Result<(Vec<SecureField>, MetalEvaluationProgramDispatchKindV1), MetalEvaluationProgramExecutionError>
+{
+    let map_metal = |e: MetalError| MetalEvaluationProgramExecutionError::MetalRuntime {
+        message: e.message().to_string(),
+    };
+
+    // Try JIT first for large components.
+    if n_rows >= JIT_MIN_EVAL_ROWS {
+        let hash = program.header().semantic_hash;
+        let cache = jit_shader_cache();
+        let (source, name) = {
+            let mut guard = cache.lock().unwrap();
+            guard.entry(hash).or_insert_with(|| {
+                let s = super::shader_compiler_v1::compile_v1_to_metal_source(program);
+                let n = super::shader_compiler_v1::compiled_kernel_name(hash);
+                (s, n)
+            }).clone()
+        };
+
+        // Build the small CPU params as U32Buffers.
+        let interaction_offsets = U32Buffer::from_slice(interaction_offsets_cpu).map_err(map_metal)?;
+        let preprocessed_values = U32Buffer::zeroed(1).map_err(map_metal)?;
+        let base_params = optional_u32_buffer(
+            &base_params_cpu.iter().map(|v| v.0).collect::<Vec<_>>(),
+        ).map_err(map_metal)?;
+        let ext_params = optional_u32_buffer(
+            &ext_params_cpu.iter().flat_map(|v| v.to_m31_array().map(|l| l.0)).collect::<Vec<_>>(),
+        ).map_err(map_metal)?;
+        let random_coeff_powers = U32Buffer::from_slice(
+            &random_coeff_powers_cpu.iter().flat_map(|v| v.to_m31_array().map(|l| l.0)).collect::<Vec<_>>(),
+        ).map_err(map_metal)?;
+
+        match U32Buffer::eval_compiled_program_v1_u32x4(
+            &source,
+            &name,
+            &gpu_trace_values,
+            &interaction_offsets,
+            &preprocessed_values,
+            &base_params,
+            &ext_params,
+            &random_coeff_powers,
+            n_rows,
+        ) {
+            Ok(dst) => {
+                let raw = dst.to_vec().map_err(map_metal)?;
+                let values = raw
+                    .chunks_exact(4)
+                    .map(|limbs| SecureField::from_u32_unchecked(limbs[0], limbs[1], limbs[2], limbs[3]))
+                    .collect();
+                return Ok((values, MetalEvaluationProgramDispatchKindV1::JitCompiled));
+            }
+            Err(_) => {
+                // JIT failed — fall through to interpreter.
+            }
+        }
+    }
+
+    // Interpreter path with pre-built GPU trace.
+    let support = metal_runtime_support();
+    if support != MetalRuntimeSupport::Available {
+        return Err(MetalEvaluationProgramExecutionError::RuntimeUnavailable(support));
+    }
+
+    #[derive(Copy, Clone)]
+    enum KernelVariant { A, B, C }
+    let variant = if program.validate(METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET).is_ok() {
+        KernelVariant::A
+    } else if program.validate(METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET_B).is_ok() {
+        KernelVariant::B
+    } else if program.validate(METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET_C).is_ok() {
+        KernelVariant::C
+    } else {
+        return Err(MetalEvaluationProgramExecutionError::MetalRuntime {
+            message: format!(
+                "Register budget exceeded: required base={} ext={}, max supported base={} ext={}",
+                program.header().max_base_regs,
+                program.header().max_ext_regs,
+                METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET_C.max_base_regs,
+                METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET_C.max_ext_regs,
+            ),
+        });
+    };
+
+    let interaction_offsets = U32Buffer::from_slice(interaction_offsets_cpu).map_err(map_metal)?;
+    let preprocessed_values = U32Buffer::zeroed(1).map_err(map_metal)?;
+    let base_params_u32: Vec<u32> = base_params_cpu.iter().map(|v| v.0).collect();
+    let base_params = optional_u32_buffer(&base_params_u32).map_err(map_metal)?;
+    let ext_params_u32: Vec<u32> = ext_params_cpu.iter().flat_map(|v| v.to_m31_array().map(|l| l.0)).collect();
+    let ext_params = optional_u32_buffer(&ext_params_u32).map_err(map_metal)?;
+    let random_coeff_powers = U32Buffer::from_slice(
+        &random_coeff_powers_cpu.iter().flat_map(|v| v.to_m31_array().map(|l| l.0)).collect::<Vec<_>>(),
+    ).map_err(map_metal)?;
+    let base_insts = U32Buffer::from_slice(&pack_base_insts(program.base_insts())).map_err(map_metal)?;
+    let ext_insts = U32Buffer::from_slice(&pack_ext_insts(program.ext_insts())).map_err(map_metal)?;
+    let constraint_roots = U32Buffer::from_slice(program.constraint_roots()).map_err(map_metal)?;
+
+    let n_base_insts_count = program.base_insts().len();
+    let n_ext_insts_count = program.ext_insts().len();
+    const OPTIMIZED_MAX_BASE_INSTS: usize = 1536;
+    const OPTIMIZED_MAX_EXT_INSTS: usize = 384;
+    let use_optimized = n_base_insts_count <= OPTIMIZED_MAX_BASE_INSTS
+        && n_ext_insts_count <= OPTIMIZED_MAX_EXT_INSTS;
+
+    let n_base_params = base_params_cpu.len() as u32;
+    let n_ext_params = ext_params_cpu.len() as u32;
+
+    let dst = match (variant, use_optimized) {
+        (KernelVariant::A, true) => U32Buffer::eval_program_v1_optimized_u32x4(
+            &gpu_trace_values, &interaction_offsets, &preprocessed_values,
+            &base_params, &ext_params, &random_coeff_powers,
+            &base_insts, &ext_insts, &constraint_roots,
+            n_rows, n_interactions, n_preprocessed_columns,
+            n_base_params, n_ext_params,
+            n_base_insts_count as u32, n_ext_insts_count as u32,
+            program.constraint_roots().len() as u32,
+            program.header().max_base_regs, program.header().max_ext_regs,
+        ).map_err(map_metal)?,
+        (KernelVariant::A, false) => U32Buffer::eval_program_v1_reference_u32x4(
+            &gpu_trace_values, &interaction_offsets, &preprocessed_values,
+            &base_params, &ext_params, &random_coeff_powers,
+            &base_insts, &ext_insts, &constraint_roots,
+            n_rows, n_interactions, n_preprocessed_columns,
+            n_base_params, n_ext_params,
+            n_base_insts_count as u32, n_ext_insts_count as u32,
+            program.constraint_roots().len() as u32,
+        ).map_err(map_metal)?,
+        (KernelVariant::B, true) => U32Buffer::eval_program_v1_optimized_b_u32x4(
+            &gpu_trace_values, &interaction_offsets, &preprocessed_values,
+            &base_params, &ext_params, &random_coeff_powers,
+            &base_insts, &ext_insts, &constraint_roots,
+            n_rows, n_interactions, n_preprocessed_columns,
+            n_base_params, n_ext_params,
+            n_base_insts_count as u32, n_ext_insts_count as u32,
+            program.constraint_roots().len() as u32,
+            program.header().max_base_regs, program.header().max_ext_regs,
+        ).map_err(map_metal)?,
+        (KernelVariant::B, false) => U32Buffer::eval_program_v1_reference_b_u32x4(
+            &gpu_trace_values, &interaction_offsets, &preprocessed_values,
+            &base_params, &ext_params, &random_coeff_powers,
+            &base_insts, &ext_insts, &constraint_roots,
+            n_rows, n_interactions, n_preprocessed_columns,
+            n_base_params, n_ext_params,
+            n_base_insts_count as u32, n_ext_insts_count as u32,
+            program.constraint_roots().len() as u32,
+        ).map_err(map_metal)?,
+        (KernelVariant::C, true) => U32Buffer::eval_program_v1_optimized_c_u32x4(
+            &gpu_trace_values, &interaction_offsets, &preprocessed_values,
+            &base_params, &ext_params, &random_coeff_powers,
+            &base_insts, &ext_insts, &constraint_roots,
+            n_rows, n_interactions, n_preprocessed_columns,
+            n_base_params, n_ext_params,
+            n_base_insts_count as u32, n_ext_insts_count as u32,
+            program.constraint_roots().len() as u32,
+            program.header().max_base_regs, program.header().max_ext_regs,
+        ).map_err(map_metal)?,
+        (KernelVariant::C, false) => U32Buffer::eval_program_v1_reference_c_u32x4(
+            &gpu_trace_values, &interaction_offsets, &preprocessed_values,
+            &base_params, &ext_params, &random_coeff_powers,
+            &base_insts, &ext_insts, &constraint_roots,
+            n_rows, n_interactions, n_preprocessed_columns,
+            n_base_params, n_ext_params,
+            n_base_insts_count as u32, n_ext_insts_count as u32,
+            program.constraint_roots().len() as u32,
+        ).map_err(map_metal)?,
+    };
+
+    let raw = dst.to_vec().map_err(map_metal)?;
+    let dispatch = MetalEvaluationProgramDispatchKindV1::GenericMetalInterpreter;
+    Ok((raw
+        .chunks_exact(4)
+        .map(|limbs| SecureField::from_u32_unchecked(limbs[0], limbs[1], limbs[2], limbs[3]))
+        .collect(), dispatch))
+}
+
 /// Execute a V1 program on Metal using a JIT-compiled native shader.
 ///
 /// Instead of interpreting the V1 bytecode in the generic interpreter kernel,

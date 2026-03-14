@@ -237,30 +237,46 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> PreparedCommitmentSchemeTr
             }
         };
 
-        let mut queried_values = Vec::with_capacity(self.commitment_scheme.trees.len());
-        let mut decommitments = Vec::with_capacity(self.commitment_scheme.trees.len());
-        let mut aux = Vec::with_capacity(self.commitment_scheme.trees.len());
         let tree_decommit_start = Instant::now();
-        for (tree_index, (tree, query_positions)) in self
+
+        // Parallel tree decommit: each tree's decommit is read-only and
+        // independent, so we can run them concurrently with rayon.
+        #[cfg(feature = "parallel")]
+        let decommit_results: Vec<_> = {
+            let pairs: Vec<_> = self
+                .commitment_scheme
+                .trees
+                .as_ref()
+                .0
+                .into_iter()
+                .zip_eq(self.tree_query_positions.iter())
+                .collect();
+            use rayon::iter::IntoParallelRefIterator;
+            pairs
+                .par_iter()
+                .map(|(tree, query_positions)| tree.decommit(query_positions))
+                .collect()
+        };
+        #[cfg(not(feature = "parallel"))]
+        let decommit_results: Vec<_> = self
             .commitment_scheme
             .trees
             .as_ref()
             .0
             .into_iter()
             .zip_eq(self.tree_query_positions.iter())
-            .enumerate()
-        {
-            if debug_prove_values {
-                eprintln!("prove_values_phase=tree_decommit_start:{tree_index}");
-            }
-            let (values, decommit_result) = tree.decommit(query_positions);
+            .map(|(tree, query_positions)| tree.decommit(query_positions))
+            .collect();
+
+        let mut queried_values = Vec::with_capacity(decommit_results.len());
+        let mut decommitments = Vec::with_capacity(decommit_results.len());
+        let mut aux = Vec::with_capacity(decommit_results.len());
+        for (values, decommit_result) in decommit_results {
             queried_values.push(values);
             decommitments.push(decommit_result.decommitment);
             aux.push(decommit_result.aux);
-            if debug_prove_values {
-                eprintln!("prove_values_phase=tree_decommit_done:{tree_index}");
-            }
         }
+
         emit_timing(
             "tree_decommit",
             tree_decommit_start.elapsed().as_secs_f64() * 1000.0,

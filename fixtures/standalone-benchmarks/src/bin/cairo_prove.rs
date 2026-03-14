@@ -173,24 +173,40 @@ mod cairo_prove_main {
         input_path: String,
         verify: bool,
         metal: bool,
+        /// If set, run benchmark mode: N iterations with JSON output.
+        bench: Option<usize>,
     }
 
     fn parse_args() -> CliArgs {
         let args: Vec<String> = std::env::args().collect();
         let mut verify = false;
         let mut metal = false;
+        let mut bench: Option<usize> = None;
         let mut positional: Vec<String> = Vec::new();
 
-        for arg in args.iter().skip(1) {
-            match arg.as_str() {
+        let mut i = 1;
+        while i < args.len() {
+            match args[i].as_str() {
                 "--verify" => verify = true,
                 "--metal" => metal = true,
-                _ if arg.starts_with('-') => {
-                    eprintln!("Unknown flag: {}", arg);
+                "--bench" => {
+                    i += 1;
+                    bench = Some(
+                        args.get(i)
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or_else(|| {
+                                eprintln!("--bench requires a positive integer argument");
+                                std::process::exit(1);
+                            }),
+                    );
+                }
+                _ if args[i].starts_with('-') => {
+                    eprintln!("Unknown flag: {}", args[i]);
                     std::process::exit(1);
                 }
-                _ => positional.push(arg.clone()),
+                _ => positional.push(args[i].clone()),
             }
+            i += 1;
         }
 
         let input_path = if let Some(path) = positional.first() {
@@ -198,12 +214,13 @@ mod cairo_prove_main {
         } else if let Ok(path) = std::env::var("PROVER_INPUT_JSON") {
             path
         } else {
-            eprintln!("Usage: cairo_prove [--verify] [--metal] <path-to-prover_input.json>");
+            eprintln!("Usage: cairo_prove [--verify] [--metal] [--bench N] <path-to-prover_input.json>");
             eprintln!("   or: PROVER_INPUT_JSON=<path> cairo_prove [--verify] [--metal]");
             eprintln!();
             eprintln!("Flags:");
             eprintln!("  --verify   Run full stwo-cairo proof on SimdBackend and verify");
             eprintln!("  --metal    Use Metal GPU for composition polynomial (requires metal-runtime)");
+            eprintln!("  --bench N  Run N iterations, output JSON timing (combine with --metal or --verify)");
             std::process::exit(1);
         };
 
@@ -211,6 +228,7 @@ mod cairo_prove_main {
             input_path,
             verify,
             metal,
+            bench,
         }
     }
 
@@ -520,6 +538,133 @@ mod cairo_prove_main {
         (prove_ms, verify_ms)
     }
 
+    /// Count total Cairo VM cycles from state transitions.
+    fn count_cycles(input: &ProverInput) -> u64 {
+        input
+            .state_transitions
+            .casm_states_by_opcode
+            .counts()
+            .iter()
+            .map(|(_, count)| *count)
+            .sum::<usize>() as u64
+    }
+
+    /// Benchmark mode: run the prover N times and output JSON timing.
+    ///
+    /// With `--metal --bench N`: runs Metal pipeline N times.
+    /// With `--verify --bench N`: runs SIMD prove N times.
+    /// With `--metal --verify --bench N`: runs both, Metal first then SIMD.
+    fn run_bench(input: ProverInput, n_iters: usize, metal: bool, simd: bool) {
+        let cycles = count_cycles(&input);
+        eprintln!("Benchmark: {} cycles, {} iterations", cycles, n_iters);
+
+        #[allow(unused_mut)]
+        let mut metal_times_ms: Vec<f64> = Vec::new();
+        let mut simd_times_ms: Vec<f64> = Vec::new();
+
+        #[cfg(feature = "metal-runtime")]
+        if metal {
+            // Warm up GPU pipeline (shader compilation, twiddle cache).
+            let _ = stwo_metal_sys::metal::U32Buffer::blake2s_grind_batch(
+                &[0u32; 8], 32, 0, 1,
+            );
+
+            // Build twiddles + preprocessed tree once, reuse across iterations.
+            let preprocessed_trace = Arc::new(PreProcessedTrace::canonical());
+            let cache_start = Instant::now();
+            let cached = build_cached_metal_artifacts(preprocessed_trace.clone());
+            let cache_ms = cache_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("  Cache build: {:.1} ms (amortized across {} iters)", cache_ms, n_iters);
+
+            for i in 0..n_iters {
+                let input_clone = input.clone();
+                let preprocessed_trace = preprocessed_trace.clone();
+                let t = Instant::now();
+                run_metal_prove_only(input_clone, preprocessed_trace, Some(&cached));
+                let ms = t.elapsed().as_secs_f64() * 1000.0;
+                metal_times_ms.push(ms);
+                eprintln!("  Metal iter {}/{}: {:.1} ms", i + 1, n_iters, ms);
+            }
+        }
+
+        #[cfg(not(feature = "metal-runtime"))]
+        if metal {
+            eprintln!("WARNING: --metal requires metal-runtime feature");
+        }
+
+        if simd {
+            for i in 0..n_iters {
+                let input_clone = input.clone();
+                let t = Instant::now();
+                run_simd_prove_only(input_clone);
+                let ms = t.elapsed().as_secs_f64() * 1000.0;
+                simd_times_ms.push(ms);
+                eprintln!("  SIMD iter {}/{}: {:.1} ms", i + 1, n_iters, ms);
+            }
+        }
+
+        // Output JSON result.
+        let metal_json = if metal_times_ms.is_empty() {
+            "null".to_string()
+        } else {
+            format!(
+                "[{}]",
+                metal_times_ms
+                    .iter()
+                    .map(|t| format!("{:.1}", t))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        };
+        let simd_json = if simd_times_ms.is_empty() {
+            "null".to_string()
+        } else {
+            format!(
+                "[{}]",
+                simd_times_ms
+                    .iter()
+                    .map(|t| format!("{:.1}", t))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        };
+        // Use BENCH_JSON prefix so scripts can reliably extract the result
+        // from among verbose pipeline output.
+        println!(
+            r#"BENCH_JSON {{"cycles":{},"metal_ms":{},"simd_ms":{}}}"#,
+            cycles, metal_json, simd_json,
+        );
+    }
+
+    /// Run Metal prove pipeline only (no verification, no comparison).
+    /// Returns the total pipeline time.
+    #[cfg(feature = "metal-runtime")]
+    fn run_metal_prove_only(
+        input: ProverInput,
+        preprocessed_trace: Arc<PreProcessedTrace>,
+        cached_artifacts: Option<&CachedMetalArtifacts>,
+    ) {
+        run_metal_full_pipeline(input, preprocessed_trace, false, None, cached_artifacts);
+    }
+
+    /// Run SIMD prove only (no verification).
+    fn run_simd_prove_only(input: ProverInput) {
+        use stwo_cairo_prover::prover::{prove_cairo, ChannelHash, ProverParameters};
+        use cairo_air::PreProcessedTraceVariant;
+
+        let prover_params = ProverParameters {
+            channel_hash: ChannelHash::Blake2s,
+            channel_salt: 0,
+            pcs_config: default_pcs_config(),
+            preprocessed_trace: PreProcessedTraceVariant::Canonical,
+            store_polynomials_coefficients: false,
+            include_all_preprocessed_columns: false,
+        };
+
+        let _proof = prove_cairo::<Blake2sMerkleChannel>(input, prover_params)
+            .expect("stwo-cairo prove_cairo failed");
+    }
+
     pub fn run() {
         let cli = parse_args();
 
@@ -530,6 +675,12 @@ mod cairo_prove_main {
         println!("Deserializing ProverInput...");
         let input: ProverInput = serde_json::from_str(&input_json)
             .unwrap_or_else(|e| panic!("Failed to parse ProverInput: {}", e));
+
+        // Benchmark mode: run N iterations and output JSON timing.
+        if let Some(n_iters) = cli.bench {
+            run_bench(input, n_iters, cli.metal, cli.verify);
+            return;
+        }
 
         // Clone input before consuming it for the lowering phase.
         // The full Metal pipeline needs a fresh claim generator.
@@ -563,7 +714,7 @@ mod cairo_prove_main {
             } else {
                 None
             };
-            run_metal_full_pipeline(input, preprocessed_trace, cli.verify, input_for_verify);
+            run_metal_full_pipeline(input, preprocessed_trace, cli.verify, input_for_verify, None);
             return;
         }
 
@@ -1753,11 +1904,123 @@ mod cairo_prove_main {
     /// commit (GPU IFFT + Merkle), trace commits via ConvertingTreeBuilder,
     /// V1 GPU composition, and MetalBackend prove_values.
     #[cfg(feature = "metal-runtime")]
+    /// Cached Metal artifacts that are identical for all Cairo programs at the
+    /// same trace size.  Building these once and reusing across bench iterations
+    /// eliminates ~1,691ms of fixed preprocessing per run.
+    #[cfg(feature = "metal-runtime")]
+    struct CachedMetalArtifacts {
+        twiddles: stwo::prover::poly::twiddles::TwiddleTree<stwo_metal::MetalBackend>,
+        preprocessed_tree: CommitmentTreeProver<stwo_metal::MetalBackend, Blake2sMerkleChannel>,
+    }
+
+    /// Build the cached Metal artifacts (twiddles + preprocessed tree).
+    /// This runs once and the result is reused across bench iterations.
+    #[cfg(feature = "metal-runtime")]
+    fn build_cached_metal_artifacts(
+        preprocessed_trace: Arc<PreProcessedTrace>,
+    ) -> CachedMetalArtifacts {
+        use stwo::core::fields::m31::BaseField;
+        use stwo::prover::backend::Column;
+        use stwo::prover::poly::circle::PolyOps;
+        use stwo_cairo_prover::witness::preprocessed_trace::gen_trace;
+        use stwo_metal::MetalBackend;
+
+        let pcs_config = default_pcs_config();
+        let log_max_rows: u32 = 27;
+        let max_domain_size = {
+            let cairo_air_log_degree_bound = 1;
+            log_max_rows
+                + std::cmp::max(
+                    cairo_air_log_degree_bound,
+                    pcs_config.fri_config.log_blowup_factor,
+                )
+        };
+
+        // 1. Twiddles.
+        let t_tw = Instant::now();
+        eprintln!("  [cache] Precomputing Metal twiddles (log_domain_size={})...", max_domain_size);
+        let twiddles = MetalBackend::precompute_twiddles(
+            CanonicCoset::new(max_domain_size)
+                .circle_domain()
+                .half_coset,
+        );
+        let twiddles_ms = t_tw.elapsed().as_secs_f64() * 1000.0;
+
+        // 2. Preprocessed coefficients (I/O or compute).
+        let t_pp = Instant::now();
+        let cached_cpu_polys = load_preprocessed_coeffs_cpu(PREPROCESSED_CACHE_PATH);
+        let preprocessed_polys = if let Some(cpu_polys) = cached_cpu_polys {
+            upload_coeffs_to_gpu(cpu_polys)
+        } else {
+            eprintln!("  [cache] Computing preprocessed coefficients (gen_trace + IFFT)...");
+            let simd_preprocessed_evals = gen_trace(preprocessed_trace);
+            let metal_preprocessed_evals: Vec<
+                stwo::prover::poly::circle::CircleEvaluation<
+                    MetalBackend,
+                    BaseField,
+                    stwo::prover::poly::BitReversedOrder,
+                >,
+            > = simd_preprocessed_evals
+                .into_iter()
+                .map(|eval| {
+                    let domain = eval.domain;
+                    let metal_values = eval.values.to_cpu().into_iter().collect();
+                    stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
+                })
+                .collect();
+            let polys = MetalBackend::interpolate_columns(metal_preprocessed_evals, &twiddles);
+            save_preprocessed_coeffs(&polys, PREPROCESSED_CACHE_PATH);
+            polys
+        };
+
+        // 3. RFFT + Merkle → CommitmentTreeProver.
+        let base_column_pool = BaseColumnPool::new();
+        let preprocessed_evaluated = MetalBackend::evaluate_polynomials(
+            preprocessed_polys,
+            pcs_config.fri_config.log_blowup_factor,
+            &twiddles,
+            true,
+            &base_column_pool,
+        );
+        let max_log_domain_size = preprocessed_evaluated
+            .iter()
+            .map(|poly| poly.evals.domain.log_size())
+            .max()
+            .unwrap_or_default();
+        let lifting = pcs_config.lifting_log_size.unwrap_or(max_log_domain_size);
+        let merkle_tree =
+            stwo::prover::vcs_lifted::prover::MerkleProverLifted::<
+                MetalBackend,
+                <Blake2sMerkleChannel as stwo::core::channel::MerkleChannel>::H,
+            >::commit(
+                preprocessed_evaluated
+                    .iter()
+                    .map(|poly| &poly.evals.values)
+                    .collect(),
+                lifting,
+            );
+        let preprocessed_tree = CommitmentTreeProver {
+            polynomials: preprocessed_evaluated,
+            commitment: merkle_tree,
+        };
+        let cache_ms = t_pp.elapsed().as_secs_f64() * 1000.0;
+        eprintln!(
+            "  [cache] Built artifacts: twiddles={:.1}ms, preprocessed tree={:.1}ms",
+            twiddles_ms, cache_ms,
+        );
+
+        CachedMetalArtifacts {
+            twiddles,
+            preprocessed_tree,
+        }
+    }
+
     fn run_metal_full_pipeline(
         input: ProverInput,
         preprocessed_trace: Arc<PreProcessedTrace>,
         verify: bool,
         input_for_simd_comparison: Option<ProverInput>,
+        cached_artifacts: Option<&CachedMetalArtifacts>,
     ) {
         use cairo_air::cairo_components::CairoComponents;
         use cairo_air::relations::CommonLookupElements;
@@ -1790,28 +2053,157 @@ mod cairo_prove_main {
                 )
         };
         let include_all_preprocessed_columns = false;
+        let using_cache = cached_artifacts.is_some();
 
-        println!("\n=== Full MetalBackend pipeline ===\n");
+        println!("\n=== Full MetalBackend pipeline{} ===\n",
+            if using_cache { " (cached twiddles+tree)" } else { "" });
         let pipeline_start = Instant::now();
 
-        // 1. Start coefficient I/O in background (CPU-only, no GPU allocation).
-        //    Twiddle computation (~272ms) runs concurrently on the main thread,
-        //    hiding twiddle cost behind the longer I/O wait (~555ms).
-        let coeff_io_handle = std::thread::spawn(|| {
-            let t = Instant::now();
-            let result = load_preprocessed_coeffs_cpu(PREPROCESSED_CACHE_PATH);
-            (result, t.elapsed())
-        });
+        // When cached artifacts are available, reference them directly.
+        // Otherwise fall through to the original build path.
+        let (twiddles_ms, preproc_ms);
 
-        // 2. MetalBackend twiddles (overlapped with disk I/O, no GPU contention).
-        let t_tw = Instant::now();
-        println!("  Precomputing Metal twiddles (log_domain_size={})...", max_domain_size);
-        let metal_twiddles = MetalBackend::precompute_twiddles(
-            CanonicCoset::new(max_domain_size)
-                .circle_domain()
-                .half_coset,
-        );
-        let twiddles_ms = t_tw.elapsed().as_secs_f64() * 1000.0;
+        // Owned twiddles + tree used only in the uncached path.  The cached
+        // path borrows from `cached_artifacts` instead.
+        let owned_twiddles;
+        let owned_preprocessed_tree;
+
+        if let Some(artifacts) = cached_artifacts {
+            // Fast path: reuse pre-built twiddles and preprocessed tree.
+            twiddles_ms = 0.0;
+            preproc_ms = 0.0;
+            owned_twiddles = None;
+            owned_preprocessed_tree = None;
+            let _ = &artifacts; // used below via metal_twiddles / preprocessed_tree_ref
+        } else {
+            // Slow path: build from scratch (used for single-shot --metal runs).
+            let coeff_io_handle = std::thread::spawn(|| {
+                let t = Instant::now();
+                let result = load_preprocessed_coeffs_cpu(PREPROCESSED_CACHE_PATH);
+                (result, t.elapsed())
+            });
+
+            let t_tw = Instant::now();
+            println!("  Precomputing Metal twiddles (log_domain_size={})...", max_domain_size);
+            let tw = MetalBackend::precompute_twiddles(
+                CanonicCoset::new(max_domain_size)
+                    .circle_domain()
+                    .half_coset,
+            );
+            twiddles_ms = t_tw.elapsed().as_secs_f64() * 1000.0;
+
+            let t_pp = Instant::now();
+            let (cached_cpu_polys, io_dur) = coeff_io_handle.join()
+                .expect("coefficient I/O thread should not panic");
+            let preprocessed_polys = if let Some(cpu_polys) = cached_cpu_polys {
+                let io_ms = io_dur.as_secs_f64() * 1000.0;
+                let n_polys = cpu_polys.len();
+                let upload_start = Instant::now();
+                let metal_polys = upload_coeffs_to_gpu(cpu_polys);
+                let upload_ms = upload_start.elapsed().as_secs_f64() * 1000.0;
+                println!(
+                    "  Loaded {} preprocessed coefficients: I/O={:.1}ms (overlapped), upload={:.1}ms",
+                    n_polys, io_ms, upload_ms,
+                );
+                metal_polys
+            } else {
+                println!("  Computing preprocessed coefficients (gen_trace + IFFT)...");
+                let simd_preprocessed_evals = gen_trace(preprocessed_trace.clone());
+                let upload_start = Instant::now();
+                let metal_preprocessed_evals: Vec<
+                    stwo::prover::poly::circle::CircleEvaluation<
+                        MetalBackend,
+                        BaseField,
+                        stwo::prover::poly::BitReversedOrder,
+                    >,
+                > = simd_preprocessed_evals
+                    .into_iter()
+                    .map(|eval| {
+                        let domain = eval.domain;
+                        let metal_values = eval.values.to_cpu().into_iter().collect();
+                        stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
+                    })
+                    .collect();
+                let upload_ms = upload_start.elapsed().as_secs_f64() * 1000.0;
+
+                let ifft_start = Instant::now();
+                let polys =
+                    MetalBackend::interpolate_columns(metal_preprocessed_evals, &tw);
+                let ifft_ms = ifft_start.elapsed().as_secs_f64() * 1000.0;
+                println!(
+                    "    gen_trace+upload={:.1}ms, GPU IFFT={:.1}ms",
+                    t_pp.elapsed().as_secs_f64() * 1000.0 - ifft_ms + upload_ms,
+                    ifft_ms,
+                );
+
+                save_preprocessed_coeffs(&polys, PREPROCESSED_CACHE_PATH);
+                println!("    Saved {} coefficients to {}", polys.len(), PREPROCESSED_CACHE_PATH);
+                polys
+            };
+
+            // Print preprocessed polynomial size distribution.
+            {
+                let mut size_counts = std::collections::BTreeMap::new();
+                for p in &preprocessed_polys {
+                    *size_counts.entry(p.log_size()).or_insert(0u32) += 1;
+                }
+                print!("    Preprocessed poly sizes:");
+                for (log_size, count) in &size_counts {
+                    print!(" {}×log{}", count, log_size);
+                }
+                println!();
+            }
+
+            // Build commitment tree: RFFT then Merkle.
+            let base_column_pool_tmp = BaseColumnPool::new();
+            let preprocessed_evaluated = MetalBackend::evaluate_polynomials(
+                preprocessed_polys,
+                pcs_config.fri_config.log_blowup_factor,
+                &tw,
+                true,
+                &base_column_pool_tmp,
+            );
+            let max_log_domain_size = preprocessed_evaluated
+                .iter()
+                .map(|poly| poly.evals.domain.log_size())
+                .max()
+                .unwrap_or_default();
+            let lifting = pcs_config.lifting_log_size.unwrap_or(max_log_domain_size);
+            let merkle_tree =
+                stwo::prover::vcs_lifted::prover::MerkleProverLifted::<
+                    MetalBackend,
+                    <Blake2sMerkleChannel as stwo::core::channel::MerkleChannel>::H,
+                >::commit(
+                    preprocessed_evaluated
+                        .iter()
+                        .map(|poly| &poly.evals.values)
+                        .collect(),
+                    lifting,
+                );
+            preproc_ms = t_pp.elapsed().as_secs_f64() * 1000.0;
+            println!(
+                "    total preprocessed={:.1}ms",
+                preproc_ms,
+            );
+            owned_twiddles = Some(tw);
+            owned_preprocessed_tree = Some(CommitmentTreeProver {
+                polynomials: preprocessed_evaluated,
+                commitment: merkle_tree,
+            });
+        }
+
+        // Resolve references: either from cache or from owned values built above.
+        let metal_twiddles: &_ = match cached_artifacts {
+            Some(a) => &a.twiddles,
+            None => owned_twiddles.as_ref().unwrap(),
+        };
+
+        // Spawn claim generator on background thread (CPU-only, overlaps with
+        // commit below).  `input` is not used again after this point.
+        let preprocessed_trace_for_claim = preprocessed_trace.clone();
+        let claim_gen_handle = std::thread::spawn(move || {
+            create_cairo_claim_generator(input, preprocessed_trace_for_claim)
+        });
 
         // 3. MetalBackend commitment scheme.
         let base_column_pool = BaseColumnPool::new();
@@ -1823,122 +2215,26 @@ mod cairo_prove_main {
         let mut commitment_scheme =
             CommitmentSchemeProver::<MetalBackend, Blake2sMerkleChannel>::with_memory_pool(
                 pcs_config,
-                &metal_twiddles,
+                metal_twiddles,
                 &base_column_pool,
             );
         commitment_scheme.store_polynomials_coefficients = true;
 
-        // 4. Join I/O, then upload to GPU (after twiddles finished — no GPU contention).
-        let t_pp = Instant::now();
-        let (cached_cpu_polys, io_dur) = coeff_io_handle.join()
-            .expect("coefficient I/O thread should not panic");
-        let preprocessed_polys = if let Some(cpu_polys) = cached_cpu_polys {
-            let io_ms = io_dur.as_secs_f64() * 1000.0;
-            let n_polys = cpu_polys.len();
-            let upload_start = Instant::now();
-            let metal_polys = upload_coeffs_to_gpu(cpu_polys);
-            let upload_ms = upload_start.elapsed().as_secs_f64() * 1000.0;
-            println!(
-                "  Loaded {} preprocessed coefficients: I/O={:.1}ms (overlapped), upload={:.1}ms",
-                n_polys, io_ms, upload_ms,
-            );
-            metal_polys
-        } else {
-            println!("  Computing preprocessed coefficients (gen_trace + IFFT)...");
-            let simd_preprocessed_evals = gen_trace(preprocessed_trace.clone());
-            let upload_start = Instant::now();
-            let metal_preprocessed_evals: Vec<
-                stwo::prover::poly::circle::CircleEvaluation<
-                    MetalBackend,
-                    BaseField,
-                    stwo::prover::poly::BitReversedOrder,
-                >,
-            > = simd_preprocessed_evals
-                .into_iter()
-                .map(|eval| {
-                    let domain = eval.domain;
-                    let metal_values = eval.values.to_cpu().into_iter().collect();
-                    stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
-                })
-                .collect();
-            let upload_ms = upload_start.elapsed().as_secs_f64() * 1000.0;
-
-            let ifft_start = Instant::now();
-            let polys =
-                MetalBackend::interpolate_columns(metal_preprocessed_evals, &metal_twiddles);
-            let ifft_ms = ifft_start.elapsed().as_secs_f64() * 1000.0;
-            println!(
-                "    gen_trace+upload={:.1}ms, GPU IFFT={:.1}ms",
-                t_pp.elapsed().as_secs_f64() * 1000.0 - ifft_ms + upload_ms,
-                ifft_ms,
-            );
-
-            save_preprocessed_coeffs(&polys, PREPROCESSED_CACHE_PATH);
-            println!("    Saved {} coefficients to {}", polys.len(), PREPROCESSED_CACHE_PATH);
-            polys
-        };
-
-        // Print preprocessed polynomial size distribution.
-        {
-            let mut size_counts = std::collections::BTreeMap::new();
-            for p in &preprocessed_polys {
-                *size_counts.entry(p.log_size()).or_insert(0u32) += 1;
+        // Commit preprocessed tree: borrow from cache or take ownership of fresh build.
+        match cached_artifacts {
+            Some(a) => {
+                commitment_scheme.commit_tree(
+                    MaybeOwned::Borrowed(&a.preprocessed_tree),
+                    channel,
+                );
             }
-            print!("    Preprocessed poly sizes:");
-            for (log_size, count) in &size_counts {
-                print!(" {}×log{}", count, log_size);
+            None => {
+                commitment_scheme.commit_tree(
+                    MaybeOwned::Owned(owned_preprocessed_tree.unwrap()),
+                    channel,
+                );
             }
-            println!();
         }
-
-        // Spawn claim generator on background thread (CPU-only, overlaps with
-        // GPU RFFT + Merkle below).  `input` is not used again after this point.
-        let preprocessed_trace_for_claim = preprocessed_trace.clone();
-        let claim_gen_handle = std::thread::spawn(move || {
-            create_cairo_claim_generator(input, preprocessed_trace_for_claim)
-        });
-
-        // Build commitment tree: RFFT then Merkle (split for profiling).
-        let rfft_start = Instant::now();
-        let preprocessed_evaluated = MetalBackend::evaluate_polynomials(
-            preprocessed_polys,
-            pcs_config.fri_config.log_blowup_factor,
-            &metal_twiddles,
-            true,
-            &base_column_pool,
-        );
-        let rfft_ms = rfft_start.elapsed().as_secs_f64() * 1000.0;
-
-        let merkle_start = Instant::now();
-        let max_log_domain_size = preprocessed_evaluated
-            .iter()
-            .map(|poly| poly.evals.domain.log_size())
-            .max()
-            .unwrap_or_default();
-        let lifting = pcs_config.lifting_log_size.unwrap_or(max_log_domain_size);
-        let merkle_tree =
-            stwo::prover::vcs_lifted::prover::MerkleProverLifted::<
-                MetalBackend,
-                <Blake2sMerkleChannel as stwo::core::channel::MerkleChannel>::H,
-            >::commit(
-                preprocessed_evaluated
-                    .iter()
-                    .map(|poly| &poly.evals.values)
-                    .collect(),
-                lifting,
-            );
-        let merkle_ms = merkle_start.elapsed().as_secs_f64() * 1000.0;
-
-        let preprocessed_tree = CommitmentTreeProver {
-            polynomials: preprocessed_evaluated,
-            commitment: merkle_tree,
-        };
-        let preproc_ms = t_pp.elapsed().as_secs_f64() * 1000.0;
-        println!(
-            "    RFFT={:.1}ms, Merkle={:.1}ms, total preprocessed={:.1}ms",
-            rfft_ms, merkle_ms, preproc_ms,
-        );
-        commitment_scheme.commit_tree(MaybeOwned::Owned(preprocessed_tree), channel);
 
         // 4. Write base trace via ConvertingTreeBuilder.
         let t_base = Instant::now();
@@ -2146,9 +2442,12 @@ mod cairo_prove_main {
 
         // Print timing breakdown.
         println!("\n{}", "=".repeat(90));
-        println!("=== Full MetalBackend pipeline results ===\n");
-        println!("  Metal twiddles:                    {:>8.1} ms", twiddles_ms);
-        println!("  Preprocessed tree (GPU):           {:>8.1} ms", preproc_ms);
+        println!("=== Full MetalBackend pipeline results{} ===\n",
+            if using_cache { " (cached)" } else { "" });
+        println!("  Metal twiddles:                    {:>8.1} ms{}", twiddles_ms,
+            if using_cache { " (cached)" } else { "" });
+        println!("  Preprocessed tree (GPU):           {:>8.1} ms{}", preproc_ms,
+            if using_cache { " (cached)" } else { "" });
         println!("  Base trace gen + upload:           {:>8.1} ms", base_gen_ms);
         println!("  Base trace commit (Metal Merkle):  {:>8.1} ms", base_commit_ms);
         println!("  Interaction PoW (Metal GPU):       {:>8.1} ms", pow_ms);

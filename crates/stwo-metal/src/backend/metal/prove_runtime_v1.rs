@@ -36,12 +36,14 @@ use stwo::prover::{
 
 use super::accumulation::metal_secure_column_from_values;
 use super::eval_program_v1::{
+    execute_eval_program_v1_with_gpu_trace,
     execute_selected_metal_evaluation_program_v1_on_metal, interpret_metal_evaluation_program_v1,
     MetalEvaluationProgramCapabilityProfileV1, MetalEvaluationProgramDispatchKindV1,
     MetalEvaluationProgramExecutionError, MetalEvaluationProgramInterpreterError,
     MetalEvaluationProgramRuntimeInputsV1, MetalEvaluationProgramTraceViewV1,
     OwnedMetalEvaluationProgramV1,
 };
+use stwo_metal_sys::metal::U32Buffer;
 use super::planner::MetalExecutionPlan;
 use super::poly::evaluate_polys_on_domain_batch;
 use super::sampled_values_v1::{
@@ -53,7 +55,6 @@ use super::sampled_values_v1::{
 };
 use super::workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
 use super::MetalBackend;
-use crate::stwo_metal::base_field_vec::BaseFieldVec;
 
 const MAIN_TRACE_IDX: usize = 1;
 
@@ -407,6 +408,7 @@ fn denominator_inverses_for_eval_domain(log_n_rows: u32, eval_domain_log_size: u
     denominator_inverses
 }
 
+#[allow(dead_code)]
 fn execute_evaluation_program_v1_on_trace_interactions(
     program: &OwnedMetalEvaluationProgramV1,
     trace_interactions: &[&[&[BaseField]]],
@@ -495,12 +497,35 @@ pub fn compute_composition_polynomial_v1(
     let twiddle_ms = twiddle_start.elapsed().as_secs_f64() * 1000.0;
 
     let trace_extension_start = std::time::Instant::now();
-    let eval_domain_storage = if trace_columns
+    // Build GPU-resident flat trace buffer, avoiding CPU round-trip.
+    //
+    // Two paths:
+    //   1. Polys already on eval_domain → concat their GPU buffers directly.
+    //   2. Need domain extension → batch RFFT produces a single GPU buffer.
+    let all_on_eval_domain = trace_columns
         .iter()
-        .all(|poly| poly.evals.domain == eval_domain)
-    {
-        None
+        .all(|poly| poly.evals.domain == eval_domain);
+
+    let (gpu_trace_buffer, n_trace_columns) = if all_on_eval_domain {
+        // Concatenate individual BaseFieldVec GPU buffers.
+        let n_cols = trace_columns.len();
+        let col_len = eval_domain.size();
+        let total_len = n_cols * col_len;
+        let mut flat = U32Buffer::uninitialized(total_len).map_err(|e| {
+            MetalProveRuntimeCompositionError::CompositionShape {
+                message: format!("GPU trace concat alloc failed: {}", e.message()),
+            }
+        })?;
+        for (i, poly) in trace_columns.iter().enumerate() {
+            flat.copy_from_offset(&poly.evals.values.buffer, i * col_len)
+                .map_err(|e| MetalProveRuntimeCompositionError::CompositionShape {
+                    message: format!("GPU trace concat copy failed: {}", e.message()),
+                })?;
+        }
+        (flat, n_cols)
     } else {
+        // Batch RFFT: the resulting BaseFieldColumnBatch already has a contiguous
+        // GPU buffer in column-major layout — use it directly.
         let coeffs = trace_columns
             .iter()
             .map(|poly| {
@@ -513,34 +538,32 @@ pub fn compute_composition_polynomial_v1(
             .collect::<Result<Vec<_>, _>>()?;
         let batch = evaluate_polys_on_domain_batch(&coeffs, eval_domain, &twiddles).map_err(
             |source| MetalProveRuntimeCompositionError::CompositionShape {
-                message: format!(
-                    "V1 runtime eval-domain extension failed: {source}"
-                ),
+                message: format!("V1 runtime eval-domain extension failed: {source}"),
             },
         )?;
-        Some(batch.to_columns())
+        let n_cols = batch.n_columns();
+        // Take ownership of the batch's GPU buffer directly.
+        let buf = batch.into_buffer();
+        (buf, n_cols)
     };
     let trace_extension_ms = trace_extension_start.elapsed().as_secs_f64() * 1000.0;
 
-    let trace_column_refs: Vec<&[BaseField]> = if let Some(storage) = &eval_domain_storage {
-        storage.iter().map(BaseFieldVec::host_slice).collect()
-    } else {
-        trace_columns
-            .iter()
-            .map(|poly| poly.evals.values.host_slice())
-            .collect()
-    };
-    let trace_interactions = [&[][..], trace_column_refs.as_slice()];
+    // interaction 0 = empty (preprocessed, handled separately), interaction 1 = all trace columns
+    let interaction_offsets: Vec<u32> = vec![0, 0, n_trace_columns as u32];
+    let n_interactions = 2u32;
 
     let eval_program_start = std::time::Instant::now();
-    let (mut row_res, dispatch) = execute_evaluation_program_v1_on_trace_interactions(
+    let (mut row_res, dispatch) = execute_eval_program_v1_with_gpu_trace(
         &ctx.program,
-        &trace_interactions,
-        &[],
-        &[],
-        &[],
+        gpu_trace_buffer,
+        &interaction_offsets,
+        eval_domain.size(),
+        n_interactions,
+        0, // n_preprocessed_columns
+        &[], // base_params
+        &[], // ext_params
         &random_coeff_powers,
-    )?;
+    ).map_err(|source| MetalProveRuntimeCompositionError::ProgramExecution { source })?;
     let eval_program_ms = eval_program_start.elapsed().as_secs_f64() * 1000.0;
 
     if row_res.len() != eval_domain.size() {
