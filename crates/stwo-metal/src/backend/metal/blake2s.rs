@@ -24,33 +24,23 @@ fn materialize_leaf_columns<'a>(columns: &'a [&'a MetalBaseFieldVec]) -> Vec<&'a
     columns.iter().map(|column| column.host_slice()).collect()
 }
 
-fn build_leaves_native_standard(
+/// Fast single-pass leaf builder: passes column buffer GPU addresses directly
+/// to the kernel (zero copy).  State stays in GPU registers.
+fn build_leaves_native_fast(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
 ) -> Option<MetalBlake2sHashVec> {
-    if columns.is_empty() || lifting_log_size < 12 || columns.len() > 8 {
+    // Only use for many columns (>16) where eliminating inter-chunk state
+    // buffer I/O is a significant win.  For ≤16 columns, the wide chunk
+    // kernel is a single chunk with no state buffer overhead.
+    if columns.is_empty() || lifting_log_size < 12 || columns.len() <= 16 {
         return None;
     }
-
-    let total_len = columns.iter().map(|column| column.len()).sum::<usize>();
-    let mut flat_columns = U32Buffer::uninitialized(total_len).ok()?;
-    let mut column_offsets = Vec::with_capacity(columns.len());
-    let mut column_log_sizes = Vec::with_capacity(columns.len());
-    let mut offset = 0usize;
-    for column in columns {
-        column_offsets.push(offset.try_into().ok()?);
-        column_log_sizes.push(column.len().ilog2());
-        flat_columns
-            .copy_range_from(&column.buffer, 0, column.len(), offset)
-            .ok()?;
-        offset += column.len();
-    }
-
-    let column_offsets = U32Buffer::from_slice(&column_offsets).ok()?;
-    let column_log_sizes = U32Buffer::from_slice(&column_log_sizes).ok()?;
-    let packed_hashes = U32Buffer::blake2s_build_leaves_lifted(
-        &flat_columns,
-        &column_offsets,
+    let column_buffers: Vec<&U32Buffer> =
+        columns.iter().map(|column| &column.buffer).collect();
+    let column_log_sizes: Vec<u32> = columns.iter().map(|c| c.len().ilog2()).collect();
+    let packed_hashes = U32Buffer::blake2s_build_leaves_lifted_fast(
+        &column_buffers,
         &column_log_sizes,
         lifting_log_size,
     )
@@ -125,6 +115,24 @@ fn build_leaves_native_standard_packed(
     .ok()
 }
 
+fn build_leaves_native_fast_packed(
+    columns: &[&MetalBaseFieldVec],
+    lifting_log_size: u32,
+) -> Option<U32Buffer> {
+    if columns.is_empty() || lifting_log_size < 12 || columns.len() <= 16 {
+        return None;
+    }
+    let column_buffers: Vec<&U32Buffer> =
+        columns.iter().map(|column| &column.buffer).collect();
+    let column_log_sizes: Vec<u32> = columns.iter().map(|c| c.len().ilog2()).collect();
+    U32Buffer::blake2s_build_leaves_lifted_fast(
+        &column_buffers,
+        &column_log_sizes,
+        lifting_log_size,
+    )
+    .ok()
+}
+
 fn build_leaves_native_wide_packed(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
@@ -150,11 +158,11 @@ fn build_merkle_layers_native_standard(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
 ) -> Option<Vec<MetalBlake2sHashVec>> {
-    let packed_layer = if columns.len() > 8 {
-        build_leaves_native_wide_packed(columns, lifting_log_size)?
-    } else {
-        build_leaves_native_standard_packed(columns, lifting_log_size)?
-    };
+    // Prefer the fast single-pass kernel (GPU address indirection, zero copy).
+    // Falls back to wide chunked path, then old flat-buffer path.
+    let packed_layer = build_leaves_native_fast_packed(columns, lifting_log_size)
+        .or_else(|| build_leaves_native_wide_packed(columns, lifting_log_size))
+        .or_else(|| build_leaves_native_standard_packed(columns, lifting_log_size))?;
     let packed_layers = U32Buffer::blake2s_build_merkle_layers_from_leaves(packed_layer).ok()?;
 
     let mut layers = packed_layers
@@ -172,20 +180,21 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         let profile_merkle = std::env::var_os("STWO_METAL_PROFILE_MERKLE").is_some();
         let build_leaves_start = Instant::now();
         if !IS_M31_OUTPUT {
-            if columns.len() > 8 {
-                if let Some(leaves) = build_leaves_native_wide(columns, lifting_log_size) {
-                    if profile_merkle {
-                        eprintln!(
-                            "metal_merkle_timing phase=build_leaves columns={} lifting_log_size={} ms={}",
-                            columns.len(),
-                            lifting_log_size,
-                            build_leaves_start.elapsed().as_secs_f64() * 1000.0
-                        );
-                    }
-                    return leaves;
+            // Prefer the fast single-pass kernel (GPU address indirection,
+            // zero copy, state in registers).
+            if let Some(leaves) = build_leaves_native_fast(columns, lifting_log_size) {
+                if profile_merkle {
+                    eprintln!(
+                        "metal_merkle_timing phase=build_leaves_fast columns={} lifting_log_size={} ms={}",
+                        columns.len(),
+                        lifting_log_size,
+                        build_leaves_start.elapsed().as_secs_f64() * 1000.0
+                    );
                 }
+                return leaves;
             }
-            if let Some(leaves) = build_leaves_native_standard(columns, lifting_log_size) {
+            // Fallback: wide chunked path.
+            if let Some(leaves) = build_leaves_native_wide(columns, lifting_log_size) {
                 if profile_merkle {
                     eprintln!(
                         "metal_merkle_timing phase=build_leaves columns={} lifting_log_size={} ms={}",

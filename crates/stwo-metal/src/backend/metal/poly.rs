@@ -531,7 +531,9 @@ impl PolyOps for MetalBackend {
     /// Groups polynomials by evaluation domain size and shares a single twiddle
     /// tail buffer per group, avoiding redundant 32 MB allocations (e.g. 57
     /// log-23 polynomials share one buffer instead of 57 copies).
-    /// Maintains rayon parallelism for CPU/GPU overlap.
+    /// Rayon parallelism provides CPU-GPU pipeline overlap: while the GPU
+    /// processes one polynomial's RFFT, CPU threads prepare the next
+    /// polynomial's coefficients.
     fn evaluate_polynomials(
         polynomials: stwo::core::ColumnVec<CircleCoefficients<Self>>,
         log_blowup_factor: u32,

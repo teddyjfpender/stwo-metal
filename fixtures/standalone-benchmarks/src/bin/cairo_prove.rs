@@ -1698,6 +1698,13 @@ mod cairo_prove_main {
             println!();
         }
 
+        // Spawn claim generator on background thread (CPU-only, overlaps with
+        // GPU RFFT + Merkle below).  `input` is not used again after this point.
+        let preprocessed_trace_for_claim = preprocessed_trace.clone();
+        let claim_gen_handle = std::thread::spawn(move || {
+            create_cairo_claim_generator(input, preprocessed_trace_for_claim)
+        });
+
         // Build commitment tree: RFFT then Merkle (split for profiling).
         let rfft_start = Instant::now();
         let preprocessed_evaluated = MetalBackend::evaluate_polynomials(
@@ -1743,8 +1750,9 @@ mod cairo_prove_main {
         // 4. Write base trace via ConvertingTreeBuilder.
         let t_base = Instant::now();
         println!("  Creating claim generator + base trace...");
-        let cairo_claim_generator =
-            create_cairo_claim_generator(input, preprocessed_trace.clone());
+        let cairo_claim_generator = claim_gen_handle
+            .join()
+            .expect("claim generator thread should not panic");
         let mut converting_tb = ConvertingTreeBuilder {
             inner: commitment_scheme.tree_builder(),
         };

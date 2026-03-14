@@ -4241,6 +4241,117 @@ bool stwo_metal_blake2s_build_leaves_lifted_u32(
     }
 }
 
+// Single-pass leaf builder using GPU virtual addresses.  Reads directly from
+// original column buffers (zero copy), keeps Blake2s state in registers.
+bool stwo_metal_blake2s_build_leaves_lifted_fast_u32(
+    void *runtime_ptr,
+    void *const *column_buffers_ptr,
+    void *dst_ptr,
+    const uint32_t *column_log_sizes,
+    uint32_t n_columns,
+    uint32_t lifting_log_size,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        NSUInteger row_count = ((NSUInteger)1) << lifting_log_size;
+
+        if (n_columns == 0 || dst.len != row_count * 8u) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Fast lifted Blake2s leaf construction: invalid arguments.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(
+            runtime, @"blake2s_build_leaves_lifted_fast_u32",
+            error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        // Build GPU address buffer: one uint64_t per column.
+        NSUInteger addr_buf_len = n_columns * sizeof(uint64_t);
+        id<MTLBuffer> addr_buffer = [runtime.device
+            newBufferWithLength:addr_buf_len
+            options:MTLResourceStorageModeShared];
+        if (addr_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to allocate GPU address buffer.");
+            return false;
+        }
+        uint64_t *addrs = (uint64_t *)addr_buffer.contents;
+        for (uint32_t i = 0; i < n_columns; i++) {
+            StwoMetalBufferBox *col = stwo_metal_buffer_box(column_buffers_ptr[i]);
+            addrs[i] = col.buffer.gpuAddress;
+        }
+
+        // Build column log sizes buffer.
+        NSUInteger log_sizes_buf_len = n_columns * sizeof(uint32_t);
+        id<MTLBuffer> log_sizes_buffer = [runtime.device
+            newBufferWithLength:log_sizes_buf_len
+            options:MTLResourceStorageModeShared];
+        if (log_sizes_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to allocate log sizes buffer.");
+            return false;
+        }
+        memcpy(log_sizes_buffer.contents, column_log_sizes,
+               n_columns * sizeof(uint32_t));
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder =
+            [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:addr_buffer offset:0 atIndex:0];
+        [encoder setBuffer:log_sizes_buffer offset:0 atIndex:1];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:2];
+        [encoder setBytes:&n_columns length:sizeof(n_columns) atIndex:3];
+        [encoder setBytes:&lifting_log_size
+                   length:sizeof(lifting_log_size) atIndex:4];
+
+        // Mark all column buffers as GPU-readable so the command buffer
+        // tracks hazards correctly.
+        for (uint32_t i = 0; i < n_columns; i++) {
+            StwoMetalBufferBox *col =
+                stwo_metal_buffer_box(column_buffers_ptr[i]);
+            [encoder useResource:col.buffer usage:MTLResourceUsageRead];
+        }
+
+        MTLSize grid_size = MTLSizeMake(row_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(
+            stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size
+            threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                command_buffer.error.localizedDescription
+                    ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_blake2s_build_leaves_lifted_wide_chunk_u32(
     void *runtime_ptr,
     void *const *column_buffers_ptr,
@@ -4323,6 +4434,96 @@ bool stwo_metal_blake2s_build_leaves_lifted_wide_chunk_u32(
         MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
         [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
         [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+/// Batched wide leaf builder: all column chunks in ONE command buffer.
+/// Eliminates N-1 waitUntilCompleted round-trips for N chunks.
+bool stwo_metal_blake2s_build_leaves_lifted_wide_batched_u32(
+    void *runtime_ptr,
+    void *const *all_column_buffers_ptr,
+    void *state_ptr,
+    void *dst_ptr,
+    const uint32_t *all_column_log_sizes,
+    uint32_t total_columns,
+    uint32_t lifting_log_size,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        if (total_columns == 0) {
+            return true;
+        }
+
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *state = stwo_metal_buffer_box(state_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        NSUInteger row_count = ((NSUInteger)1) << lifting_log_size;
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, @"blake2s_build_leaves_lifted_wide_chunk_u32", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        MTLSize grid_size = MTLSizeMake(row_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+
+        uint32_t n_chunks = (total_columns + 15u) / 16u;
+        uint32_t processed_bytes_before = 0;
+
+        for (uint32_t chunk_index = 0; chunk_index < n_chunks; ++chunk_index) {
+            uint32_t chunk_start = chunk_index * 16u;
+            uint32_t chunk_n = total_columns - chunk_start;
+            if (chunk_n > 16u) chunk_n = 16u;
+            uint32_t is_first_chunk = (chunk_index == 0) ? 1u : 0u;
+            uint32_t is_final_chunk = (chunk_index + 1 == n_chunks) ? 1u : 0u;
+
+            StwoMetalBufferBox *column_boxes[16] = { nil };
+            for (uint32_t i = 0; i < chunk_n; ++i) {
+                column_boxes[i] = stwo_metal_buffer_box(all_column_buffers_ptr[chunk_start + i]);
+            }
+
+            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+            if (encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                return false;
+            }
+
+            [encoder setComputePipelineState:pipeline];
+            for (uint32_t i = 0; i < 16u; ++i) {
+                id<MTLBuffer> buffer = i < chunk_n ? column_boxes[i].buffer : nil;
+                [encoder setBuffer:buffer offset:0 atIndex:i];
+            }
+            [encoder setBuffer:state.buffer offset:0 atIndex:16];
+            [encoder setBuffer:dst.buffer offset:0 atIndex:17];
+            [encoder setBytes:&all_column_log_sizes[chunk_start] length:chunk_n * sizeof(uint32_t) atIndex:18];
+            [encoder setBytes:&chunk_n length:sizeof(chunk_n) atIndex:19];
+            [encoder setBytes:&lifting_log_size length:sizeof(lifting_log_size) atIndex:20];
+            [encoder setBytes:&processed_bytes_before length:sizeof(processed_bytes_before) atIndex:21];
+            [encoder setBytes:&is_first_chunk length:sizeof(is_first_chunk) atIndex:22];
+            [encoder setBytes:&is_final_chunk length:sizeof(is_final_chunk) atIndex:23];
+
+            [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+            [encoder endEncoding];
+
+            processed_bytes_before += chunk_n * 4u;
+        }
 
         [command_buffer commit];
         [command_buffer waitUntilCompleted];

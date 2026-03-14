@@ -71,6 +71,11 @@ impl U32Buffer {
         self.raw.as_ptr() as usize
     }
 
+    /// Returns the raw FFI pointer for this buffer, for use in batch GPU operations.
+    pub fn opaque_ptr(&self) -> *mut c_void {
+        self.raw.as_ptr()
+    }
+
     pub fn from_slice(values: &[u32]) -> Result<Self, MetalError> {
         let runtime = shared_runtime()?;
         let raw = unsafe {
@@ -384,6 +389,36 @@ impl U32Buffer {
                 error_buffer_mut_ptr,
             )
         }
+    }
+
+    /// Batch RFFT evaluate: process multiple same-size buffers in a single
+    /// GPU command submission, eliminating per-buffer waitUntilCompleted overhead.
+    ///
+    /// All raw pointers must be valid U32Buffer opaque pointers obtained via
+    /// [`opaque_ptr`], each backing a buffer of length `1 << values_log_len`.
+    /// `twiddles` must have length `(1 << values_log_len) / 2`.
+    pub unsafe fn rfft_evaluate_batch_raw(
+        buffer_raw_ptrs: &[*mut c_void],
+        values_log_len: u32,
+        twiddles: &Self,
+    ) -> Result<(), MetalError> {
+        if buffer_raw_ptrs.is_empty() {
+            return Ok(());
+        }
+        assert_eq!(
+            twiddles.len,
+            (1usize << values_log_len) / 2,
+            "Batch RFFT requires a twiddle slice with one half-coset tree tail"
+        );
+        let runtime = shared_runtime()?;
+        ffi::rfft_evaluate_multi_u32(
+            runtime.raw.as_ptr(),
+            buffer_raw_ptrs.as_ptr(),
+            buffer_raw_ptrs.len() as u32,
+            twiddles.raw.as_ptr(),
+            values_log_len,
+            error_buffer_mut_ptr,
+        )
     }
 
     pub fn ifft_interpolate_in_place(
@@ -1583,39 +1618,66 @@ impl U32Buffer {
         let runtime = shared_runtime()?;
         let state = Self::zeroed(row_count * 8)?;
         let dst = Self::uninitialized(row_count * 8)?;
-        let mut processed_bytes_before = 0u32;
 
-        for (chunk_index, (column_chunk, log_size_chunk)) in columns
-            .chunks(16)
-            .zip(column_log_sizes.chunks(16))
-            .enumerate()
-        {
-            let mut column_ptrs = [std::ptr::null_mut(); 16];
-            for (slot, column) in column_chunk.iter().enumerate() {
-                column_ptrs[slot] = column.raw.as_ptr();
-            }
-            let is_first_chunk = chunk_index == 0;
-            let is_final_chunk = chunk_index + 1 == columns.len().div_ceil(16);
-            unsafe {
-                ffi::blake2s_build_leaves_lifted_wide_chunk_u32(
-                    runtime.raw.as_ptr(),
-                    column_ptrs.as_ptr(),
-                    state.raw.as_ptr(),
-                    dst.raw.as_ptr(),
-                    log_size_chunk.as_ptr(),
-                    column_chunk
-                        .len()
-                        .try_into()
-                        .expect("wide lifted Blake2s chunk column count should fit in u32"),
-                    lifting_log_size,
-                    processed_bytes_before,
-                    is_first_chunk,
-                    is_final_chunk,
-                    error_buffer_mut_ptr,
-                )?;
-            }
-            processed_bytes_before += u32::try_from(column_chunk.len() * 4)
-                .expect("wide lifted Blake2s processed byte count should fit in u32");
+        // Collect all column buffer pointers for the batched dispatch.
+        let all_column_ptrs: Vec<*mut std::ffi::c_void> =
+            columns.iter().map(|c| c.raw.as_ptr()).collect();
+
+        unsafe {
+            ffi::blake2s_build_leaves_lifted_wide_batched_u32(
+                runtime.raw.as_ptr(),
+                all_column_ptrs.as_ptr(),
+                state.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                column_log_sizes.as_ptr(),
+                columns
+                    .len()
+                    .try_into()
+                    .expect("wide lifted Blake2s column count should fit in u32"),
+                lifting_log_size,
+                error_buffer_mut_ptr,
+            )?;
+        }
+
+        Ok(dst)
+    }
+
+    /// Single-pass leaf builder: processes all columns per GPU thread with
+    /// Blake2s state in registers (zero copy, no intermediate state buffer).
+    pub fn blake2s_build_leaves_lifted_fast(
+        columns: &[&Self],
+        column_log_sizes: &[u32],
+        lifting_log_size: u32,
+    ) -> Result<Self, MetalError> {
+        assert!(
+            !columns.is_empty(),
+            "fast lifted Blake2s leaves require at least one source column"
+        );
+        assert_eq!(
+            columns.len(),
+            column_log_sizes.len(),
+            "fast lifted Blake2s leaves require one log size per source column"
+        );
+        let row_count = 1usize << lifting_log_size;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(row_count * 8)?;
+
+        let column_ptrs: Vec<*mut std::ffi::c_void> =
+            columns.iter().map(|c| c.raw.as_ptr()).collect();
+
+        unsafe {
+            ffi::blake2s_build_leaves_lifted_fast_u32(
+                runtime.raw.as_ptr(),
+                column_ptrs.as_ptr(),
+                dst.raw.as_ptr(),
+                column_log_sizes.as_ptr(),
+                columns
+                    .len()
+                    .try_into()
+                    .expect("fast lifted Blake2s column count should fit in u32"),
+                lifting_log_size,
+                error_buffer_mut_ptr,
+            )?;
         }
 
         Ok(dst)
@@ -2298,6 +2360,15 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_rfft_evaluate_multi_u32(
+            runtime: *mut c_void,
+            buffer_ptrs: *const *mut c_void,
+            n_buffers: u32,
+            twiddles: *mut c_void,
+            values_log_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_ifft_interpolate_u32(
             runtime: *mut c_void,
             values: *mut c_void,
@@ -2691,6 +2762,27 @@ mod ffi {
             processed_bytes_before: u32,
             is_first_chunk: u32,
             is_final_chunk: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_blake2s_build_leaves_lifted_wide_batched_u32(
+            runtime: *mut c_void,
+            all_column_buffers: *const *mut c_void,
+            state: *mut c_void,
+            dst: *mut c_void,
+            all_column_log_sizes: *const u32,
+            total_columns: u32,
+            lifting_log_size: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_blake2s_build_leaves_lifted_fast_u32(
+            runtime: *mut c_void,
+            column_buffers: *const *mut c_void,
+            dst: *mut c_void,
+            column_log_sizes: *const u32,
+            n_columns: u32,
+            lifting_log_size: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -3184,6 +3276,30 @@ mod ffi {
             value_offset,
             values_log_len,
             twiddles,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn rfft_evaluate_multi_u32(
+        runtime: *mut c_void,
+        buffer_ptrs: *const *mut c_void,
+        n_buffers: u32,
+        twiddles: *mut c_void,
+        values_log_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_rfft_evaluate_multi_u32(
+            runtime,
+            buffer_ptrs,
+            n_buffers,
+            twiddles,
+            values_log_len,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -4193,6 +4309,60 @@ mod ffi {
         }
     }
 
+    pub unsafe fn blake2s_build_leaves_lifted_wide_batched_u32(
+        runtime: *mut c_void,
+        all_column_buffers: *const *mut c_void,
+        state: *mut c_void,
+        dst: *mut c_void,
+        all_column_log_sizes: *const u32,
+        total_columns: u32,
+        lifting_log_size: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_blake2s_build_leaves_lifted_wide_batched_u32(
+            runtime,
+            all_column_buffers,
+            state,
+            dst,
+            all_column_log_sizes,
+            total_columns,
+            lifting_log_size,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn blake2s_build_leaves_lifted_fast_u32(
+        runtime: *mut c_void,
+        column_buffers: *const *mut c_void,
+        dst: *mut c_void,
+        column_log_sizes: *const u32,
+        n_columns: u32,
+        lifting_log_size: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_blake2s_build_leaves_lifted_fast_u32(
+            runtime,
+            column_buffers,
+            dst,
+            column_log_sizes,
+            n_columns,
+            lifting_log_size,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn blake2s_build_next_layer_u32(
         runtime: *mut c_void,
         prev_layer: *mut c_void,
@@ -4868,6 +5038,19 @@ mod ffi {
     pub unsafe fn rfft_evaluate_u32(
         _runtime: *mut c_void,
         _values: *mut c_void,
+        _twiddles: *mut c_void,
+        _values_log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn rfft_evaluate_multi_u32(
+        _runtime: *mut c_void,
+        _buffer_ptrs: *const *mut c_void,
+        _n_buffers: u32,
         _twiddles: *mut c_void,
         _values_log_len: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,

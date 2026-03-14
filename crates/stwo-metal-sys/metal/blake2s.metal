@@ -202,6 +202,37 @@ static inline void stwo_metal_blake2s_compress_words(
     }
 }
 
+// Like compress_words but takes message words directly (no byte unpacking).
+static inline void stwo_metal_blake2s_compress_uint_words(
+    thread uint *state_words,
+    thread const uint *m,
+    uint total_bytes,
+    uint last_block
+) {
+    uint v[16];
+    for (uint i = 0; i < 8u; ++i) {
+        v[i] = state_words[i];
+        v[i + 8u] = STWO_METAL_BLAKE2S_IV[i];
+    }
+    v[12] ^= total_bytes;
+    v[14] ^= last_block;
+
+    for (uint round = 0; round < 10u; ++round) {
+        stwo_metal_blake2s_g(v, m, round, 0u, v[0], v[4], v[8], v[12]);
+        stwo_metal_blake2s_g(v, m, round, 1u, v[1], v[5], v[9], v[13]);
+        stwo_metal_blake2s_g(v, m, round, 2u, v[2], v[6], v[10], v[14]);
+        stwo_metal_blake2s_g(v, m, round, 3u, v[3], v[7], v[11], v[15]);
+        stwo_metal_blake2s_g(v, m, round, 4u, v[0], v[5], v[10], v[15]);
+        stwo_metal_blake2s_g(v, m, round, 5u, v[1], v[6], v[11], v[12]);
+        stwo_metal_blake2s_g(v, m, round, 6u, v[2], v[7], v[8], v[13]);
+        stwo_metal_blake2s_g(v, m, round, 7u, v[3], v[4], v[9], v[14]);
+    }
+
+    for (uint i = 0; i < 8u; ++i) {
+        state_words[i] ^= v[i] ^ v[i + 8u];
+    }
+}
+
 static inline uint stwo_metal_lifted_column_index(uint lifted_index, uint log_ratio) {
     if (log_ratio == 0u) {
         return lifted_index;
@@ -279,6 +310,61 @@ kernel void blake2s_build_leaves_lifted_u32(
     }
 
     stwo_metal_blake2s_finalize(state, dst, row_index);
+}
+
+// Fast single-pass leaf builder: processes ALL columns per thread with state in
+// registers.  Uses Metal GPU virtual addresses (gpuAddress) to read directly
+// from original column buffers — zero copy.  Direct word-level compression
+// skips byte packing round-trip.  Eliminates the inter-chunk state buffer.
+kernel void blake2s_build_leaves_lifted_fast_u32(
+    device const uint64_t *column_addrs [[buffer(0)]],
+    device const uint *column_log_sizes [[buffer(1)]],
+    device uint *dst [[buffer(2)]],
+    constant uint &n_columns [[buffer(3)]],
+    constant uint &lifting_log_size [[buffer(4)]],
+    uint row_index [[thread_position_in_grid]]
+) {
+    uint row_count = 1u << lifting_log_size;
+    if (row_index >= row_count) {
+        return;
+    }
+
+    thread uint state[8];
+    stwo_metal_blake2s_init_words(state);
+
+    // Process columns in groups of 16 (= 64 bytes = one Blake2s block).
+    uint m[16];
+    uint col_in_block = 0u;
+    uint total_bytes = 0u;
+
+    for (uint c = 0u; c < n_columns; ++c) {
+        device const uint *col = (device const uint *)column_addrs[c];
+        uint log_ratio = lifting_log_size - column_log_sizes[c];
+        uint source_index = stwo_metal_lifted_column_index(row_index, log_ratio);
+        m[col_in_block] = col[source_index];
+        col_in_block++;
+        total_bytes += 4u;
+
+        if (col_in_block == 16u) {
+            uint is_last = (c + 1u == n_columns) ? 0xFFFFFFFFu : 0u;
+            stwo_metal_blake2s_compress_uint_words(state, m, total_bytes, is_last);
+            col_in_block = 0u;
+        }
+    }
+
+    // Remainder: partially filled block (pad with zeros).
+    if (col_in_block > 0u) {
+        for (uint i = col_in_block; i < 16u; ++i) {
+            m[i] = 0u;
+        }
+        stwo_metal_blake2s_compress_uint_words(state, m, total_bytes, 0xFFFFFFFFu);
+    }
+
+    // Write leaf hash.
+    uint dst_base = row_index * 8u;
+    for (uint i = 0u; i < 8u; ++i) {
+        dst[dst_base + i] = state[i];
+    }
 }
 
 kernel void blake2s_build_leaves_lifted_wide_chunk_u32(
