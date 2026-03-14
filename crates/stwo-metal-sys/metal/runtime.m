@@ -798,6 +798,124 @@ bool stwo_metal_rfft_evaluate_subbuffer_u32(
     }
 }
 
+bool stwo_metal_rfft_evaluate_multi_u32(
+    void *runtime_ptr,
+    void **buffer_ptrs,
+    uint32_t n_buffers,
+    void *twiddles_ptr,
+    uint32_t values_log_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        if (n_buffers == 0) {
+            return true;
+        }
+
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *twiddles = stwo_metal_buffer_box(twiddles_ptr);
+        uint32_t values_len = ((uint32_t)1) << values_log_len;
+        uint32_t eval_domain_size = values_len >> 1;
+
+        if (twiddles.len != (NSUInteger)eval_domain_size) {
+            stwo_metal_write_error(error_message, error_message_len, @"Batch RFFT: twiddle length mismatch.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> line_pipeline =
+            stwo_metal_pipeline(runtime, @"rfft_line_part_u32", error_message, error_message_len);
+        if (line_pipeline == nil) {
+            return false;
+        }
+        id<MTLComputePipelineState> circle_pipeline =
+            stwo_metal_pipeline(runtime, @"rfft_circle_part_u32", error_message, error_message_len);
+        if (circle_pipeline == nil) {
+            return false;
+        }
+
+        uint32_t pair_count = values_len >> 1;
+
+        // Create one command buffer per polynomial and submit all concurrently.
+        // Each polynomial's RFFT layers are sequential within its command buffer,
+        // but Metal schedules independent command buffers in parallel on the GPU.
+        NSMutableArray<id<MTLCommandBuffer>> *command_buffers =
+            [NSMutableArray arrayWithCapacity:n_buffers];
+
+        for (uint32_t buf_idx = 0; buf_idx < n_buffers; ++buf_idx) {
+            StwoMetalBufferBox *values = stwo_metal_buffer_box(buffer_ptrs[buf_idx]);
+            if (values.len != (NSUInteger)values_len) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    [NSString stringWithFormat:@"Batch RFFT: buffer %u length %lu != expected %u.",
+                     buf_idx, (unsigned long)values.len, values_len]);
+                return false;
+            }
+
+            id<MTLCommandBuffer> cb = [runtime.queue commandBuffer];
+            if (cb == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+                return false;
+            }
+
+            uint32_t layer_domain_size = 1u;
+            uint32_t layer_domain_offset = pair_count - 2u;
+            for (uint32_t layer = values_log_len - 1u; layer > 0u; --layer) {
+                id<MTLComputeCommandEncoder> encoder = [cb computeCommandEncoder];
+                if (encoder == nil) {
+                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                    return false;
+                }
+
+                [encoder setComputePipelineState:line_pipeline];
+                [encoder setBuffer:values.buffer offset:0 atIndex:0];
+                [encoder setBuffer:twiddles.buffer offset:0 atIndex:1];
+                [encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
+                [encoder setBytes:&layer length:sizeof(layer) atIndex:3];
+                [encoder setBytes:&layer_domain_offset length:sizeof(layer_domain_offset) atIndex:4];
+
+                MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
+                MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(line_pipeline), 1, 1);
+                [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+                [encoder endEncoding];
+
+                layer_domain_size <<= 1u;
+                layer_domain_offset -= layer_domain_size;
+            }
+
+            {
+                id<MTLComputeCommandEncoder> encoder = [cb computeCommandEncoder];
+                if (encoder == nil) {
+                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                    return false;
+                }
+
+                [encoder setComputePipelineState:circle_pipeline];
+                [encoder setBuffer:values.buffer offset:0 atIndex:0];
+                [encoder setBuffer:twiddles.buffer offset:0 atIndex:1];
+                [encoder setBytes:&values_len length:sizeof(values_len) atIndex:2];
+
+                MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
+                MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(circle_pipeline), 1, 1);
+                [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+                [encoder endEncoding];
+            }
+
+            [cb commit];
+            [command_buffers addObject:cb];
+        }
+
+        // Wait for all command buffers to complete.
+        for (id<MTLCommandBuffer> cb in command_buffers) {
+            [cb waitUntilCompleted];
+            if (cb.status == MTLCommandBufferStatusError) {
+                stwo_metal_write_error(error_message, error_message_len, cb.error.localizedDescription ?: @"Batch RFFT kernel execution failed.");
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_ifft_interpolate_u32(
     void *runtime_ptr,
     void *values_ptr,

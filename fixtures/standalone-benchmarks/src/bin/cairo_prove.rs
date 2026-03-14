@@ -1013,6 +1013,7 @@ mod cairo_prove_main {
         use stwo::prover::AccumulationOps;
         use stwo_metal::program::{
             MetalEvaluationProgramCapabilityProfileV1,
+            MetalEvaluationProgramDispatchKindV1,
             MetalEvaluationProgramRuntimeInputsV1,
             MetalEvaluationProgramTraceViewV1,
             compile_v1_to_metal_source, compiled_kernel_name,
@@ -1204,7 +1205,14 @@ mod cairo_prove_main {
                         e,
                     );
                 }
-                res.ok().map(|(v, _)| { gpu_count += 1; v })
+                res.ok().map(|(v, dispatch)| {
+                    if dispatch == MetalEvaluationProgramDispatchKindV1::JitCompiled {
+                        compiled_count += 1;
+                    } else {
+                        gpu_count += 1;
+                    }
+                    v
+                })
             };
             let mut row_res = match gpu_result {
                 Some(res) => {
