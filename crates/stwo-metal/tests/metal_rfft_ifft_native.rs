@@ -49,3 +49,60 @@ fn metal_rfft_and_ifft_match_cpu_on_shifted_domain() {
 
     assert_eq!(metal_roundtrip.coeffs.to_cpu(), cpu_roundtrip.coeffs);
 }
+
+/// Regression test for GPU IFFT kernel bug that produced incorrect coefficients
+/// for columns with ≥ 2^17 elements. The bug was in `ifft_line_part_u32` using
+/// Metal buffer offset for twiddle addressing instead of an explicit
+/// `layer_domain_offset` parameter (which the working RFFT kernel uses).
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn metal_ifft_large_column_regression() {
+    require_metal_runtime();
+
+    // Test at log_size 17 — the smallest size that triggered the bug.
+    let log_size: u32 = 17;
+    let domain = CircleDomain::new(Coset::half_odds(log_size));
+    let mut rng = SmallRng::seed_from_u64(42);
+    let coeffs: Vec<BaseField> = (0..domain.size()).map(|_| rng.gen()).collect();
+
+    let cpu_poly = CircleCoefficients::<CpuBackend>::new(coeffs.clone());
+    let metal_poly = CircleCoefficients::<MetalBackend>::new(coeffs.into_iter().collect());
+
+    // Use a twiddle tree large enough to cover the domain.
+    let cpu_twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
+    let metal_twiddles = MetalBackend::precompute_twiddles(domain.half_coset);
+
+    // Evaluate on domain (RFFT — already known to work).
+    let cpu_eval = CpuBackend::evaluate_into(
+        &cpu_poly,
+        domain,
+        &cpu_twiddles,
+        vec![BaseField::default(); domain.size()],
+    );
+    let metal_eval = MetalBackend::evaluate_into(
+        &metal_poly,
+        domain,
+        &metal_twiddles,
+        (0..domain.size()).map(|_| BaseField::default()).collect(),
+    );
+    assert_eq!(metal_eval.values.to_cpu(), cpu_eval.values, "RFFT mismatch at log_size {log_size}");
+
+    // Interpolate back (IFFT — this was the buggy path).
+    let cpu_roundtrip = CpuBackend::interpolate(cpu_eval, &cpu_twiddles);
+    let metal_roundtrip = MetalBackend::interpolate(metal_eval, &metal_twiddles);
+
+    let cpu_coeffs = &cpu_roundtrip.coeffs;
+    let metal_coeffs = metal_roundtrip.coeffs.to_cpu();
+    assert_eq!(
+        metal_coeffs.len(),
+        cpu_coeffs.len(),
+        "IFFT output length mismatch at log_size {log_size}"
+    );
+    // Check first mismatch location for a clear error message.
+    for (i, (m, c)) in metal_coeffs.iter().zip(cpu_coeffs.iter()).enumerate() {
+        assert_eq!(
+            m, c,
+            "IFFT coefficient mismatch at index {i} for log_size {log_size}"
+        );
+    }
+}

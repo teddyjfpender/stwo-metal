@@ -579,7 +579,8 @@ mod tests {
 
     use super::{
         execute_selected_metal_sampled_values_v1, interpret_metal_sampled_values_v1_reference,
-        lower_metal_sampled_values_v1, MetalRuntimeSupport, MetalSampledValuesDispatchKindV1,
+        lower_metal_sampled_values_v1, validate_sampled_values_abi_layout_v1,
+        MetalRuntimeSupport, MetalSampledValuesDispatchKindV1,
     };
 
     #[test]

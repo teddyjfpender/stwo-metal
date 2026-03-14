@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use stwo::core::circle::Coset;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
-use stwo::core::fri::CIRCLE_TO_LINE_FOLD_STEP;
-use stwo::core::poly::circle::CircleDomain;
+use stwo::core::fri::{FriConfig, CIRCLE_TO_LINE_FOLD_STEP};
+use stwo::core::poly::circle::{CanonicCoset, CircleDomain};
 use stwo::core::poly::line::{LineDomain, LinePoly};
 use stwo::core::utils::bit_reverse_index;
 use stwo::prover::fri::FriOps;
@@ -100,6 +100,102 @@ fn cached_circle_inverse_y_factors(domain: CircleDomain) -> Arc<U32Buffer> {
         .expect("circle inverse-y factor cache mutex should not be poisoned")
         .insert(key, factors.clone());
     factors
+}
+
+/// CPU-only computation of all FRI inverse factor vectors for a given
+/// lifting_log_size and FRI config.  Returns raw u32 vectors that can be
+/// uploaded to the GPU caches later via [`upload_fri_factors`].
+///
+/// This is safe to call on a background thread since it does no GPU work.
+pub fn precompute_fri_factors_cpu(
+    lifting_log_size: u32,
+    fri_config: &FriConfig,
+) -> PrecomputedFriFactors {
+    let circle_domain = CanonicCoset::new(lifting_log_size).circle_domain();
+
+    // Circle-to-line inverse-y factors (first layer).
+    let n_circle_factors = circle_domain.size() >> CIRCLE_TO_LINE_FOLD_STEP;
+    let circle_y_factors: Vec<u32> = (0..n_circle_factors)
+        .map(|i| {
+            circle_domain
+                .at(bit_reverse_index(
+                    i << CIRCLE_TO_LINE_FOLD_STEP,
+                    circle_domain.log_size(),
+                ))
+                .y
+                .inverse()
+                .0
+        })
+        .collect();
+
+    // Line inverse-x factors for each inner fold layer.
+    let line_domain_log_size = lifting_log_size - CIRCLE_TO_LINE_FOLD_STEP;
+    let last_layer_log_domain_size = fri_config.last_layer_domain_size().ilog2();
+    let mut domain = LineDomain::new(Coset::half_odds(line_domain_log_size));
+    let mut line_factors = Vec::new();
+    while domain.log_size() > last_layer_log_domain_size {
+        let n_factors = domain.size() >> 1;
+        let factors: Vec<u32> = (0..n_factors)
+            .map(|i| {
+                domain
+                    .at(bit_reverse_index(i << 1, domain.log_size()))
+                    .inverse()
+                    .0
+            })
+            .collect();
+        let coset = domain.coset();
+        let key = (coset.initial_index.0, coset.step_size.0, coset.log_size());
+        line_factors.push((key, factors));
+        domain = domain.double();
+    }
+
+    PrecomputedFriFactors {
+        circle_domain,
+        circle_y_factors,
+        line_factors,
+    }
+}
+
+/// Pre-computed FRI factors (CPU-side vectors).
+pub struct PrecomputedFriFactors {
+    circle_domain: CircleDomain,
+    circle_y_factors: Vec<u32>,
+    line_factors: Vec<((usize, usize, u32), Vec<u32>)>,
+}
+
+/// Upload pre-computed FRI factors to the GPU caches.
+pub fn upload_fri_factors(factors: PrecomputedFriFactors) {
+    // Upload circle-to-line factors.
+    {
+        let coset = factors.circle_domain.half_coset;
+        let key = (
+            coset.initial_index.0,
+            coset.step_size.0,
+            factors.circle_domain.log_size(),
+        );
+        let buffer = Arc::new(
+            U32Buffer::from_slice(&factors.circle_y_factors)
+                .expect("Metal FRI inverse-y factor upload should initialize"),
+        );
+        circle_inverse_y_factor_cache()
+            .lock()
+            .expect("circle inverse-y factor cache mutex should not be poisoned")
+            .insert(key, buffer);
+    }
+
+    // Upload line fold factors.
+    {
+        let mut cache = line_inverse_x_factor_cache()
+            .lock()
+            .expect("line inverse-x factor cache mutex should not be poisoned");
+        for (key, factor_vec) in factors.line_factors {
+            let buffer = Arc::new(
+                U32Buffer::from_slice(&factor_vec)
+                    .expect("Metal FRI inverse-x factor upload should initialize"),
+            );
+            cache.insert(key, buffer);
+        }
+    }
 }
 
 pub fn fold_circle_into_line_first_layer(

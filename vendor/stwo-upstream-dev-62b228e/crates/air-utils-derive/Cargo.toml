@@ -1,0 +1,18 @@
+[package]
+name = "stwo-air-utils-derive"
+version = "2.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Derive macros for AIR utilities"
+
+[workspace]
+members = []
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "2.0.90"
+quote = "1.0.37"
+itertools = "0.13.0"
+proc-macro2 = "1.0.92"

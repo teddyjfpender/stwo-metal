@@ -178,6 +178,11 @@ struct ProveBreakdownSampleTimings {
     prove_values_prepare_ms: Vec<f64>,
     prove_values_sampled_values_v1_ms: Vec<f64>,
     prove_values_fri_and_decommit_ms: Vec<f64>,
+    fri_quotients_ms: Vec<f64>,
+    fri_commit_ms: Vec<f64>,
+    proof_of_work_ms: Vec<f64>,
+    fri_decommit_ms: Vec<f64>,
+    tree_decommit_ms: Vec<f64>,
 }
 
 #[derive(Serialize)]
@@ -202,6 +207,11 @@ struct ProveBreakdownSummaryTimings {
     prove_values_prepare_ms: SummaryStats,
     prove_values_sampled_values_v1_ms: SummaryStats,
     prove_values_fri_and_decommit_ms: SummaryStats,
+    fri_quotients_ms: SummaryStats,
+    fri_commit_ms: SummaryStats,
+    proof_of_work_ms: SummaryStats,
+    fri_decommit_ms: SummaryStats,
+    tree_decommit_ms: SummaryStats,
 }
 
 #[derive(Serialize)]
@@ -226,6 +236,11 @@ struct SingleProveBreakdownTimings {
     prove_values_prepare_ms: f64,
     prove_values_sampled_values_v1_ms: f64,
     prove_values_fri_and_decommit_ms: f64,
+    fri_quotients_ms: f64,
+    fri_commit_ms: f64,
+    proof_of_work_ms: f64,
+    fri_decommit_ms: f64,
+    tree_decommit_ms: f64,
 }
 
 #[cfg(feature = "metal-runtime")]
@@ -382,6 +397,26 @@ fn prove_breakdown_samples_from_samples(samples: &[ProveBreakdown]) -> ProveBrea
         prove_values_prepare_ms,
         prove_values_sampled_values_v1_ms,
         prove_values_fri_and_decommit_ms,
+        fri_quotients_ms: samples
+            .iter()
+            .map(|sample| sample.fri_quotients_ms)
+            .collect::<Vec<_>>(),
+        fri_commit_ms: samples
+            .iter()
+            .map(|sample| sample.fri_commit_ms)
+            .collect::<Vec<_>>(),
+        proof_of_work_ms: samples
+            .iter()
+            .map(|sample| sample.proof_of_work_ms)
+            .collect::<Vec<_>>(),
+        fri_decommit_ms: samples
+            .iter()
+            .map(|sample| sample.fri_decommit_ms)
+            .collect::<Vec<_>>(),
+        tree_decommit_ms: samples
+            .iter()
+            .map(|sample| sample.tree_decommit_ms)
+            .collect::<Vec<_>>(),
     }
 }
 
@@ -510,6 +545,36 @@ fn prove_breakdown_summary_from_samples(
                 .map(|sample| sample.prove_values_fri_and_decommit_ms)
                 .collect::<Vec<_>>(),
         ),
+        fri_quotients_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.fri_quotients_ms)
+                .collect::<Vec<_>>(),
+        ),
+        fri_commit_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.fri_commit_ms)
+                .collect::<Vec<_>>(),
+        ),
+        proof_of_work_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.proof_of_work_ms)
+                .collect::<Vec<_>>(),
+        ),
+        fri_decommit_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.fri_decommit_ms)
+                .collect::<Vec<_>>(),
+        ),
+        tree_decommit_ms: summarize(
+            &samples
+                .iter()
+                .map(|sample| sample.tree_decommit_ms)
+                .collect::<Vec<_>>(),
+        ),
     }
 }
 
@@ -538,6 +603,11 @@ fn single_prove_breakdown_timings_from_sample(
         prove_values_prepare_ms: sample.prove_values_prepare_ms,
         prove_values_sampled_values_v1_ms: sample.prove_values_sampled_values_v1_ms,
         prove_values_fri_and_decommit_ms: sample.prove_values_fri_and_decommit_ms,
+        fri_quotients_ms: sample.fri_quotients_ms,
+        fri_commit_ms: sample.fri_commit_ms,
+        proof_of_work_ms: sample.proof_of_work_ms,
+        fri_decommit_ms: sample.fri_decommit_ms,
+        tree_decommit_ms: sample.tree_decommit_ms,
     }
 }
 
@@ -949,6 +1019,11 @@ fn run_one_generic_sample(
             prove_values_prepare_ms: 0.0,
             prove_values_sampled_values_v1_ms: 0.0,
             prove_values_fri_and_decommit_ms: 0.0,
+            fri_quotients_ms: 0.0,
+            fri_commit_ms: 0.0,
+            proof_of_work_ms: 0.0,
+            fri_decommit_ms: 0.0,
+            tree_decommit_ms: 0.0,
         }),
         proof_metadata,
         sentinel: sentinel_from_inputs(input_a_host, input_b_host, n_columns),
@@ -978,6 +1053,11 @@ struct ProveBreakdown {
     prove_values_prepare_ms: f64,
     prove_values_sampled_values_v1_ms: f64,
     prove_values_fri_and_decommit_ms: f64,
+    fri_quotients_ms: f64,
+    fri_commit_ms: f64,
+    proof_of_work_ms: f64,
+    fri_decommit_ms: f64,
+    tree_decommit_ms: f64,
 }
 
 #[cfg(feature = "metal-runtime")]
@@ -1005,6 +1085,11 @@ fn prove_breakdown_from_generated_sample(
         prove_values_prepare_ms: sample.breakdown.prove_core_prove_values_detail.prepare_ms,
         prove_values_sampled_values_v1_ms: sample.breakdown.prove_core_prove_values_detail.sampled_values_v1_ms,
         prove_values_fri_and_decommit_ms: sample.breakdown.prove_core_prove_values_detail.fri_and_decommit_ms,
+        fri_quotients_ms: 0.0,
+        fri_commit_ms: 0.0,
+        proof_of_work_ms: 0.0,
+        fri_decommit_ms: 0.0,
+        tree_decommit_ms: 0.0,
     }
 }
 

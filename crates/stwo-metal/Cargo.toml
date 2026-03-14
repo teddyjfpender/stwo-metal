@@ -7,7 +7,7 @@ build = "build.rs"
 [features]
 default = ["std"]
 std = ["stwo/std"]
-prover = ["stwo/prover", "std", "vendored-upstream-bridge"]
+prover = ["stwo/prover", "stwo-constraint-framework/prover", "std", "vendored-upstream-bridge"]
 parallel = ["stwo/parallel", "dep:rayon"]
 slow-tests = ["stwo/slow-tests"]
 tracing = ["stwo/tracing"]
@@ -26,6 +26,7 @@ starknet-ff = { version = "0.3.7", default-features = false, features = [
     "serde",
 ] }
 stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo", package = "stwo", default-features = false }
+stwo-constraint-framework = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/constraint-framework", default-features = false }
 stwo-metal-sys = { version = "=0.1.1", path = "../stwo-metal-sys", default-features = false }
 
 [dev-dependencies]

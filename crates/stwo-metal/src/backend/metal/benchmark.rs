@@ -1235,7 +1235,7 @@ mod tests {
             n_columns: 6,
             ..WIDE_FIBONACCI_PROVE_LOG20_TARGET
         };
-        let boundary =
+        let _boundary =
             declare_wide_fibonacci_benchmark_boundary(MetalExecutionIntent::PreferMetal, target)
                 .unwrap();
         let component = WideFibonacciBenchmarkComponent::new(

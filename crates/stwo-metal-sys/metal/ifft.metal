@@ -26,6 +26,7 @@ kernel void ifft_line_part_u32(
     device const uint *twiddles [[buffer(1)]],
     constant uint &values_log_len [[buffer(2)]],
     constant uint &layer [[buffer(3)]],
+    constant uint &layer_domain_offset [[buffer(4)]],
     uint index [[thread_position_in_grid]]
 ) {
     uint values_len = 1u << values_log_len;
@@ -42,7 +43,7 @@ kernel void ifft_line_part_u32(
 
     uint val0 = values[idx0];
     uint val1 = values[idx1];
-    uint twiddle = twiddles[twiddle_index];
+    uint twiddle = twiddles[layer_domain_offset + twiddle_index];
 
     values[idx0] = stwo_metal_m31_add(val0, val1);
     values[idx1] = stwo_metal_m31_mul(stwo_metal_m31_sub(val0, val1), twiddle);

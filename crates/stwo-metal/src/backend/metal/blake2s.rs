@@ -3,9 +3,10 @@ use std::time::Instant;
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use stwo::core::channel::{Blake2sChannelGeneric, Channel};
-use stwo::core::fields::m31::BaseField;
+use stwo::core::channel::Blake2sChannelGeneric;
+use stwo::core::fields::m31::{BaseField, P};
 use stwo::core::proof_of_work::GrindOps;
+use stwo::core::vcs::blake2_hash::Blake2sHasherGeneric;
 use stwo::core::vcs_lifted::blake2_merkle::{
     Blake2sM31MerkleChannel, Blake2sMerkleChannel, Blake2sMerkleHasherGeneric,
 };
@@ -354,18 +355,116 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
     }
 }
 
+/// Number of nonce_lo candidates per GPU batch dispatch.
+/// 2^24 = 16,777,216 threads — covers the expected search space for 24-bit PoW
+/// in a single dispatch, minimizing command buffer overhead.
+const GPU_GRIND_BATCH_BITS: u32 = 24;
+
 impl<const IS_M31_OUTPUT: bool> GrindOps<Blake2sChannelGeneric<IS_M31_OUTPUT>> for MetalBackend {
     fn grind(channel: &Blake2sChannelGeneric<IS_M31_OUTPUT>, pow_bits: u32) -> u64 {
-        let mut nonce = 0;
-        loop {
-            let channel = channel.clone();
-            if channel.verify_pow_nonce(pow_bits, nonce) {
+        assert!(pow_bits <= 32, "pow_bits > 32 is not supported");
+
+        // Compute the prefix digest: H(POW_PREFIX, [0_u8; 12], digest, pow_bits).
+        let digest = channel.digest();
+        let mut hasher = Blake2sHasherGeneric::<IS_M31_OUTPUT>::default();
+        hasher.update(&Blake2sChannelGeneric::<IS_M31_OUTPUT>::POW_PREFIX.to_le_bytes());
+        hasher.update(&[0_u8; 12]);
+        hasher.update(&digest.0[..]);
+        hasher.update(&pow_bits.to_le_bytes());
+        let prefixed_digest = hasher.finalize();
+        let prefix_array: [u32; 8] = std::array::from_fn(|i| {
+            u32::from_le_bytes(
+                prefixed_digest.0[i * 4..(i + 1) * 4]
+                    .try_into()
+                    .unwrap(),
+            )
+        });
+
+        let batch_size = 1u32 << GPU_GRIND_BATCH_BITS;
+
+        // Iterate over nonce_hi values, dispatching GPU batches.
+        for hi in 0..P {
+            let nonce_lo = U32Buffer::blake2s_grind_batch(
+                &prefix_array,
+                pow_bits,
+                hi,
+                batch_size,
+            )
+            .expect("Metal GPU grind dispatch failed");
+
+            if nonce_lo != u32::MAX {
+                let nonce = ((hi as u64) << 32) | (nonce_lo as u64);
+                assert!(
+                    (nonce as u32) < P,
+                    "The 32 low bits of the nonce are not reduced modulo the M31 prime."
+                );
                 return nonce;
             }
-            nonce += 1;
         }
+
+        panic!("GPU grind failed to find a solution.");
     }
 }
 
 impl BackendForChannel<Blake2sMerkleChannel> for MetalBackend {}
 impl BackendForChannel<Blake2sM31MerkleChannel> for MetalBackend {}
+
+#[cfg(test)]
+mod tests {
+    use stwo::core::channel::{Blake2sChannel, Channel};
+    use stwo::core::proof_of_work::GrindOps;
+    use stwo::prover::backend::simd::SimdBackend;
+
+    use super::MetalBackend;
+
+    #[test]
+    fn gpu_grind_matches_simd() {
+        let mut channel = Blake2sChannel::default();
+        channel.mix_u64(0xDEADBEEF_CAFEBABE);
+        let pow_bits = 10; // Low PoW for fast test.
+
+        let gpu_nonce = MetalBackend::grind(&channel, pow_bits);
+        assert!(
+            channel.clone().verify_pow_nonce(pow_bits, gpu_nonce),
+            "GPU grind nonce {} failed verification",
+            gpu_nonce
+        );
+
+        // Verify the same channel state gives a valid SIMD nonce too.
+        let simd_nonce = SimdBackend::grind(&channel, pow_bits);
+        assert!(
+            channel.verify_pow_nonce(pow_bits, simd_nonce),
+            "SIMD grind nonce {} failed verification",
+            simd_nonce
+        );
+
+        // Both should find a valid nonce (may differ but both must verify).
+        println!("GPU nonce: {}, SIMD nonce: {}", gpu_nonce, simd_nonce);
+    }
+
+    #[test]
+    fn gpu_grind_deterministic() {
+        let mut channel = Blake2sChannel::default();
+        channel.mix_u64(0x1111222233334444);
+        let pow_bits = 8;
+
+        let nonce1 = MetalBackend::grind(&channel, pow_bits);
+        let nonce2 = MetalBackend::grind(&channel, pow_bits);
+        assert_eq!(nonce1, nonce2, "GPU grind should be deterministic");
+    }
+
+    #[test]
+    fn gpu_grind_high_pow_bits() {
+        let mut channel = Blake2sChannel::default();
+        channel.mix_u64(0xAABBCCDDEEFF0011);
+        let pow_bits = 20; // ~1M nonces expected.
+
+        let gpu_nonce = MetalBackend::grind(&channel, pow_bits);
+        assert!(
+            channel.verify_pow_nonce(pow_bits, gpu_nonce),
+            "GPU grind nonce {} failed verification at pow_bits={}",
+            gpu_nonce,
+            pow_bits
+        );
+    }
+}

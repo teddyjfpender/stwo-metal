@@ -8,6 +8,9 @@ mod column;
 mod commitment_slice;
 mod eval_program_v1;
 mod execution_plan;
+mod shader_compiler_v1;
+pub mod recording_eval;
+pub mod recording_eval_v1;
 mod first_layer;
 mod fri;
 mod generated_policy;
@@ -50,6 +53,7 @@ pub use capability::{
 };
 pub use commitment_slice::MetalFriCommitmentSlice;
 pub use eval_program_v1::{
+    execute_compiled_metal_evaluation_program_v1,
     execute_metal_evaluation_program_v1_on_metal,
     execute_selected_metal_evaluation_program_v1_on_metal, interpret_metal_evaluation_program_v1,
     lookup_metal_evaluation_program_overlay_v1, lower_registered_metal_evaluation_program_v1,
@@ -67,6 +71,7 @@ pub use eval_program_v1::{
     MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
     MetalEvaluationProgramSpecializationV1, MetalEvaluationProgramTraceViewV1,
     MetalEvaluationProgramV1, MetalEvaluationProgramValidationError, OwnedMetalEvaluationProgramV1,
+    lower_framework_eval_to_v1, lower_framework_eval_to_v1_with_logup,
     STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1, STWO_METAL_EVAL_PROGRAM_ABI_MINOR_V1,
     STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1, STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1,
     STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
@@ -74,8 +79,12 @@ pub use eval_program_v1::{
     STWO_METAL_EVAL_PROGRAM_FLAG_PREFINALIZED_LOGUP_V1, STWO_METAL_EVAL_PROGRAM_MAGIC_V1,
     STWO_METAL_EVAL_PROGRAM_SECURE_EXT_DEGREE_V1,
 };
+pub use shader_compiler_v1::{compile_v1_to_metal_source, compiled_kernel_name};
 pub use first_layer::MetalFriFirstLayer;
-pub use fri::{fold_circle_into_line_first_layer, fold_line};
+pub use fri::{
+    fold_circle_into_line_first_layer, fold_line, precompute_fri_factors_cpu, upload_fri_factors,
+    PrecomputedFriFactors,
+};
 pub use handoff::{
     commit_line_evaluation_via_cpu_bridge, materialize_line_evaluation_via_cpu_bridge,
     CpuLineCommitmentBridge,
@@ -96,6 +105,7 @@ pub use proof_slice::MetalFriProofSlice;
 pub use prover::MetalFriProver;
 pub use quotient::{
     accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
+    compute_quotient_domain_coords_cpu, upload_quotient_domain_coords,
     MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciQuotientError,
     MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients,
 };
@@ -126,13 +136,14 @@ pub use workload::{
     MetalWorkloadBoundary, MetalWorkloadHandoffError,
 };
 pub use prove_runtime_v1::{
-    commit_trace_with_breakdown, compute_composition_polynomial_v1, execute_prove_core_v1,
+    commit_trace_with_breakdown, compute_composition_polynomial_v1,
+    evaluate_composition_quotients_v1, execute_prove_core_v1,
     execute_prove_values_v1, lower_post_composition_sampled_values_v1,
     interpret_post_composition_sampled_values_v1,
     interpret_post_composition_sampled_values_v1_reference,
     execute_post_composition_sampled_values_v1,
     stage_prove_values_v1, validate_prove_runtime_lane_v1,
-    MetalCompositionDetailBreakdown, MetalProveValuesDetailBreakdown,
+    MetalComponentContextV1, MetalCompositionDetailBreakdown, MetalProveValuesDetailBreakdown,
     MetalPostCompositionSampledValuesV1, MetalProofMetadata, MetalProofSizeBreakdown,
     MetalProveCoreBreakdown, MetalProveCoreError, MetalProveRuntimeCompositionError,
     MetalProveRuntimeContextV1, MetalProveRuntimeLaneError, MetalProveValuesBreakdown,

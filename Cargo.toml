@@ -3,6 +3,9 @@ members = [
     "crates/stwo-metal",
     "crates/stwo-metal-sys",
 ]
+exclude = [
+    "vendor/stwo-upstream-dev-62b228e/crates/constraint-framework",
+]
 resolver = "2"
 
 [workspace.package]

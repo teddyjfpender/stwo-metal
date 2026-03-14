@@ -191,20 +191,17 @@ Target retirement point:
 
 Why it exists now:
 
-`VIRTUAL_SNOS` is registered in the planner manifest and now has a real
-lowering function (`lower_virtual_snos_evaluation_program_v1`) that produces a
-V1 evaluation program exercising multi-interaction traces, Param opcode, and
-constraint aggregation. ABI reflection checks
-(`validate_eval_program_abi_layout_v1`, `validate_sampled_values_abi_layout_v1`)
-run fail-closed at lowering time, verifying all 8 `#[repr(C)]` host/device
-boundary records.
+`VIRTUAL_SNOS` end-to-end prove/verify succeeds at small scale through the V1
+runtime. The `virtual_snos_end_to_end_prove_verify` test commits a preprocessed
+trace and main trace, runs `execute_prove_core_v1` with the full V1 capability
+surface (TraceCol, PreprocessedCol, Param, Const, Add, Sub, Mul, Inv, SecureCol,
+ExtMul), and verifies the proof through a `VirtualSnosComponent` that evaluates
+all 4 constraint sections at the OODS point. The composition pipeline now
+generically supports preprocessed columns and base parameters.
 
 The remaining work is:
-1. Extend the lowering to exercise additional V1 capabilities (ExtMul, Inv,
-   PreprocessedCol)
-2. Produce the first end-to-end prove/verify cycle through the registered
-   planner entry
-3. Validate the generated program against the Metal device interpreter
+1. Scale to realistic column counts and log sizes matching `stwo-cairo` inputs
+2. Validate the generated program against the Metal device interpreter at scale
 
 Current containment:
 
@@ -212,6 +209,7 @@ Current containment:
 - `crates/stwo-metal/src/backend/metal/planner_manifest_v1_generated.rs`
 - `crates/stwo-metal/src/backend/metal/execution_plan.rs`
 - `crates/stwo-metal/src/backend/metal/eval_program_v1.rs`
+- `crates/stwo-metal/src/backend/metal/prove_runtime_v1.rs`
 - `crates/stwo-metal/src/backend/metal/sampled_values_v1.rs`
 
 Risk if left in place:

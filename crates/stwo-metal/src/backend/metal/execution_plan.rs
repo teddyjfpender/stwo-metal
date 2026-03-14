@@ -874,7 +874,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(plan.plan, MetalExecutionPlan::MetalFriHybrid);
+        assert_eq!(plan.plan, MetalExecutionPlan::MetalFull);
     }
 
     #[test]
@@ -943,10 +943,10 @@ mod tests {
             MetalGeneratedRouteKind::RegisteredProve,
         )
         .unwrap();
-        let runtime_input = registration.runtime_plan_input(MetalOperationKind::Prove);
 
-        assert_eq!(runtime_input.stage_assignments.len(), 5);
-        let fri_stage = runtime_input
+        assert_eq!(registration.artifact.stage_assignments.len(), 5);
+        let fri_stage = registration
+            .artifact
             .stage_assignments
             .iter()
             .find(|a| a.stage == crate::backend::metal::workload_contract::MetalWorkloadStage::FriBlake2s)

@@ -52,12 +52,14 @@ pub mod benchmark {
 #[cfg(feature = "prover")]
 pub mod prove_runtime {
     pub use crate::backend::metal::{
-        commit_trace_with_breakdown, compute_composition_polynomial_v1, execute_prove_core_v1,
+        commit_trace_with_breakdown, compute_composition_polynomial_v1,
+        evaluate_composition_quotients_v1, execute_prove_core_v1,
         execute_prove_values_v1, execute_post_composition_sampled_values_v1,
         interpret_post_composition_sampled_values_v1,
         interpret_post_composition_sampled_values_v1_reference,
         lower_post_composition_sampled_values_v1, stage_prove_values_v1,
-        validate_prove_runtime_lane_v1, MetalCompositionDetailBreakdown,
+        validate_prove_runtime_lane_v1, MetalComponentContextV1,
+        MetalCompositionDetailBreakdown,
         MetalProveValuesDetailBreakdown, MetalPostCompositionSampledValuesV1,
         MetalProofMetadata, MetalProofSizeBreakdown, MetalProveCoreBreakdown,
         MetalProveCoreError, MetalProveRuntimeCompositionError, MetalProveRuntimeContextV1,
@@ -69,6 +71,7 @@ pub mod prove_runtime {
 #[cfg(feature = "prover")]
 pub mod program {
     pub use crate::backend::metal::{
+        execute_compiled_metal_evaluation_program_v1,
         execute_metal_evaluation_program_v1_on_metal,
         execute_selected_metal_evaluation_program_v1_on_metal,
         interpret_metal_evaluation_program_v1, lookup_metal_evaluation_program_overlay_v1,
@@ -92,6 +95,8 @@ pub mod program {
         MetalSecureFieldValueV1,
         MetalEvaluationProgramTraceViewV1, MetalEvaluationProgramV1,
         MetalEvaluationProgramValidationError, OwnedMetalEvaluationProgramV1,
+        lower_framework_eval_to_v1, lower_framework_eval_to_v1_with_logup,
+        compile_v1_to_metal_source, compiled_kernel_name,
         OwnedMetalSampledValuesV1,
         STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1, STWO_METAL_EVAL_PROGRAM_ABI_MINOR_V1,
         STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1, STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1,
@@ -140,6 +145,7 @@ pub mod quotient {
     };
     pub use crate::backend::metal::{
         accumulate_wide_fibonacci_quotients, accumulate_wide_fibonacci_quotients_from_batch,
+        compute_quotient_domain_coords_cpu, upload_quotient_domain_coords,
         MetalWideFibonacciBatchQuotientRequest, MetalWideFibonacciQuotientError,
         MetalWideFibonacciQuotientRequest, MetalWideFibonacciQuotients,
     };
@@ -255,6 +261,7 @@ pub use crate::backend::cuda::{BaseFieldVec, CudaBackend, SecureFieldVec};
 pub use crate::backend::metal::{
     commit_line_evaluation_via_cpu_bridge, evaluate_polys_on_domain_batch,
     fold_circle_into_line_first_layer, fold_line, materialize_line_evaluation_via_cpu_bridge,
+    precompute_fri_factors_cpu, upload_fri_factors, PrecomputedFriFactors,
     metal_backend_surface_detail, metal_backend_surface_status, metal_runtime_error,
     metal_runtime_support, permute_coset_to_circle_domain_bit_reversed, CpuLineCommitmentBridge,
     MetalBackend, MetalBackendSurface, MetalBackendSurfaceStatus, MetalBaseFieldColumnBatch,

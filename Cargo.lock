@@ -1249,6 +1249,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "stwo-constraint-framework"
+version = "2.1.0"
+dependencies = [
+ "hashbrown 0.16.1",
+ "itertools 0.12.1",
+ "num-traits",
+ "rand",
+ "stwo",
+ "stwo-std-shims",
+ "tracing",
+]
+
+[[package]]
 name = "stwo-metal"
 version = "0.1.1"
 dependencies = [
@@ -1260,6 +1273,7 @@ dependencies = [
  "serde",
  "starknet-ff",
  "stwo",
+ "stwo-constraint-framework",
  "stwo-metal-sys",
  "test-log",
 ]

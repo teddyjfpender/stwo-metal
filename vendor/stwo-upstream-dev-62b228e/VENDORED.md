@@ -3,7 +3,7 @@
 Origin:
 
 - upstream repository: `https://github.com/starkware-libs/stwo.git`
-- exact commit: `62b228ed4a30ef96715e201c4c6e0742aa8bbd42`
+- exact commit: `833bb24e` (updated from `62b228ed4a30ef96715e201c4c6e0742aa8bbd42`)
 
 Retained surface:
 
@@ -11,6 +11,10 @@ Retained surface:
 - `crates/stwo/src/`
 - `crates/constraint-framework/Cargo.toml`
 - `crates/constraint-framework/src/`
+- `crates/air-utils/Cargo.toml`
+- `crates/air-utils/src/`
+- `crates/air-utils-derive/Cargo.toml`
+- `crates/air-utils-derive/src/`
 
 Local delta:
 
@@ -24,6 +28,8 @@ Local delta:
   - preserves the existing barycentric path when coefficients are not stored
 - manifest self-containment in `crates/stwo/Cargo.toml` so Cargo can resolve the crate outside the original upstream workspace
 - manifest self-containment in `crates/constraint-framework/Cargo.toml` so Cargo can resolve the crate outside the original upstream workspace
+- manifest self-containment in `crates/air-utils/Cargo.toml` so Cargo can resolve the crate outside the original upstream workspace
+- manifest self-containment in `crates/air-utils-derive/Cargo.toml` so Cargo can resolve the crate outside the original upstream workspace
 - additive point-side `next_extension_interaction_mask` override in `crates/constraint-framework/src/point.rs`
   - preserves the meaning of already-extended `SecureField` masks at OODS points
   - avoids recombining point-side extension values as if they were base-field limbs
@@ -31,6 +37,6 @@ Local delta:
 
 Scope rule:
 
-- this vendored snapshot is the current short-term supported bridge row for `stwo-cuda`
-- it must remain a bounded, explicit delta over upstream `starkware-libs/stwo@62b228ed4a30ef96715e201c4c6e0742aa8bbd42`
+- this vendored snapshot is the current short-term supported bridge row for `stwo-metal`
+- it must remain a bounded, explicit delta over upstream `starkware-libs/stwo@833bb24e`
 - it is not the long-term destination; the long-term target remains a pure upstream pin once the required public hook lands

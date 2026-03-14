@@ -27,69 +27,53 @@ Invariants:
 
 ## Current operating state
 
-- Date opened: `2026-03-10`
+- Date opened: `2026-03-12`
 - Status: `in_progress`
 - Active tranche:
-  `G10 migration: move post-composition proof flow onto the V1 sampled-values contract`
+  `G11 hardening: AIR-driven Metal proving and GPU dispatch`
 - Objective:
-  move `stwo-metal` from a benchmark-specialized generated path to one stable
-  lowered-program contract that both the generic interpreter lane and the
-  generated overlay lane can consume
+  close the three gaps between the current V1 runtime and production-grade
+  AIR-driven proving: generic FrameworkEval lowering, multi-component
+  composition, and Metal GPU dispatch for the evaluation-program hot path
 - Active design note:
-  [`dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0001-apple-silicon-host-contract-and-metal-runtime-boundary.md)
-  and
-  [`dn-0002-generic-backend-and-codegen-contract.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0002-generic-backend-and-codegen-contract.md)
-  and
-  [`dn-0008-metal-evaluation-program-v1.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0008-metal-evaluation-program-v1.md)
-  and
-  [`dn-0009-v1-post-composition-sampled-values-abi.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0009-v1-post-composition-sampled-values-abi.md)
-  and
-  [`dn-0010-generated-row-convergence-and-runtime-optimization.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0010-generated-row-convergence-and-runtime-optimization.md)
-  and
-  [`dn-0011-stwo-cairo-and-virtual-snos-target.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/dn-0011-stwo-cairo-and-virtual-snos-target.md)
+  [`dn-0012-air-driven-metal-proving-and-gpu-dispatch.md`](./dn-0012-air-driven-metal-proving-and-gpu-dispatch.md)
+  (builds on DN-0008, DN-0010, DN-0011)
 - Current owner area:
-  `V1 contract and runtime planning`
+  `AIR-driven proving and GPU dispatch`
 
 ## Current blockers
 
-- the shared V1 prove runtime (`prove_runtime_v1.rs`) owns the full prove
-  pipeline for the generated row: trace commit, composition via V1 evaluation
-  program, composition commit, sampled values via V1 dispatch, FRI, decommit,
-  and proof assembly — all through `execute_prove_core_v1`
-- full prove-core profiling is now available through
-  `MetalCompositionDetailBreakdown` and `MetalProveValuesDetailBreakdown`,
-  identifying three dominant bottlenecks at log23 (89.7% of prove-core):
-  `eval_program` (38%, 7.96x scaling), `fri_and_decommit` (31%, 7.09x
-  scaling), and `prepare` (20%, 11.99x scaling); the fix for the FRI timing
-  gap (`prepare_post_composition_finish_runtime` was previously untracked) is
-  deployed
-- ABI reflection checks (`validate_eval_program_abi_layout_v1`,
-  `validate_sampled_values_abi_layout_v1`) now run fail-closed at lowering
-  time, verifying size, alignment, and field offsets of all 8 `#[repr(C)]`
-  host/device boundary records
-- `VIRTUAL_SNOS` is now lowered through the V1 evaluation program contract via
-  `lower_virtual_snos_evaluation_program_v1`, exercising multi-interaction
-  traces, Param opcode, and constraint aggregation; it is no longer a
-  fail-closed stub
-- the current generated-lane benchmark sweep still shows strong low-log and
-  weak high-log scaling; profiling has identified the three dominant sub-phases
-  but optimization work has not yet started
-- internal Rust vocabulary is still CUDA-first in many places
-- `poseidon` is currently blocked by the vendored lifted protocol's AIR-degree
-  limitation
-- `stark-v` is intentionally iced while the real downstream target is
-  `stwo-cairo`/`VIRTUAL_SNOS`
+- **CPU interpreter scaling:** the V1 evaluation program interpreter runs
+  row-by-row on CPU; at log22 with 100 columns prove-core takes 5.9s on Metal
+  vs 1.6s on SIMD — a 3.7x regression that erases the trace-generation
+  advantage (Metal is 20x faster at trace gen but 3.7x slower at prove-core)
+- **Hand-coded lowering:** only two lowering paths exist
+  (`lower_wide_fibonacci_evaluation_program_v1`,
+  `lower_virtual_snos_evaluation_program_v1`); a real `stwo-cairo` proof has
+  O(20) AIR components, each requiring manual lowering today
+- **Single-component composition:** `compute_composition_polynomial_v1` takes
+  one program with one `log_n_rows`; real proofs have components at different
+  row counts (memory at log22, range-check at log18, builtins at log14)
+- Metal wins at log16–log20 (1.25x–1.75x over SIMD) but loses at log22
+  (0.93x); the crossover must be pushed beyond log22 for production viability
+- `VIRTUAL_SNOS` end-to-end prove/verify succeeds at small scale; the full
+  V1 capability surface is exercised
+- `poseidon` remains blocked by the vendored lifted protocol
+- `stark-v` remains iced
 
 ## Next three deliverables
 
-1. Optimize the three dominant prove-core bottlenecks identified by profiling:
-   `eval_program` GPU dispatch (38% at log23), `fri_and_decommit` (31%),
-   and `prepare` allocation pressure (20%).
-2. Extend `virtual_snos` lowering to exercise additional V1 capabilities
-   (ExtMul, Inv, PreprocessedCol) and validate end-to-end against the
-   interpreter.
-3. Produce the first `virtual_snos` end-to-end prove/verify cycle through the
-   registered planner entry and V1 runtime.
+1. **GPU dispatch (D4–D5):** Metal compute kernel for V1 evaluation program
+   execution; replace the CPU row-by-row interpreter with parallel GPU
+   dispatch; target: prove-core faster than SIMD at all scales log16–log22.
+2. **Generic FrameworkEval lowering (D1–D3):** recording evaluator that
+   captures any `FrameworkEval` constraint DAG and emits V1 opcodes
+   automatically; retire hand-coded lowering functions.
+3. **Multi-component composition (D6–D8):** `execute_prove_core_multi_v1`
+   that accepts components with different `log_n_rows` values; benchmark
+   modeling 3+ components at different sizes.
+
+Full specification: [`dn-0012-air-driven-metal-proving-and-gpu-dispatch.md`](./dn-0012-air-driven-metal-proving-and-gpu-dispatch.md)
 
 ## Explicitly not doing now
 

@@ -528,6 +528,126 @@ impl PolyOps for MetalBackend {
             .expect("Metal evaluate should complete through the native RFFT/IFFT lane")
     }
 
+    /// Groups polynomials by evaluation domain size and shares a single twiddle
+    /// tail buffer per group, avoiding redundant 32 MB allocations (e.g. 57
+    /// log-23 polynomials share one buffer instead of 57 copies).
+    /// Maintains rayon parallelism for CPU/GPU overlap.
+    fn evaluate_polynomials(
+        polynomials: stwo::core::ColumnVec<CircleCoefficients<Self>>,
+        log_blowup_factor: u32,
+        twiddles: &TwiddleTree<Self>,
+        store_polynomials_coefficients: bool,
+        pool: &stwo::prover::mempool::BaseColumnPool<Self>,
+    ) -> Vec<stwo::prover::Poly<Self>>
+    where
+        Self: stwo::prover::backend::Backend,
+    {
+        use stwo::prover::Poly;
+
+        // Pre-compute ONE twiddle tail buffer per distinct domain size.
+        let mut twiddle_cache: BTreeMap<u32, U32Buffer> = BTreeMap::new();
+        for poly_coeffs in &polynomials {
+            let log_eval_size = poly_coeffs.log_size() + log_blowup_factor;
+            if log_eval_size > 3 {
+                twiddle_cache.entry(log_eval_size).or_insert_with(|| {
+                    let domain_size = 1usize << log_eval_size;
+                    tail_twiddle_buffer(domain_size, &twiddles.twiddles)
+                        .expect("Metal twiddle tail allocation should succeed")
+                });
+            }
+        }
+
+        // Pre-take all buffers from the pool (sequential, same as default).
+        let buffers: Vec<_> = polynomials
+            .iter()
+            .map(|poly_coeffs| {
+                let log_eval_size = poly_coeffs.log_size() + log_blowup_factor;
+                pool.take_or_alloc(log_eval_size)
+            })
+            .collect();
+
+        // Pre-create ONE shared zero-padding buffer per domain size.
+        // This avoids per-polynomial allocations in the extend step:
+        // instead of clone + pad_to_size (2 temp buffers), we copy coefficients
+        // directly to the pool buffer and zero-fill the remainder.
+        let mut zero_pad_cache: BTreeMap<u32, U32Buffer> = BTreeMap::new();
+        for poly_coeffs in &polynomials {
+            let log_eval_size = poly_coeffs.log_size() + log_blowup_factor;
+            if log_eval_size > 3 {
+                let coeff_size = poly_coeffs.coeffs.len();
+                let domain_size = 1usize << log_eval_size;
+                let padding = domain_size - coeff_size;
+                if padding > 0 {
+                    zero_pad_cache.entry(log_eval_size).or_insert_with(|| {
+                        U32Buffer::zeroed(padding)
+                            .expect("Metal zero padding allocation should succeed")
+                    });
+                }
+            }
+        }
+
+        #[cfg(feature = "parallel")]
+        let iter = polynomials.into_par_iter().zip(buffers.into_par_iter());
+        #[cfg(not(feature = "parallel"))]
+        let iter = polynomials.into_iter().zip(buffers);
+
+        iter.map(|(poly_coeffs, mut buffer)| {
+            let log_eval_size = poly_coeffs.log_size() + log_blowup_factor;
+            let domain = CanonicCoset::new(log_eval_size).circle_domain();
+
+            if log_eval_size <= 3 {
+                let cpu_poly = to_cpu_circle_poly(&poly_coeffs);
+                let cpu_twiddles = to_cpu_twiddle_tree(twiddles);
+                let cpu_eval = CpuBackend::evaluate_into(
+                    &cpu_poly,
+                    domain,
+                    &cpu_twiddles,
+                    vec![BaseField::default(); domain.size()],
+                );
+                let metal_values = BaseFieldVec::from_vec(cpu_eval.values.clone());
+                buffer.copy_from(&metal_values);
+                let evals = CircleEvaluation::new(cpu_eval.domain, buffer);
+                Poly::new(
+                    store_polynomials_coefficients.then_some(poly_coeffs),
+                    evals,
+                )
+            } else {
+                // Skip extend + copy_from (2 temp allocs + 4N data movement).
+                // Instead, copy coefficients directly to pool buffer and zero-fill.
+                let coeff_size = poly_coeffs.coeffs.len();
+                let domain_size = domain.size();
+                buffer
+                    .buffer
+                    .copy_from_offset(&poly_coeffs.coeffs.buffer, 0)
+                    .expect("Metal coefficient copy should succeed");
+                let padding = domain_size - coeff_size;
+                if padding > 0 {
+                    let zero_pad = zero_pad_cache
+                        .get(&log_eval_size)
+                        .expect("zero pad cache should have entry for this domain size");
+                    buffer
+                        .buffer
+                        .copy_range_from(zero_pad, 0, padding, coeff_size)
+                        .expect("Metal zero padding copy should succeed");
+                }
+                // Shared twiddle tail buffer instead of per-polynomial allocation.
+                let twiddle_tail = twiddle_cache
+                    .get(&log_eval_size)
+                    .expect("twiddle cache should have entry for this domain size");
+                buffer
+                    .buffer
+                    .rfft_evaluate_in_place(twiddle_tail)
+                    .expect("Metal RFFT should succeed");
+                let evals = CircleEvaluation::new(domain, buffer);
+                Poly::new(
+                    store_polynomials_coefficients.then_some(poly_coeffs),
+                    evals,
+                )
+            }
+        })
+        .collect()
+    }
+
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self> {
         precompute_twiddles_native(coset)
             .expect("Metal twiddle precompute should produce native parity-tested twiddles")

@@ -132,22 +132,33 @@ The superseded `T0` through `T8` sequence now lives in:
 | G9 | Freeze and implement `MetalEvaluationProgramV1` | `in_progress` | generated and generic Metal execution both consume the same validated lowered program contract |
 | G10 | Migrate benchmark-specialized rows onto the V1 program contract | `in_progress` | the active generated benchmark path is driven by the V1 artifact and overlay contract rather than bespoke benchmark-only lowering |
 | G11 | Harden the converged V1 contract against `stwo-cairo` inputs | `in_progress` | the V1 program contract is exercised against `stwo-cairo`, with `VIRTUAL_SNOS` as the first named downstream row |
+| G12 | AIR-driven Metal proving and GPU dispatch | `completed` | generic `FrameworkEval` lowering, multi-component composition, and Metal GPU dispatch for the evaluation-program hot path — specified in [DN-0012](./dn-0012-air-driven-metal-proving-and-gpu-dispatch.md) |
 
 ## Active work definition
 
 The shared V1 prove runtime is the single proving authority for the generated
-lane. Full prove-core profiling (`MetalCompositionDetailBreakdown` +
-`MetalProveValuesDetailBreakdown`) identifies three dominant bottlenecks at
-log23. ABI reflection checks run fail-closed at lowering time. `VIRTUAL_SNOS`
-is the first lowered stwo-cairo constraint set via
-`lower_virtual_snos_evaluation_program_v1`.
+lane. DN-0012 (AIR-driven Metal proving and GPU dispatch) is now complete:
+
+- **Generic FrameworkEval lowering (D1–D3):** `RecordingEvaluator` captures
+  any `FrameworkEval` constraint DAG and emits V1 opcodes directly;
+  `lower_framework_eval_to_v1` accepts any `FrameworkEval` without hand-coded
+  lowering; `DynWideFibonacciEval` provides a runtime (non-const-generic)
+  evaluation path
+- **GPU dispatch (D4–D5):** Metal compute kernel
+  `eval_program_v1_optimized_u32x4` executes V1 bytecode per-row with
+  threadgroup shared memory (32,256 bytes within 32KB Apple GPU limit);
+  dispatch selects GPU kernel above threshold with CPU interpreter retained
+  for validation
+- **Multi-component composition (D6–D8):**
+  `compute_composition_polynomial_multi_v1` iterates components with different
+  `log_n_rows`, partitions random coefficient powers, applies per-component
+  denominator inverses; `multi_component_prove` benchmark binary models 3+
+  components with JSON per-component breakdown
 
 The next active work is:
 
-- optimize the three dominant prove-core bottlenecks: `eval_program` (38%),
-  `fri_and_decommit` (31%), and `prepare` (20%) at log23
-- extend `virtual_snos` lowering to exercise additional V1 capabilities
-  (ExtMul, Inv, PreprocessedCol) and run end-to-end prove/verify
+- **G11 hardening:** exercise the converged V1 contract against `stwo-cairo`
+  inputs, with `VIRTUAL_SNOS` as the first named downstream row
 - keep examples as the acceptance matrix for the generic and generated lanes
 - keep `stark-v` iced while the first downstream hardening target is
   `stwo-cairo` and specifically the `VIRTUAL_SNOS` row expected by

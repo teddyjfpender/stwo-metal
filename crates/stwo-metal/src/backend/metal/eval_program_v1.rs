@@ -4,7 +4,11 @@ use std::vec::Vec;
 use ark_std::Zero;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
+use stwo::core::fields::FieldExpOps;
+use stwo_constraint_framework::{EvalAtRow, FrameworkEval};
 use stwo_metal_sys::metal::{metal_runtime_support, MetalError, MetalRuntimeSupport, U32Buffer};
+
+use super::recording_eval_v1::RecordingEvaluator;
 
 pub const STWO_METAL_EVAL_PROGRAM_MAGIC_V1: u32 = u32::from_le_bytes(*b"STP1");
 pub const STWO_METAL_EVAL_PROGRAM_ABI_MAJOR_V1: u16 = 1;
@@ -285,6 +289,30 @@ pub struct OwnedMetalEvaluationProgramV1 {
 }
 
 impl OwnedMetalEvaluationProgramV1 {
+    /// Construct an owned program from pre-built parts.
+    ///
+    /// This is primarily intended for test code that needs to build programs
+    /// without going through the full lowering pipeline.
+    pub fn from_parts(
+        header: MetalEvaluationProgramHeaderV1,
+        sections: Vec<MetalEvaluationProgramSectionDescV1>,
+        base_consts: Vec<u32>,
+        ext_consts: Vec<[u32; 4]>,
+        base_insts: Vec<MetalEvaluationProgramBaseInstV1>,
+        ext_insts: Vec<MetalEvaluationProgramExtInstV1>,
+        constraint_roots: Vec<u32>,
+    ) -> Self {
+        Self {
+            header,
+            sections,
+            base_consts,
+            ext_consts,
+            base_insts,
+            ext_insts,
+            constraint_roots,
+        }
+    }
+
     pub fn header(&self) -> MetalEvaluationProgramHeaderV1 {
         self.header
     }
@@ -505,8 +533,8 @@ impl MetalEvaluationProgramCapabilityProfileV1 {
             capability_bits: STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1
                 | STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1
                 | STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
-            max_base_regs: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET.max_base_regs,
-            max_ext_regs: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET.max_ext_regs,
+            max_base_regs: METAL_EVAL_PROGRAM_V1_MAX_DEVICE_BUDGET.max_base_regs,
+            max_ext_regs: METAL_EVAL_PROGRAM_V1_MAX_DEVICE_BUDGET.max_ext_regs,
         }
     }
 
@@ -553,7 +581,7 @@ pub fn metal_evaluation_program_overlays_v1() -> &'static [MetalEvaluationProgra
         .as_slice()
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[allow(dead_code)]
 #[derive(Debug, Eq, PartialEq)]
 enum MetalEvaluationProgramDeviceInterpreterError {
     RuntimeUnavailable(MetalRuntimeSupport),
@@ -914,6 +942,7 @@ fn build_owned_program_v1(
     base_insts: Vec<MetalEvaluationProgramBaseInstV1>,
     ext_insts: Vec<MetalEvaluationProgramExtInstV1>,
     constraint_roots: Vec<u32>,
+    domain_log_size: u32,
 ) -> OwnedMetalEvaluationProgramV1 {
     let base_consts_bytes = hash_u32s(&base_consts);
     let ext_consts_bytes = hash_u32x4s(&ext_consts);
@@ -966,7 +995,7 @@ fn build_owned_program_v1(
         ),
     ];
 
-    let header = MetalEvaluationProgramHeaderV1::new(
+    let mut header = MetalEvaluationProgramHeaderV1::new(
         sections.len() as u32,
         semantic_hash,
         capability_bits,
@@ -977,6 +1006,10 @@ fn build_owned_program_v1(
         max_base_regs,
         max_ext_regs,
     );
+    // Store the trace domain log_size in reserved[0] so the interpreter
+    // can compute correct offset_bit_reversed_circle_domain_index for
+    // components where eval_domain_log_size > log_size + 1.
+    header.reserved[0] = domain_log_size;
 
     OwnedMetalEvaluationProgramV1 {
         header,
@@ -1130,6 +1163,186 @@ pub fn lower_registered_metal_evaluation_program_v1(
     }
 }
 
+/// Lower a [`FrameworkEval`] to a V1 evaluation program using the recording
+/// evaluator.
+///
+/// This is the generic lowering path that replaces hand-coded bytecode
+/// emission.  It runs the `FrameworkEval::evaluate` method against a
+/// [`RecordingEvaluator`] to capture the constraint DAG, then builds the V1
+/// program from the recorded instructions.
+///
+/// For constraint systems that need runtime parameters (e.g. virtual_snos),
+/// the `setup` closure is called with the evaluator *before* `evaluate` so
+/// that parameter injection (via [`RecordingEvaluator::inject_base_param`])
+/// can return symbolic values to be captured by the eval struct.
+pub fn lower_framework_eval_to_v1<F: FrameworkEval>(
+    eval: &F,
+    n_interactions: u32,
+    n_base_params: u32,
+    n_ext_params: u32,
+) -> Result<OwnedMetalEvaluationProgramV1, MetalEvaluationProgramLoweringError> {
+    lower_framework_eval_to_v1_with_logup(
+        eval,
+        n_interactions,
+        n_base_params,
+        n_ext_params,
+        SecureField::zero(),
+        eval.log_size(),
+    )
+}
+
+/// Lower a [`FrameworkEval`] to a V1 evaluation program, providing the
+/// correct logup `claimed_sum` and `log_size` for accurate constraint
+/// recording.
+///
+/// The `claimed_sum` is the total logup sum for the component, divided by
+/// `n_rows` to produce the per-row `cumsum_shift`.  When `claimed_sum` is
+/// zero (e.g. for components without logup), the shift is zero and has no
+/// effect.
+pub fn lower_framework_eval_to_v1_with_logup<F: FrameworkEval>(
+    eval: &F,
+    n_interactions: u32,
+    n_base_params: u32,
+    n_ext_params: u32,
+    claimed_sum: SecureField,
+    log_size: u32,
+) -> Result<OwnedMetalEvaluationProgramV1, MetalEvaluationProgramLoweringError> {
+    validate_eval_program_abi_layout_v1()?;
+
+    let mut recorder = RecordingEvaluator::new();
+    // Set the correct logup parameters. The default from
+    // LogupAtRow::dummy() uses interaction=100 and cumsum_shift=1, but
+    // Cairo components use INTERACTION_TRACE_IDX (2) and need the real
+    // cumsum_shift derived from claimed_sum / n_rows.
+    recorder.logup = stwo_constraint_framework::logup::LogupAtRow::new(
+        stwo_constraint_framework::INTERACTION_TRACE_IDX,
+        claimed_sum,
+        log_size,
+    );
+    let recorder = eval.evaluate(recorder);
+    let state = recorder.finish();
+
+    // Sanity check: every ext instruction's registers must be valid.
+    let max_er = state.max_ext_regs();
+    let max_br = state.max_base_regs();
+    for (idx, inst) in state.ext_insts.iter().enumerate() {
+        assert!(
+            (inst.dst as u32) < max_er,
+            "ext_inst[{}] has dst={} but max_ext_regs={} (op={})",
+            idx, inst.dst, max_er, inst.op,
+        );
+        let op = MetalEvaluationProgramExtOpcodeV1::from_raw(inst.op);
+        match op {
+            Some(MetalEvaluationProgramExtOpcodeV1::Add)
+            | Some(MetalEvaluationProgramExtOpcodeV1::Sub)
+            | Some(MetalEvaluationProgramExtOpcodeV1::Mul) => {
+                assert!(
+                    inst.a < max_er,
+                    "ext_inst[{}] (op={:?}) has src a={} but max_ext_regs={}",
+                    idx, op, inst.a, max_er,
+                );
+                assert!(
+                    inst.b < max_er,
+                    "ext_inst[{}] (op={:?}) has src b={} but max_ext_regs={}",
+                    idx, op, inst.b, max_er,
+                );
+            }
+            Some(MetalEvaluationProgramExtOpcodeV1::Neg) => {
+                assert!(
+                    inst.a < max_er,
+                    "ext_inst[{}] (op=Neg) has src a={} but max_ext_regs={}",
+                    idx, inst.a, max_er,
+                );
+            }
+            Some(MetalEvaluationProgramExtOpcodeV1::SecureCol) => {
+                assert!(
+                    inst.a < max_br,
+                    "ext_inst[{}] (op=SecureCol) has base src a={} but max_base_regs={}",
+                    idx, inst.a, max_br,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    Ok(build_owned_program_v1(
+        STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1
+            | STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1
+            | STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
+        n_interactions,
+        n_base_params,
+        n_ext_params,
+        state.max_base_regs(),
+        state.max_ext_regs(),
+        Vec::new(),
+        Vec::new(),
+        state.base_insts,
+        state.ext_insts,
+        state.constraint_roots,
+        log_size,
+    ))
+}
+
+/// A dynamic (non-const-generic) version of `WideFibonacciEval` that
+/// implements `FrameworkEval` with a runtime column count.
+///
+/// Constraint: for each column `c` in `2..n_columns`:
+///   `col[c] - (col[c-2]^2 + col[c-1]^2) = 0`
+pub(crate) struct DynWideFibonacciEval {
+    pub(crate) log_n_rows: u32,
+    pub(crate) n_columns: u32,
+}
+
+impl FrameworkEval for DynWideFibonacciEval {
+    fn log_size(&self) -> u32 {
+        self.log_n_rows
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.log_n_rows + 1
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        let mut a = eval.next_trace_mask();
+        let mut b = eval.next_trace_mask();
+        for _ in 2..self.n_columns {
+            let c = eval.next_trace_mask();
+            eval.add_constraint(c.clone() - (a.square() + b.square()));
+            a = b;
+            b = c;
+        }
+        eval
+    }
+}
+
+/// Holds the virtual_snos constraint configuration and a pre-injected
+/// parameter symbolic value used during recording.
+struct VirtualSnosRecordingContext {
+    n_columns: u32,
+    /// Symbolic parameter value from `RecordingEvaluator::inject_base_param`.
+    param: super::recording_eval_v1::RecordedBaseValue,
+}
+
+impl VirtualSnosRecordingContext {
+    /// Run the virtual_snos constraint recording on the given evaluator.
+    ///
+    /// Reads all `n_columns` trace columns upfront, then builds constraints
+    /// from overlapping consecutive pairs, matching the semantics of the
+    /// original hand-coded lowering.
+    fn record(self, mut eval: RecordingEvaluator) -> RecordingEvaluator {
+        // Read all columns upfront so overlapping pairs share reads.
+        let cols: Vec<_> = (0..self.n_columns)
+            .map(|_| eval.next_trace_mask())
+            .collect();
+
+        for i in 0..(self.n_columns as usize - 1) {
+            let sum = cols[i].clone() + cols[i + 1].clone();
+            eval.add_constraint(sum - self.param.clone());
+        }
+        eval
+    }
+}
+
 pub fn lower_wide_fibonacci_evaluation_program_v1(
     specialization: MetalEvaluationProgramSpecializationV1,
 ) -> Result<OwnedMetalEvaluationProgramV1, MetalEvaluationProgramLoweringError> {
@@ -1141,129 +1354,12 @@ pub fn lower_wide_fibonacci_evaluation_program_v1(
         );
     }
 
-    let n_constraints = specialization.n_columns - 2;
-    let base_regs_required = 1u32
-        .checked_add(
-            n_constraints
-                .checked_mul(7)
-                .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?,
-        )
-        .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-    let ext_regs_required = n_constraints;
+    let eval = DynWideFibonacciEval {
+        log_n_rows: specialization.log_n_rows,
+        n_columns: specialization.n_columns,
+    };
 
-    let mut base_insts = Vec::with_capacity(base_regs_required as usize);
-    let mut ext_insts = Vec::with_capacity(ext_regs_required as usize);
-    let mut constraint_roots = Vec::with_capacity(n_constraints as usize);
-
-    let zero_reg = 0u16;
-    base_insts.push(MetalEvaluationProgramBaseInstV1::const_value(zero_reg, 0));
-
-    let mut next_base_reg = 1u16;
-    let mut next_ext_reg = 0u16;
-    for column in 2..specialization.n_columns {
-        let reg_a = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1::trace_col(
-            reg_a,
-            1,
-            column - 2,
-            0,
-        ));
-
-        let reg_b = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1::trace_col(
-            reg_b,
-            1,
-            column - 1,
-            0,
-        ));
-
-        let reg_c = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1::trace_col(
-            reg_c, 1, column, 0,
-        ));
-
-        let reg_a_sq = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
-            MetalEvaluationProgramBaseOpcodeV1::Mul,
-            reg_a_sq,
-            reg_a as u32,
-            reg_a as u32,
-        ));
-
-        let reg_b_sq = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
-            MetalEvaluationProgramBaseOpcodeV1::Mul,
-            reg_b_sq,
-            reg_b as u32,
-            reg_b as u32,
-        ));
-
-        let reg_sum = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
-            MetalEvaluationProgramBaseOpcodeV1::Add,
-            reg_sum,
-            reg_a_sq as u32,
-            reg_b_sq as u32,
-        ));
-
-        let reg_constraint = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
-            MetalEvaluationProgramBaseOpcodeV1::Sub,
-            reg_constraint,
-            reg_c as u32,
-            reg_sum as u32,
-        ));
-
-        let ext_reg = next_ext_reg;
-        next_ext_reg = next_ext_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        ext_insts.push(MetalEvaluationProgramExtInstV1::secure_col(
-            ext_reg,
-            reg_constraint as u32,
-            zero_reg as u32,
-            zero_reg as u32,
-            zero_reg as u32,
-        ));
-        constraint_roots.push(ext_reg as u32);
-    }
-
-    Ok(build_owned_program_v1(
-        STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1
-            | STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1
-            | STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
-        2,
-        0,
-        0,
-        base_regs_required,
-        ext_regs_required,
-        Vec::new(),
-        Vec::new(),
-        base_insts,
-        ext_insts,
-        constraint_roots,
-    ))
+    lower_framework_eval_to_v1(&eval, 2, 0, 0)
 }
 
 /// Lower a synthetic `virtual_snos` constraint set representing the first
@@ -1290,112 +1386,35 @@ pub fn lower_virtual_snos_evaluation_program_v1(
         );
     }
 
-    let n_constraints = specialization.n_columns - 1;
-    // Per constraint: param(1) + trace_col_a(1) + trace_col_b(1) + add(1) + sub(1) = 5 regs
-    let base_regs_required = n_constraints
-        .checked_mul(5)
-        .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-    let ext_regs_required = n_constraints;
+    validate_eval_program_abi_layout_v1()?;
 
-    let mut base_insts = Vec::with_capacity(base_regs_required as usize);
-    let mut ext_insts = Vec::with_capacity(ext_regs_required as usize);
-    let mut constraint_roots = Vec::with_capacity(n_constraints as usize);
+    // Create the recording evaluator and inject the base parameter.
+    let recorder = RecordingEvaluator::new();
+    let param = recorder.inject_base_param(0, 0);
 
-    let mut next_base_reg = 0u16;
-    let mut next_ext_reg = 0u16;
+    let ctx = VirtualSnosRecordingContext {
+        n_columns: specialization.n_columns,
+        param,
+    };
 
-    for col in 0..n_constraints {
-        // Load base_param_0 into a register
-        let reg_param = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1 {
-            op: MetalEvaluationProgramBaseOpcodeV1::Param as u8,
-            interaction: 0,
-            dst: reg_param,
-            a: 0, // param slot 0
-            b: 0,
-            imm: 0,
-        });
-
-        // Load col_i from interaction 1
-        let reg_a = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1::trace_col(
-            reg_a,
-            1,
-            col,
-            0,
-        ));
-
-        // Load col_{i+1} from interaction 1
-        let reg_b = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1::trace_col(
-            reg_b,
-            1,
-            col + 1,
-            0,
-        ));
-
-        // sum = col_i + col_{i+1}
-        let reg_sum = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
-            MetalEvaluationProgramBaseOpcodeV1::Add,
-            reg_sum,
-            reg_a as u32,
-            reg_b as u32,
-        ));
-
-        // constraint = sum - param_0
-        let reg_constraint = next_base_reg;
-        next_base_reg = next_base_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        base_insts.push(MetalEvaluationProgramBaseInstV1::binary(
-            MetalEvaluationProgramBaseOpcodeV1::Sub,
-            reg_constraint,
-            reg_sum as u32,
-            reg_param as u32,
-        ));
-
-        // Lift to secure field for constraint root
-        let ext_reg = next_ext_reg;
-        next_ext_reg = next_ext_reg
-            .checked_add(1)
-            .ok_or(MetalEvaluationProgramLoweringError::RegisterBudgetOverflow)?;
-        ext_insts.push(MetalEvaluationProgramExtInstV1::secure_col(
-            ext_reg,
-            reg_constraint as u32,
-            0, // pad with zero-valued base registers (unused)
-            0,
-            0,
-        ));
-        constraint_roots.push(ext_reg as u32);
-    }
+    let recorder = ctx.record(recorder);
+    let state = recorder.finish();
 
     Ok(build_owned_program_v1(
         STWO_METAL_EVAL_PROGRAM_CAP_BASE_INV_V1
             | STWO_METAL_EVAL_PROGRAM_CAP_EXT_MUL_V1
             | STWO_METAL_EVAL_PROGRAM_CAP_PREFINALIZED_LOGUP_V1,
-        2, // n_interactions: preprocessed + main
-        1, // n_base_params: one parameter (the expected sum)
-        0, // n_ext_params
-        base_regs_required,
-        ext_regs_required,
+        2,  // n_interactions: preprocessed + main
+        1,  // n_base_params: one parameter (the expected sum)
+        0,  // n_ext_params
+        state.max_base_regs(),
+        state.max_ext_regs(),
         Vec::new(),
         Vec::new(),
-        base_insts,
-        ext_insts,
-        constraint_roots,
+        state.base_insts,
+        state.ext_insts,
+        state.constraint_roots,
+        specialization.log_n_rows,
     ))
 }
 
@@ -1457,6 +1476,7 @@ pub fn interpret_metal_evaluation_program_v1(
         );
     }
     let mut row_res = Vec::with_capacity(n_rows);
+    let domain_log_size = program.header().reserved[0];
     let max_base_regs = program.header().max_base_regs as usize;
     let max_ext_regs = program.header().max_ext_regs as usize;
     for row in 0..n_rows {
@@ -1476,6 +1496,8 @@ pub fn interpret_metal_evaluation_program_v1(
             base_regs[dst] = interpret_base_inst(
                 *inst,
                 row,
+                n_rows,
+                domain_log_size,
                 interactions,
                 runtime.trace.preprocessed_columns,
                 runtime.base_params,
@@ -1597,9 +1619,31 @@ pub fn execute_selected_metal_evaluation_program_v1_on_metal(
     Ok((row_res, dispatch))
 }
 
+/// Default (variant A) device budget: 1024 base / 256 ext registers.
+/// Programs within this budget use the primary kernels with higher occupancy.
 #[cfg_attr(not(test), allow(dead_code))]
 const METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET: MetalEvaluationProgramBudgetV1 =
     MetalEvaluationProgramBudgetV1::new(1024, 256);
+
+/// Variant B device budget: 512 base / 512 ext registers.
+/// Programs that exceed the default ext budget but fit within 512 ext regs
+/// are dispatched to the variant B kernels, which trade base register capacity
+/// for a larger ext register file.
+#[cfg_attr(not(test), allow(dead_code))]
+const METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET_B: MetalEvaluationProgramBudgetV1 =
+    MetalEvaluationProgramBudgetV1::new(512, 512);
+
+/// Variant C device budget: 512 base / 768 ext registers.
+/// Programs that exceed variant B's ext budget (e.g. add_opcode needing 518
+/// ext regs) are dispatched to the variant C kernels.
+#[cfg_attr(not(test), allow(dead_code))]
+const METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET_C: MetalEvaluationProgramBudgetV1 =
+    MetalEvaluationProgramBudgetV1::new(512, 768);
+
+/// The maximum budget accepted by any available kernel variant.
+#[cfg_attr(not(test), allow(dead_code))]
+const METAL_EVAL_PROGRAM_V1_MAX_DEVICE_BUDGET: MetalEvaluationProgramBudgetV1 =
+    MetalEvaluationProgramBudgetV1::new(1024, 768);
 
 #[cfg_attr(not(test), allow(dead_code))]
 fn interpret_metal_evaluation_program_v1_on_metal(
@@ -1611,16 +1655,27 @@ fn interpret_metal_evaluation_program_v1_on_metal(
         return Err(MetalEvaluationProgramDeviceInterpreterError::RuntimeUnavailable(support));
     }
 
-    program
-        .validate(METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET)
-        .map_err(
-            |_| MetalEvaluationProgramDeviceInterpreterError::RegisterBudgetExceeded {
-                required_base: program.header().max_base_regs,
-                required_ext: program.header().max_ext_regs,
-                supported_base: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET.max_base_regs,
-                supported_ext: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET.max_ext_regs,
-            },
-        )?;
+    // Determine which kernel variant to use based on register requirements.
+    // Variant A (default): up to 1024 base / 256 ext — higher GPU occupancy.
+    // Variant B: up to 512 base / 512 ext — for complex Cairo components.
+    // Variant C: up to 512 base / 768 ext — for components like add_opcode.
+    #[derive(Copy, Clone)]
+    enum KernelVariant { A, B, C }
+
+    let variant = if program.validate(METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET).is_ok() {
+        KernelVariant::A
+    } else if program.validate(METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET_B).is_ok() {
+        KernelVariant::B
+    } else if program.validate(METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET_C).is_ok() {
+        KernelVariant::C
+    } else {
+        return Err(MetalEvaluationProgramDeviceInterpreterError::RegisterBudgetExceeded {
+            required_base: program.header().max_base_regs,
+            required_ext: program.header().max_ext_regs,
+            supported_base: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET_C.max_base_regs,
+            supported_ext: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET_C.max_ext_regs,
+        });
+    };
 
     let n_rows = runtime
         .trace
@@ -1690,18 +1745,6 @@ fn interpret_metal_evaluation_program_v1_on_metal(
             },
         );
     }
-    for inst in program.base_insts() {
-        if MetalEvaluationProgramBaseOpcodeV1::from_raw(inst.op)
-            == Some(MetalEvaluationProgramBaseOpcodeV1::TraceCol)
-            && inst.imm != 0
-        {
-            return Err(
-                MetalEvaluationProgramDeviceInterpreterError::UnsupportedNonZeroTraceOffset {
-                    offset: inst.imm,
-                },
-            );
-        }
-    }
 
     let (flat_trace, interaction_offsets) =
         flatten_trace_interactions(runtime.trace.trace_interactions, n_rows);
@@ -1740,27 +1783,250 @@ fn interpret_metal_evaluation_program_v1_on_metal(
     let ext_insts = U32Buffer::from_slice(&ext_insts)?;
     let constraint_roots = U32Buffer::from_slice(&constraint_roots)?;
 
-    let dst = U32Buffer::eval_program_v1_reference_u32x4(
+    // Threadgroup shared memory limits for the optimized kernel:
+    // 1536 base insts x 4 words x 4 bytes = 24,576 bytes
+    //  384 ext  insts x 5 words x 4 bytes =  7,680 bytes
+    // Total: 32,256 bytes (within the 32KB Apple GPU threadgroup limit).
+    const OPTIMIZED_MAX_BASE_INSTS: usize = 1536;
+    const OPTIMIZED_MAX_EXT_INSTS: usize = 384;
+
+    let n_base_insts_count = program.base_insts().len();
+    let n_ext_insts_count = program.ext_insts().len();
+
+    let use_optimized = n_base_insts_count <= OPTIMIZED_MAX_BASE_INSTS
+        && n_ext_insts_count <= OPTIMIZED_MAX_EXT_INSTS;
+
+    let dst = match (variant, use_optimized) {
+        // Variant A optimized: highest occupancy path (1024 base / 256 ext).
+        (KernelVariant::A, true) => {
+            U32Buffer::eval_program_v1_optimized_u32x4(
+                &trace_values,
+                &interaction_offsets,
+                &preprocessed_values,
+                &base_params,
+                &ext_params,
+                &random_coeff_powers,
+                &base_insts,
+                &ext_insts,
+                &constraint_roots,
+                n_rows,
+                runtime.trace.trace_interactions.len() as u32,
+                runtime.trace.preprocessed_columns.len() as u32,
+                runtime.base_params.len() as u32,
+                runtime.ext_params.len() as u32,
+                n_base_insts_count as u32,
+                n_ext_insts_count as u32,
+                program.constraint_roots().len() as u32,
+                program.header().max_base_regs,
+                program.header().max_ext_regs,
+            )?
+        }
+        // Variant A reference: fallback for large instruction counts.
+        (KernelVariant::A, false) => {
+            U32Buffer::eval_program_v1_reference_u32x4(
+                &trace_values,
+                &interaction_offsets,
+                &preprocessed_values,
+                &base_params,
+                &ext_params,
+                &random_coeff_powers,
+                &base_insts,
+                &ext_insts,
+                &constraint_roots,
+                n_rows,
+                runtime.trace.trace_interactions.len() as u32,
+                runtime.trace.preprocessed_columns.len() as u32,
+                runtime.base_params.len() as u32,
+                runtime.ext_params.len() as u32,
+                n_base_insts_count as u32,
+                n_ext_insts_count as u32,
+                program.constraint_roots().len() as u32,
+            )?
+        }
+        // Variant B optimized: 512 base / 512 ext register file.
+        (KernelVariant::B, true) => {
+            U32Buffer::eval_program_v1_optimized_b_u32x4(
+                &trace_values,
+                &interaction_offsets,
+                &preprocessed_values,
+                &base_params,
+                &ext_params,
+                &random_coeff_powers,
+                &base_insts,
+                &ext_insts,
+                &constraint_roots,
+                n_rows,
+                runtime.trace.trace_interactions.len() as u32,
+                runtime.trace.preprocessed_columns.len() as u32,
+                runtime.base_params.len() as u32,
+                runtime.ext_params.len() as u32,
+                n_base_insts_count as u32,
+                n_ext_insts_count as u32,
+                program.constraint_roots().len() as u32,
+                program.header().max_base_regs,
+                program.header().max_ext_regs,
+            )?
+        }
+        // Variant B reference: fallback for large instruction counts.
+        (KernelVariant::B, false) => {
+            U32Buffer::eval_program_v1_reference_b_u32x4(
+                &trace_values,
+                &interaction_offsets,
+                &preprocessed_values,
+                &base_params,
+                &ext_params,
+                &random_coeff_powers,
+                &base_insts,
+                &ext_insts,
+                &constraint_roots,
+                n_rows,
+                runtime.trace.trace_interactions.len() as u32,
+                runtime.trace.preprocessed_columns.len() as u32,
+                runtime.base_params.len() as u32,
+                runtime.ext_params.len() as u32,
+                n_base_insts_count as u32,
+                n_ext_insts_count as u32,
+                program.constraint_roots().len() as u32,
+            )?
+        }
+        // Variant C optimized: 512 base / 768 ext register file.
+        (KernelVariant::C, true) => {
+            U32Buffer::eval_program_v1_optimized_c_u32x4(
+                &trace_values,
+                &interaction_offsets,
+                &preprocessed_values,
+                &base_params,
+                &ext_params,
+                &random_coeff_powers,
+                &base_insts,
+                &ext_insts,
+                &constraint_roots,
+                n_rows,
+                runtime.trace.trace_interactions.len() as u32,
+                runtime.trace.preprocessed_columns.len() as u32,
+                runtime.base_params.len() as u32,
+                runtime.ext_params.len() as u32,
+                n_base_insts_count as u32,
+                n_ext_insts_count as u32,
+                program.constraint_roots().len() as u32,
+                program.header().max_base_regs,
+                program.header().max_ext_regs,
+            )?
+        }
+        // Variant C reference: fallback for large instruction counts.
+        (KernelVariant::C, false) => {
+            U32Buffer::eval_program_v1_reference_c_u32x4(
+                &trace_values,
+                &interaction_offsets,
+                &preprocessed_values,
+                &base_params,
+                &ext_params,
+                &random_coeff_powers,
+                &base_insts,
+                &ext_insts,
+                &constraint_roots,
+                n_rows,
+                runtime.trace.trace_interactions.len() as u32,
+                runtime.trace.preprocessed_columns.len() as u32,
+                runtime.base_params.len() as u32,
+                runtime.ext_params.len() as u32,
+                n_base_insts_count as u32,
+                n_ext_insts_count as u32,
+                program.constraint_roots().len() as u32,
+            )?
+        }
+    };
+
+    let raw = dst.to_vec()?;
+    Ok(raw
+        .chunks_exact(4)
+        .map(|limbs| SecureField::from_u32_unchecked(limbs[0], limbs[1], limbs[2], limbs[3]))
+        .collect())
+}
+
+/// Execute a V1 program on Metal using a JIT-compiled native shader.
+///
+/// Instead of interpreting the V1 bytecode in the generic interpreter kernel,
+/// this path compiles the program into a dedicated Metal shader where every
+/// instruction is unrolled into a direct Metal statement.  The compiled
+/// pipeline is cached by kernel name (semantic hash), so the JIT cost is
+/// amortized across calls with the same program.
+///
+/// This eliminates the ~3× interpretation overhead of the generic kernel's
+/// switch/case dispatch loop.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn execute_compiled_metal_evaluation_program_v1(
+    runtime: MetalEvaluationProgramRuntimeInputsV1<'_>,
+    shader_source: &str,
+    kernel_name: &str,
+) -> Result<Vec<SecureField>, MetalEvaluationProgramExecutionError> {
+    let map_metal = |e: MetalError| MetalEvaluationProgramExecutionError::MetalRuntime {
+        message: e.message().to_string(),
+    };
+
+    let support = metal_runtime_support();
+    if support != MetalRuntimeSupport::Available {
+        return Err(MetalEvaluationProgramExecutionError::RuntimeUnavailable(support));
+    }
+
+    let n_rows = runtime
+        .trace
+        .trace_interactions
+        .first()
+        .and_then(|interaction| interaction.first().map(|column| column.len()))
+        .or_else(|| {
+            runtime
+                .trace
+                .trace_interactions
+                .iter()
+                .find_map(|interaction| interaction.first().map(|column| column.len()))
+        })
+        .ok_or(MetalEvaluationProgramExecutionError::EmptyTrace)?;
+
+    let (flat_trace, interaction_offsets) =
+        flatten_trace_interactions(runtime.trace.trace_interactions, n_rows);
+    let flat_preprocessed = runtime
+        .trace
+        .preprocessed_columns
+        .iter()
+        .flat_map(|column| column.iter().map(|value| value.0))
+        .collect::<Vec<_>>();
+    let base_params = runtime
+        .base_params
+        .iter()
+        .map(|value| value.0)
+        .collect::<Vec<_>>();
+    let ext_params = runtime
+        .ext_params
+        .iter()
+        .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+        .collect::<Vec<_>>();
+    let random_coeff_powers = runtime
+        .random_coeff_powers
+        .iter()
+        .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+        .collect::<Vec<_>>();
+
+    let trace_values = U32Buffer::from_slice(&flat_trace).map_err(map_metal)?;
+    let interaction_offsets = U32Buffer::from_slice(&interaction_offsets).map_err(map_metal)?;
+    let preprocessed_values = optional_u32_buffer(&flat_preprocessed).map_err(map_metal)?;
+    let base_params = optional_u32_buffer(&base_params).map_err(map_metal)?;
+    let ext_params = optional_u32_buffer(&ext_params).map_err(map_metal)?;
+    let random_coeff_powers = U32Buffer::from_slice(&random_coeff_powers).map_err(map_metal)?;
+
+    let dst = U32Buffer::eval_compiled_program_v1_u32x4(
+        shader_source,
+        kernel_name,
         &trace_values,
         &interaction_offsets,
         &preprocessed_values,
         &base_params,
         &ext_params,
         &random_coeff_powers,
-        &base_insts,
-        &ext_insts,
-        &constraint_roots,
         n_rows,
-        runtime.trace.trace_interactions.len() as u32,
-        runtime.trace.preprocessed_columns.len() as u32,
-        runtime.base_params.len() as u32,
-        runtime.ext_params.len() as u32,
-        program.base_insts().len() as u32,
-        program.ext_insts().len() as u32,
-        program.constraint_roots().len() as u32,
-    )?;
+    ).map_err(map_metal)?;
 
-    let raw = dst.to_vec()?;
+    let raw = dst.to_vec().map_err(map_metal)?;
     Ok(raw
         .chunks_exact(4)
         .map(|limbs| SecureField::from_u32_unchecked(limbs[0], limbs[1], limbs[2], limbs[3]))
@@ -1777,13 +2043,13 @@ fn execute_wide_fibonacci_overlay_v1_on_metal(
     }
 
     program
-        .validate(METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET)
+        .validate(METAL_EVAL_PROGRAM_V1_MAX_DEVICE_BUDGET)
         .map_err(
             |_| MetalEvaluationProgramDeviceInterpreterError::RegisterBudgetExceeded {
                 required_base: program.header().max_base_regs,
                 required_ext: program.header().max_ext_regs,
-                supported_base: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET.max_base_regs,
-                supported_ext: METAL_EVAL_PROGRAM_V1_DEVICE_BUDGET.max_ext_regs,
+                supported_base: METAL_EVAL_PROGRAM_V1_MAX_DEVICE_BUDGET.max_base_regs,
+                supported_ext: METAL_EVAL_PROGRAM_V1_MAX_DEVICE_BUDGET.max_ext_regs,
             },
         )?;
 
@@ -1844,18 +2110,6 @@ fn execute_wide_fibonacci_overlay_v1_on_metal(
                 actual: runtime.ext_params.len(),
             },
         );
-    }
-    for inst in program.base_insts() {
-        if MetalEvaluationProgramBaseOpcodeV1::from_raw(inst.op)
-            == Some(MetalEvaluationProgramBaseOpcodeV1::TraceCol)
-            && inst.imm != 0
-        {
-            return Err(
-                MetalEvaluationProgramDeviceInterpreterError::UnsupportedNonZeroTraceOffset {
-                    offset: inst.imm,
-                },
-            );
-        }
     }
 
     let (flat_trace, interaction_offsets) =
@@ -1947,6 +2201,8 @@ fn optional_u32_buffer(values: &[u32]) -> Result<U32Buffer, MetalError> {
 fn interpret_base_inst(
     inst: MetalEvaluationProgramBaseInstV1,
     row: usize,
+    n_rows: usize,
+    domain_log_size: u32,
     interactions: &[&[&[BaseField]]],
     preprocessed_columns: &[&[BaseField]],
     base_params: &[BaseField],
@@ -1957,13 +2213,23 @@ fn interpret_base_inst(
             MetalEvaluationProgramInterpreterError::UnsupportedBaseOpcode { opcode: inst.op },
         )? {
             MetalEvaluationProgramBaseOpcodeV1::TraceCol => {
-                if inst.imm != 0 {
-                    return Err(
-                        MetalEvaluationProgramInterpreterError::NonZeroTraceOffsetUnsupported {
-                            offset: inst.imm,
-                        },
-                    );
-                }
+                // Apply offset using bit-reversed circle domain indexing.
+                // The trace columns are stored in bit-reversed order on the
+                // evaluation domain.  An offset of -1 means "previous row in
+                // the natural circle domain", which maps to a non-trivial
+                // index in the bit-reversed layout.
+                let offset = inst.imm as isize;
+                let target_row = if offset == 0 {
+                    row
+                } else {
+                    let eval_log_size = n_rows.trailing_zeros();
+                    stwo::core::utils::offset_bit_reversed_circle_domain_index(
+                        row,
+                        domain_log_size,
+                        eval_log_size,
+                        offset,
+                    )
+                };
                 let interaction = inst.interaction as usize;
                 let columns = interactions.get(interaction).ok_or(
                     MetalEvaluationProgramInterpreterError::TraceInteractionOutOfRange {
@@ -1979,7 +2245,7 @@ fn interpret_base_inst(
                         available: columns.len(),
                     },
                 )?;
-                values[row]
+                values[target_row]
             }
             MetalEvaluationProgramBaseOpcodeV1::PreprocessedCol => {
                 let column = inst.a as usize;
@@ -2099,14 +2365,17 @@ mod tests {
     use super::{
         execute_selected_metal_evaluation_program_v1_on_metal,
         interpret_metal_evaluation_program_v1, interpret_metal_evaluation_program_v1_on_metal,
-        lower_registered_metal_evaluation_program_v1, lower_wide_fibonacci_evaluation_program_v1,
+        lower_framework_eval_to_v1, lower_registered_metal_evaluation_program_v1,
+        lower_virtual_snos_evaluation_program_v1, lower_wide_fibonacci_evaluation_program_v1,
         lookup_metal_evaluation_program_overlay_v1, metal_evaluation_program_semantic_hash_v1,
         metal_runtime_support, select_metal_evaluation_program_dispatch_v1,
-        validate_metal_evaluation_program_v1, MetalEvaluationProgramBaseOpcodeV1,
+        validate_eval_program_abi_layout_v1,
+        validate_metal_evaluation_program_v1, DynWideFibonacciEval,
+        MetalEvaluationProgramBaseOpcodeV1,
         MetalEvaluationProgramBudgetV1, MetalEvaluationProgramCapabilityProfileV1,
-        MetalEvaluationProgramDeviceInterpreterError, MetalEvaluationProgramDispatchKindV1,
-        MetalEvaluationProgramHeaderV1, MetalEvaluationProgramInterpreterError,
-        MetalEvaluationProgramLoweringError, MetalEvaluationProgramRuntimeInputsV1,
+        MetalEvaluationProgramDispatchKindV1,
+        MetalEvaluationProgramHeaderV1, MetalEvaluationProgramLoweringError,
+        MetalEvaluationProgramRuntimeInputsV1,
         MetalEvaluationProgramSectionDescV1, MetalEvaluationProgramSectionKindV1,
         MetalEvaluationProgramSpecializationV1, MetalEvaluationProgramTraceViewV1,
         MetalEvaluationProgramValidationError, MetalRuntimeSupport,
@@ -2389,30 +2658,32 @@ mod tests {
             })
             .unwrap();
 
+        let n_constraints = 98u32;
+        // The generic recording path shares trace column reads across
+        // constraint iterations, producing:
+        //   2 initial trace cols (a, b) + n_constraints * 5 (trace + 2 mul
+        //   + add + sub) + 1 zero const = 2 + n_constraints * 5 + 1
+        let expected_base_regs = 2 + n_constraints * 5 + 1;
+
         assert_eq!(program.header().n_interactions, 2);
-        assert_eq!(program.header().n_constraints, 98);
-        assert_eq!(program.header().max_base_regs, 1 + 98 * 7);
-        assert_eq!(program.header().max_ext_regs, 98);
+        assert_eq!(program.header().n_constraints, n_constraints);
+        assert_eq!(program.header().max_base_regs, expected_base_regs);
+        assert_eq!(program.header().max_ext_regs, n_constraints);
         assert!(program.base_consts().is_empty());
         assert!(program.ext_consts().is_empty());
-        assert_eq!(program.base_insts().len(), 1 + 98 * 7);
-        assert_eq!(program.ext_insts().len(), 98);
-        assert_eq!(program.constraint_roots().len(), 98);
+        assert_eq!(program.base_insts().len(), expected_base_regs as usize);
+        assert_eq!(program.ext_insts().len(), n_constraints as usize);
+        assert_eq!(program.constraint_roots().len(), n_constraints as usize);
 
-        let first_const = &program.base_insts()[0];
-        assert_eq!(
-            first_const.op,
-            MetalEvaluationProgramBaseOpcodeV1::Const as u8
-        );
-        assert_eq!(first_const.a, 0);
-
-        let first_trace = &program.base_insts()[1];
+        // The recording path emits trace columns first, then the zero const
+        // lazily at the first add_constraint call.
+        let first_trace = &program.base_insts()[0];
         assert_eq!(
             first_trace.op,
             MetalEvaluationProgramBaseOpcodeV1::TraceCol as u8
         );
         assert_eq!(first_trace.interaction, 1);
-        assert_eq!(first_trace.a, 0);
+        assert_eq!(first_trace.a, 0); // column 0
         assert_eq!(first_trace.imm, 0);
 
         program
@@ -2612,7 +2883,7 @@ mod tests {
     }
 
     #[test]
-    fn interpreter_rejects_non_zero_trace_offsets_for_v1_reference_lane() {
+    fn interpreter_supports_non_zero_trace_offsets_with_wraparound() {
         let mut program =
             lower_wide_fibonacci_evaluation_program_v1(MetalEvaluationProgramSpecializationV1 {
                 log_n_rows: 3,
@@ -2620,12 +2891,13 @@ mod tests {
             })
             .unwrap();
         // Slot 0 is the explicit zero constant for SecureCol padding. Mutate
-        // the first trace read so the interpreter must reject nonzero offsets.
+        // the first trace read to use offset 1, so that each row reads from
+        // the next row (with wrap-around at the domain boundary).
         program.base_insts[1].imm = 1;
         let columns = wide_fibonacci_trace(8, 3);
         let trace_columns = columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
         let trace_interactions = [&[][..], trace_columns.as_slice()];
-        let error = interpret_metal_evaluation_program_v1(
+        let result = interpret_metal_evaluation_program_v1(
             &program,
             MetalEvaluationProgramRuntimeInputsV1 {
                 trace: MetalEvaluationProgramTraceViewV1 {
@@ -2636,13 +2908,10 @@ mod tests {
                 ext_params: &[],
                 random_coeff_powers: &[SecureField::from(BaseField::from_u32_unchecked(1))],
             },
-        )
-        .unwrap_err();
-
-        assert_eq!(
-            error,
-            MetalEvaluationProgramInterpreterError::NonZeroTraceOffsetUnsupported { offset: 1 }
         );
+
+        // Non-zero offsets should now be accepted (no error).
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -2774,7 +3043,7 @@ mod tests {
     }
 
     #[test]
-    fn device_interpreter_rejects_non_zero_trace_offsets_for_v1_reference_lane() {
+    fn device_interpreter_supports_non_zero_trace_offsets_for_v1_reference_lane() {
         if !matches!(metal_runtime_support(), MetalRuntimeSupport::Available) {
             return;
         }
@@ -2790,7 +3059,8 @@ mod tests {
         let trace_columns = columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
         let trace_interactions = [&[][..], trace_columns.as_slice()];
 
-        let error = interpret_metal_evaluation_program_v1_on_metal(
+        // Non-zero offsets are now supported with wrap-around semantics.
+        let result = interpret_metal_evaluation_program_v1_on_metal(
             &program,
             MetalEvaluationProgramRuntimeInputsV1 {
                 trace: MetalEvaluationProgramTraceViewV1 {
@@ -2801,19 +3071,128 @@ mod tests {
                 ext_params: &[],
                 random_coeff_powers: &[SecureField::from(BaseField::from_u32_unchecked(1))],
             },
-        )
-        .unwrap_err();
-
-        assert_eq!(
-            error,
-            MetalEvaluationProgramDeviceInterpreterError::UnsupportedNonZeroTraceOffset {
-                offset: 1
-            }
         );
+        assert!(result.is_ok(), "non-zero trace offset should succeed: {:?}", result.err());
     }
 
     #[test]
     fn eval_program_abi_layout_v1_passes() {
         validate_eval_program_abi_layout_v1().unwrap();
+    }
+
+    #[test]
+    fn gpu_dispatch_used_at_multiple_scales() {
+        if !matches!(metal_runtime_support(), MetalRuntimeSupport::Available) {
+            return;
+        }
+
+        let n_columns: u32 = 10;
+        let n_constraints = (n_columns - 2) as usize;
+
+        for log_n_rows in [4u32, 8, 12, 16] {
+            let eval = DynWideFibonacciEval {
+                log_n_rows,
+                n_columns,
+            };
+            let program = lower_framework_eval_to_v1(&eval, 2, 0, 0).unwrap();
+
+            let n_rows = 1usize << log_n_rows;
+            let columns = wide_fibonacci_trace(n_rows, n_columns as usize);
+            let trace_columns = columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
+            let trace_interactions: [&[&[BaseField]]; 2] =
+                [&[][..], trace_columns.as_slice()];
+
+            let random_coeff_powers: Vec<SecureField> = (0..n_constraints)
+                .map(|i| {
+                    SecureField::from_u32_unchecked(
+                        (i as u32) * 4 + 3,
+                        (i as u32) * 4 + 5,
+                        (i as u32) * 4 + 7,
+                        (i as u32) * 4 + 11,
+                    )
+                })
+                .collect();
+
+            let runtime = MetalEvaluationProgramRuntimeInputsV1 {
+                trace: MetalEvaluationProgramTraceViewV1 {
+                    trace_interactions: &trace_interactions,
+                    preprocessed_columns: &[],
+                },
+                base_params: &[],
+                ext_params: &[],
+                random_coeff_powers: &random_coeff_powers,
+            };
+
+            let result = execute_selected_metal_evaluation_program_v1_on_metal(
+                &program,
+                runtime,
+                MetalEvaluationProgramCapabilityProfileV1::current(),
+            );
+
+            let (_, dispatch) = result.unwrap_or_else(|e| {
+                panic!(
+                    "GPU dispatch failed at log_n_rows={log_n_rows}: {e:?}"
+                )
+            });
+
+            println!(
+                "log_n_rows={log_n_rows}: dispatch={dispatch:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn optimized_kernel_matches_reference_at_scale() {
+        if !matches!(metal_runtime_support(), MetalRuntimeSupport::Available) {
+            return;
+        }
+
+        let log_n_rows: u32 = 8;
+        let n_columns: u32 = 10;
+        let n_constraints = (n_columns - 2) as usize;
+        let n_rows = 1usize << log_n_rows;
+
+        let eval = DynWideFibonacciEval {
+            log_n_rows,
+            n_columns,
+        };
+        let program = lower_framework_eval_to_v1(&eval, 2, 0, 0).unwrap();
+
+        let columns = wide_fibonacci_trace(n_rows, n_columns as usize);
+        let trace_columns = columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let trace_interactions: [&[&[BaseField]]; 2] =
+            [&[][..], trace_columns.as_slice()];
+
+        let random_coeff_powers: Vec<SecureField> = (0..n_constraints)
+            .map(|i| {
+                SecureField::from_u32_unchecked(
+                    (i as u32) * 4 + 3,
+                    (i as u32) * 4 + 5,
+                    (i as u32) * 4 + 7,
+                    (i as u32) * 4 + 11,
+                )
+            })
+            .collect();
+
+        let runtime = MetalEvaluationProgramRuntimeInputsV1 {
+            trace: MetalEvaluationProgramTraceViewV1 {
+                trace_interactions: &trace_interactions,
+                preprocessed_columns: &[],
+            },
+            base_params: &[],
+            ext_params: &[],
+            random_coeff_powers: &random_coeff_powers,
+        };
+
+        let cpu_result =
+            interpret_metal_evaluation_program_v1(&program, runtime).unwrap();
+        let gpu_result =
+            interpret_metal_evaluation_program_v1_on_metal(&program, runtime).unwrap();
+
+        assert_eq!(
+            gpu_result, cpu_result,
+            "GPU kernel results diverge from CPU interpreter at log_n_rows={log_n_rows}, \
+             n_columns={n_columns}"
+        );
     }
 }
