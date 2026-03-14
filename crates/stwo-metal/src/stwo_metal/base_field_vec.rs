@@ -92,6 +92,12 @@ impl BaseFieldVec {
         self.size
     }
 
+    /// Returns a reference to the underlying GPU buffer.
+    /// Useful for GPU-side buffer concatenation without CPU round-trips.
+    pub fn gpu_buffer(&self) -> &U32Buffer {
+        &self.buffer
+    }
+
     pub fn get_data(&self, index: usize) -> BaseField {
         if let Some(values) = self.host_cache.get() {
             return values[index];

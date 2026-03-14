@@ -1156,8 +1156,9 @@ mod cairo_prove_main {
     fn compute_metal_composition_poly_impl(
         results: &[LoweringResult],
         extract_column: impl Fn(usize, usize, stwo::core::poly::circle::CircleDomain) -> Vec<stwo::core::fields::m31::BaseField>,
+        extract_column_gpu: Option<&dyn Fn(usize, usize, stwo::core::poly::circle::CircleDomain) -> stwo_metal::MetalBaseFieldVec>,
         random_coeff: SecureField,
-        log_blowup_factor: u32,
+        _log_blowup_factor: u32,
     ) -> stwo::prover::poly::circle::SecureCirclePoly<SimdBackend> {
         use stwo::core::fields::m31::BaseField;
         use stwo::core::poly::circle::CanonicCoset;
@@ -1170,6 +1171,7 @@ mod cairo_prove_main {
             compile_v1_to_metal_source, compiled_kernel_name,
             execute_compiled_metal_evaluation_program_v1_async,
             execute_compiled_metal_evaluation_program_v1_tg,
+            execute_compiled_async_gpu_trace,
             complete_compiled_metal_evaluation_program_v1_async,
             execute_selected_metal_evaluation_program_v1_on_metal,
             interpret_metal_evaluation_program_v1,
@@ -1226,6 +1228,9 @@ mod cairo_prove_main {
             eval_domain_log_size: u32,
             program: &'a stwo_metal::program::OwnedMetalEvaluationProgramV1,
             interaction_cols: Vec<Vec<Vec<BaseField>>>,
+            /// GPU-resident columns for JIT dispatch (avoids CPU round-trip).
+            /// When `Some`, `interaction_cols` is empty — populated lazily on fallback.
+            gpu_interaction_cols: Option<Vec<Vec<stwo_metal::MetalBaseFieldVec>>>,
             coeff_start: usize,
             coeff_end: usize,
             use_simd: bool,
@@ -1240,43 +1245,7 @@ mod cairo_prove_main {
             let n_constraints = program.constraint_roots().len();
             // CRITICAL: use max_constraint_log_degree_bound, not log_size + 1.
             let eval_domain = CanonicCoset::new(r.max_constraint_log_degree_bound).circle_domain();
-
-            // Build per-interaction column data via the extractor closure.
-            let mut interaction_cols: Vec<Vec<Vec<BaseField>>> = Vec::new();
-            for interaction_idx in 0..n_interactions {
-                let tree_idx = interaction_idx;
-                if interaction_idx == 0 && !r.preprocessed_column_indices.is_empty() {
-                    let cols: Vec<Vec<BaseField>> = r
-                        .preprocessed_column_indices
-                        .iter()
-                        .map(|&idx| extract_column(0, idx, eval_domain))
-                        .collect();
-                    interaction_cols.push(cols);
-                } else if interaction_idx == 0 && r.preprocessed_column_indices.is_empty() {
-                    interaction_cols.push(vec![]);
-                } else {
-                    let location = r
-                        .trace_locations
-                        .iter()
-                        .find(|loc| loc.tree_index == tree_idx);
-                    if let Some(loc) = location {
-                        let cols: Vec<Vec<BaseField>> = (loc.col_start..loc.col_end)
-                            .map(|col_idx| extract_column(tree_idx, col_idx, eval_domain))
-                            .collect();
-                        interaction_cols.push(cols);
-                    } else {
-                        interaction_cols.push(vec![]);
-                    }
-                }
-            }
-
-            // Determine eval domain log size from columns.
-            let eval_domain_log_size = interaction_cols
-                .iter()
-                .flatten()
-                .map(|col| col.len().trailing_zeros())
-                .next()
-                .unwrap_or(r.log_size + 1 + log_blowup_factor);
+            let eval_domain_log_size = r.max_constraint_log_degree_bound;
 
             let eval_rows = 1u64 << eval_domain_log_size;
             let ext_regs = program.header().max_ext_regs;
@@ -1284,6 +1253,80 @@ mod cairo_prove_main {
                 || eval_rows < HYBRID_GPU_MIN_EVAL_ROWS
                 || (ext_regs > HYBRID_HIGH_EXT_REG_THRESHOLD
                     && eval_rows < HYBRID_GPU_MIN_EVAL_ROWS_HIGH_EXT);
+
+            // Determine if this component will use GPU+JIT dispatch.
+            // If so, extract columns to GPU-resident BaseFieldVec (no CPU download).
+            let has_jit = !use_simd
+                && shader_cache.contains_key(&program.header().semantic_hash);
+            let use_gpu_extraction = has_jit && extract_column_gpu.is_some();
+
+            let mut interaction_cols: Vec<Vec<Vec<BaseField>>> = Vec::new();
+            let mut gpu_cols: Option<Vec<Vec<stwo_metal::MetalBaseFieldVec>>> = None;
+
+            if use_gpu_extraction {
+                // GPU-resident extraction: keep columns on GPU for JIT dispatch.
+                let extractor = extract_column_gpu.unwrap();
+                let mut gpu_interactions: Vec<Vec<stwo_metal::MetalBaseFieldVec>> = Vec::new();
+                for interaction_idx in 0..n_interactions {
+                    let tree_idx = interaction_idx;
+                    if interaction_idx == 0 && !r.preprocessed_column_indices.is_empty() {
+                        let cols: Vec<stwo_metal::MetalBaseFieldVec> = r
+                            .preprocessed_column_indices
+                            .iter()
+                            .map(|&idx| extractor(0, idx, eval_domain))
+                            .collect();
+                        gpu_interactions.push(cols);
+                    } else if interaction_idx == 0 && r.preprocessed_column_indices.is_empty() {
+                        gpu_interactions.push(vec![]);
+                    } else {
+                        let location = r
+                            .trace_locations
+                            .iter()
+                            .find(|loc| loc.tree_index == tree_idx);
+                        if let Some(loc) = location {
+                            let cols: Vec<stwo_metal::MetalBaseFieldVec> = (loc.col_start..loc.col_end)
+                                .map(|col_idx| extractor(tree_idx, col_idx, eval_domain))
+                                .collect();
+                            gpu_interactions.push(cols);
+                        } else {
+                            gpu_interactions.push(vec![]);
+                        }
+                    }
+                }
+                // Leave interaction_cols empty for GPU+JIT path.
+                for _ in 0..n_interactions {
+                    interaction_cols.push(vec![]);
+                }
+                gpu_cols = Some(gpu_interactions);
+            } else {
+                // CPU extraction (SIMD / interpreter path).
+                for interaction_idx in 0..n_interactions {
+                    let tree_idx = interaction_idx;
+                    if interaction_idx == 0 && !r.preprocessed_column_indices.is_empty() {
+                        let cols: Vec<Vec<BaseField>> = r
+                            .preprocessed_column_indices
+                            .iter()
+                            .map(|&idx| extract_column(0, idx, eval_domain))
+                            .collect();
+                        interaction_cols.push(cols);
+                    } else if interaction_idx == 0 && r.preprocessed_column_indices.is_empty() {
+                        interaction_cols.push(vec![]);
+                    } else {
+                        let location = r
+                            .trace_locations
+                            .iter()
+                            .find(|loc| loc.tree_index == tree_idx);
+                        if let Some(loc) = location {
+                            let cols: Vec<Vec<BaseField>> = (loc.col_start..loc.col_end)
+                                .map(|col_idx| extract_column(tree_idx, col_idx, eval_domain))
+                                .collect();
+                            interaction_cols.push(cols);
+                        } else {
+                            interaction_cols.push(vec![]);
+                        }
+                    }
+                }
+            }
 
             let coeff_start = coeff_offset;
             coeff_offset += n_constraints;
@@ -1294,6 +1337,7 @@ mod cairo_prove_main {
                 eval_domain_log_size,
                 program,
                 interaction_cols,
+                gpu_interaction_cols: gpu_cols,
                 coeff_start,
                 coeff_end: coeff_offset,
                 use_simd,
@@ -1317,6 +1361,9 @@ mod cairo_prove_main {
 
             println!("\n  === TG SIZE SWEEP ===");
             for comp in gpu_components.iter().chain(simd_components.iter()) {
+                // Skip GPU-extracted components (no CPU data for TG sweep).
+                if comp.gpu_interaction_cols.is_some() { continue; }
+
                 let cache_entry = shader_cache.get(&comp.program.header().semantic_hash);
                 let (source, name) = match cache_entry {
                     Some((ref s, ref n)) => (s.as_str(), n.as_str()),
@@ -1426,11 +1473,85 @@ mod cairo_prove_main {
                 }
                 let mut pending: Vec<PendingGpu<'_>> = Vec::new();
                 let mut sync_components: Vec<&ComponentWork<'_>> = Vec::new();
+                let mut gpu_trace_ct = 0usize; // Components using GPU buffer pass-through
 
                 let submit_start = Instant::now();
                 for comp in &gpu_components {
                     let cache_entry = shader_cache.get(&comp.program.header().semantic_hash);
                     if let Some((ref source, ref name)) = cache_entry {
+                        // GPU buffer pass-through: if we have GPU-resident columns,
+                        // build a flat U32Buffer directly and dispatch without CPU round-trip.
+                        if let Some(ref gpu_interactions) = comp.gpu_interaction_cols {
+                            let n_rows = 1usize << comp.eval_domain_log_size;
+                            // Build interaction_offsets and flat GPU trace buffer.
+                            let mut interaction_offsets: Vec<u32> = Vec::with_capacity(gpu_interactions.len() + 1);
+                            let mut total_cols = 0u32;
+                            interaction_offsets.push(0);
+                            for interaction in gpu_interactions {
+                                total_cols += interaction.len() as u32;
+                                interaction_offsets.push(total_cols);
+                            }
+                            let total_elements = (total_cols as usize) * n_rows;
+                            if total_elements > 0 {
+                                let random_coeff_powers =
+                                    &all_random_coeff_powers[comp.coeff_start..comp.coeff_end];
+                                let gpu_trace = stwo_metal_sys::metal::U32Buffer::zeroed(total_elements);
+                                match gpu_trace {
+                                    Ok(mut gpu_trace) => {
+                                        let mut write_offset = 0usize;
+                                        let mut concat_ok = true;
+                                        for interaction in gpu_interactions {
+                                            for col in interaction {
+                                                if let Err(e) = gpu_trace.copy_from_offset(col.gpu_buffer(), write_offset) {
+                                                    eprintln!(
+                                                        "    [GPU CONCAT FAIL] component '{}': {}",
+                                                        comp.name, e.message(),
+                                                    );
+                                                    concat_ok = false;
+                                                    break;
+                                                }
+                                                write_offset += col.len();
+                                            }
+                                            if !concat_ok { break; }
+                                        }
+                                        if concat_ok {
+                                            match execute_compiled_async_gpu_trace(
+                                                gpu_trace,
+                                                &interaction_offsets,
+                                                n_rows,
+                                                random_coeff_powers,
+                                                source,
+                                                name,
+                                            ) {
+                                                Ok((handle, dst)) => {
+                                                    compiled_ct += 1;
+                                                    gpu_trace_ct += 1;
+                                                    pending.push(PendingGpu { handle, dst, comp });
+                                                    continue;
+                                                }
+                                                Err(ref e) => {
+                                                    eprintln!(
+                                                        "    [GPU TRACE JIT FALLBACK] component '{}': {:?}",
+                                                        comp.name, e,
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(ref e) => {
+                                        eprintln!(
+                                            "    [GPU ALLOC FAIL] component '{}': {}",
+                                            comp.name, e.message(),
+                                        );
+                                    }
+                                }
+                                // Fall through to CPU path on any GPU error.
+                                sync_components.push(comp);
+                                continue;
+                            }
+                        }
+
+                        // CPU path: build CPU slice refs and dispatch via existing async JIT.
                         let interaction_refs: Vec<Vec<&[BaseField]>> = comp.interaction_cols
                             .iter()
                             .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
@@ -1473,7 +1594,22 @@ mod cairo_prove_main {
 
                 // Phase 3b: Dispatch sync (interpreter) components while GPU is running.
                 for comp in &sync_components {
-                    let interaction_refs: Vec<Vec<&[BaseField]>> = comp.interaction_cols
+                    // If this component had GPU-resident columns (fell back from JIT),
+                    // download them to CPU for interpreter dispatch.
+                    let fallback_cpu_cols: Option<Vec<Vec<Vec<BaseField>>>> =
+                        comp.gpu_interaction_cols.as_ref().map(|gpu_interactions| {
+                            gpu_interactions
+                                .iter()
+                                .map(|interaction| {
+                                    interaction.iter().map(|col| col.to_vec()).collect()
+                                })
+                                .collect()
+                        });
+
+                    let source_cols = fallback_cpu_cols.as_ref()
+                        .unwrap_or(&comp.interaction_cols);
+
+                    let interaction_refs: Vec<Vec<&[BaseField]>> = source_cols
                         .iter()
                         .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
                         .collect();
@@ -1567,9 +1703,9 @@ mod cairo_prove_main {
                 let kernel_ms = submit_ms + wait_ms;
                 if n_async > 0 {
                     println!(
-                        "      async pipeline: submit={:.1}ms wait={:.1}ms ({} async, {} sync)",
+                        "      async pipeline: submit={:.1}ms wait={:.1}ms ({} async [{} gpu-trace], {} sync)",
                         submit_ms, wait_ms,
-                        n_async, gpu_ct + cpu_ct
+                        n_async, gpu_trace_ct, gpu_ct + cpu_ct
                     );
                 }
 
@@ -1658,6 +1794,7 @@ mod cairo_prove_main {
                     domain,
                 )
             },
+            None, // No GPU extraction for SimdBackend
             random_coeff,
             log_blowup_factor,
         )
@@ -1681,6 +1818,13 @@ mod cairo_prove_main {
                     metal_twiddles,
                 )
             },
+            Some(&|tree_idx, col_idx, domain| {
+                extract_column_on_domain_metal_gpu(
+                    &commitment_scheme.trees[tree_idx].polynomials[col_idx],
+                    domain,
+                    metal_twiddles,
+                )
+            }),
             random_coeff,
             log_blowup_factor,
         )
@@ -1729,6 +1873,28 @@ mod cairo_prove_main {
             .expect("extract_column_on_domain_metal requires store_polynomials_coefficients=true");
         let eval = stwo_metal::MetalBackend::evaluate(coeffs_ref, eval_domain, twiddles);
         eval.values.to_cpu()
+    }
+
+    /// Extract polynomial evaluation on a target domain from a MetalBackend
+    /// committed polynomial, returning a GPU-resident `BaseFieldVec` to avoid
+    /// downloading to CPU.  Used for GPU+JIT composition dispatch.
+    #[cfg(feature = "metal-runtime")]
+    fn extract_column_on_domain_metal_gpu(
+        poly: &stwo::prover::Poly<stwo_metal::MetalBackend>,
+        eval_domain: stwo::core::poly::circle::CircleDomain,
+        twiddles: &stwo::prover::poly::twiddles::TwiddleTree<stwo_metal::MetalBackend>,
+    ) -> stwo_metal::MetalBaseFieldVec {
+        if poly.evals.domain == eval_domain {
+            // Already on the right domain — clone the GPU buffer (no CPU download).
+            return poly.evals.values.clone();
+        }
+
+        // GPU evaluation: extend coefficients and RFFT on Metal.
+        use stwo::prover::poly::circle::PolyOps;
+        let coeffs_ref = poly.coeffs.as_ref()
+            .expect("extract_column_on_domain_metal_gpu requires store_polynomials_coefficients=true");
+        let eval = stwo_metal::MetalBackend::evaluate(coeffs_ref, eval_domain, twiddles);
+        eval.values
     }
 
     #[cfg(feature = "metal-runtime")]
