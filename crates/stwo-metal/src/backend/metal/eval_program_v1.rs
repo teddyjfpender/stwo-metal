@@ -1,4 +1,5 @@
-use std::sync::OnceLock;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use std::vec::Vec;
 
 use ark_std::Zero;
@@ -554,6 +555,7 @@ pub struct MetalEvaluationProgramOverlayV1 {
 pub enum MetalEvaluationProgramDispatchKindV1 {
     GenericMetalInterpreter,
     GeneratedOverlay(MetalEvaluationProgramOverlayV1),
+    JitCompiled,
 }
 
 const WIDE_FIBONACCI_EVAL_OVERLAY_NAME_V1: &str = "wide_fibonacci_eval_v1";
@@ -1591,6 +1593,19 @@ pub fn select_metal_evaluation_program_dispatch_v1(
     )
 }
 
+/// Minimum number of evaluation rows to trigger JIT compilation.
+/// Below this threshold, the Metal shader compilation overhead dominates
+/// the runtime savings from eliminating the interpreter dispatch loop.
+const JIT_MIN_EVAL_ROWS: usize = 1 << 18; // 262144
+
+/// Cache for JIT-compiled shader source strings, keyed by semantic hash.
+/// The Metal pipeline itself is cached on the Objective-C side; this cache
+/// avoids regenerating the (identical) source string on repeated calls.
+fn jit_shader_cache() -> &'static Mutex<HashMap<u64, (String, String)>> {
+    static CACHE: OnceLock<Mutex<HashMap<u64, (String, String)>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 pub fn execute_selected_metal_evaluation_program_v1_on_metal(
     program: &OwnedMetalEvaluationProgramV1,
     runtime: MetalEvaluationProgramRuntimeInputsV1<'_>,
@@ -1600,6 +1615,36 @@ pub fn execute_selected_metal_evaluation_program_v1_on_metal(
     let dispatch = select_metal_evaluation_program_dispatch_v1(program, profile)?;
     let row_res = match dispatch {
         MetalEvaluationProgramDispatchKindV1::GenericMetalInterpreter => {
+            // Try JIT compilation for large components to eliminate interpreter
+            // overhead.  The compiled pipeline is cached by kernel name (semantic
+            // hash) inside Metal's pipeline cache, so the JIT cost is amortized
+            // across calls with the same program.
+            let n_rows = runtime
+                .trace
+                .trace_interactions
+                .iter()
+                .find_map(|interaction| interaction.first().map(|col| col.len()))
+                .unwrap_or(0);
+
+            if n_rows >= JIT_MIN_EVAL_ROWS {
+                let hash = program.header().semantic_hash;
+                let cache = jit_shader_cache();
+                let (source, name) = {
+                    let mut guard = cache.lock().unwrap();
+                    guard.entry(hash).or_insert_with(|| {
+                        let s = super::shader_compiler_v1::compile_v1_to_metal_source(program);
+                        let n = super::shader_compiler_v1::compiled_kernel_name(hash);
+                        (s, n)
+                    }).clone()
+                };
+                match execute_compiled_metal_evaluation_program_v1(runtime, &source, &name) {
+                    Ok(values) => return Ok((values, MetalEvaluationProgramDispatchKindV1::JitCompiled)),
+                    Err(_) => {
+                        // JIT failed — fall through to generic interpreter.
+                    }
+                }
+            }
+
             interpret_metal_evaluation_program_v1_on_metal(program, runtime)
                 .map_err(MetalEvaluationProgramExecutionError::from)?
         }
@@ -1614,6 +1659,9 @@ pub fn execute_selected_metal_evaluation_program_v1_on_metal(
                         .map_err(MetalEvaluationProgramExecutionError::from)?
                 }
             }
+        }
+        MetalEvaluationProgramDispatchKindV1::JitCompiled => {
+            unreachable!("JitCompiled is only produced internally, never selected by dispatch")
         }
     };
     Ok((row_res, dispatch))
@@ -1954,7 +2002,6 @@ fn interpret_metal_evaluation_program_v1_on_metal(
 ///
 /// This eliminates the ~3× interpretation overhead of the generic kernel's
 /// switch/case dispatch loop.
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn execute_compiled_metal_evaluation_program_v1(
     runtime: MetalEvaluationProgramRuntimeInputsV1<'_>,
     shader_source: &str,

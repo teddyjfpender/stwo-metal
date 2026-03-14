@@ -10,6 +10,7 @@
 //! - `N_COMPONENTS`: number of components (default 3)
 //! - `SAMPLES`: timing samples per scale (default 3)
 
+#[cfg(feature = "metal-runtime")]
 use std::time::Instant;
 
 use serde::Serialize;
@@ -80,6 +81,9 @@ fn dispatch_name(kind: &MetalEvaluationProgramDispatchKindV1) -> String {
         }
         MetalEvaluationProgramDispatchKindV1::GeneratedOverlay(overlay) => {
             format!("GeneratedOverlay({})", overlay.name)
+        }
+        MetalEvaluationProgramDispatchKindV1::JitCompiled => {
+            "JitCompiled".to_string()
         }
     }
 }
