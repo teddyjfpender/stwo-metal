@@ -615,6 +615,124 @@ bool stwo_metal_precompute_twiddle_level_u32(
     }
 }
 
+// --- Fused-tail RFFT constants (must match rfft.metal defines) ---
+#define RFFT_FUSED_TILE_LOG_HOST  11u
+#define RFFT_FUSED_TILE_SIZE_HOST (1u << RFFT_FUSED_TILE_LOG_HOST)
+#define RFFT_FUSED_THREADS_HOST   256u
+
+// Helper: encode RFFT stages into a command buffer.
+// When fused_pipeline is non-nil and values_log_len >= RFFT_FUSED_TILE_LOG_HOST,
+// dispatches wide stages individually then a single fused-tail kernel for the
+// last 10 line_part stages + circle_part.  Otherwise falls back to per-stage dispatch.
+static bool stwo_metal_rfft_encode_stages(
+    id<MTLCommandBuffer> command_buffer,
+    id<MTLBuffer> values_buffer,
+    NSUInteger values_offset_bytes,
+    id<MTLBuffer> twiddles_buffer,
+    uint32_t values_log_len,
+    id<MTLComputePipelineState> line_pipeline,
+    id<MTLComputePipelineState> circle_pipeline,
+    id<MTLComputePipelineState> fused_pipeline,
+    char *error_message,
+    size_t error_message_len
+) {
+    uint32_t values_len = 1u << values_log_len;
+    uint32_t pair_count = values_len >> 1u;
+
+    if (fused_pipeline != nil && values_log_len >= RFFT_FUSED_TILE_LOG_HOST) {
+        // Wide stages: layers (values_log_len-1) down to RFFT_FUSED_TILE_LOG_HOST
+        uint32_t layer_domain_size = 1u;
+        uint32_t layer_domain_offset = pair_count - 2u;
+        for (uint32_t layer = values_log_len - 1u; layer >= RFFT_FUSED_TILE_LOG_HOST; --layer) {
+            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+            if (encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                return false;
+            }
+
+            [encoder setComputePipelineState:line_pipeline];
+            [encoder setBuffer:values_buffer offset:values_offset_bytes atIndex:0];
+            [encoder setBuffer:twiddles_buffer offset:0 atIndex:1];
+            [encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
+            [encoder setBytes:&layer length:sizeof(layer) atIndex:3];
+            [encoder setBytes:&layer_domain_offset length:sizeof(layer_domain_offset) atIndex:4];
+
+            MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
+            MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(line_pipeline), 1, 1);
+            [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+            [encoder endEncoding];
+
+            layer_domain_size <<= 1u;
+            layer_domain_offset -= layer_domain_size;
+        }
+
+        // Fused tail: layers (RFFT_FUSED_TILE_LOG_HOST-1) down to 1 + circle_part
+        uint32_t n_fused_layers = RFFT_FUSED_TILE_LOG_HOST - 1u;  // 10
+        uint32_t n_tiles = values_len >> RFFT_FUSED_TILE_LOG_HOST;
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:fused_pipeline];
+        [encoder setBuffer:values_buffer offset:values_offset_bytes atIndex:0];
+        [encoder setBuffer:twiddles_buffer offset:0 atIndex:1];
+        [encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
+        [encoder setBytes:&n_fused_layers length:sizeof(n_fused_layers) atIndex:3];
+
+        MTLSize grid_size = MTLSizeMake(n_tiles, 1, 1);
+        MTLSize tg_size = MTLSizeMake(RFFT_FUSED_THREADS_HOST, 1, 1);
+        [encoder dispatchThreadgroups:grid_size threadsPerThreadgroup:tg_size];
+        [encoder endEncoding];
+    } else {
+        // Original per-stage dispatch for small buffers
+        uint32_t layer_domain_size = 1u;
+        uint32_t layer_domain_offset = pair_count - 2u;
+        for (uint32_t layer = values_log_len - 1u; layer > 0u; --layer) {
+            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+            if (encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                return false;
+            }
+
+            [encoder setComputePipelineState:line_pipeline];
+            [encoder setBuffer:values_buffer offset:values_offset_bytes atIndex:0];
+            [encoder setBuffer:twiddles_buffer offset:0 atIndex:1];
+            [encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
+            [encoder setBytes:&layer length:sizeof(layer) atIndex:3];
+            [encoder setBytes:&layer_domain_offset length:sizeof(layer_domain_offset) atIndex:4];
+
+            MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
+            MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(line_pipeline), 1, 1);
+            [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+            [encoder endEncoding];
+
+            layer_domain_size <<= 1u;
+            layer_domain_offset -= layer_domain_size;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:circle_pipeline];
+        [encoder setBuffer:values_buffer offset:values_offset_bytes atIndex:0];
+        [encoder setBuffer:twiddles_buffer offset:0 atIndex:1];
+        [encoder setBytes:&values_len length:sizeof(values_len) atIndex:2];
+
+        MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(circle_pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+    }
+
+    return true;
+}
+
 bool stwo_metal_rfft_evaluate_u32(
     void *runtime_ptr,
     void *values_ptr,
@@ -644,54 +762,24 @@ bool stwo_metal_rfft_evaluate_u32(
         if (circle_pipeline == nil) {
             return false;
         }
+        id<MTLComputePipelineState> fused_pipeline = (values_log_len >= RFFT_FUSED_TILE_LOG_HOST)
+            ? stwo_metal_pipeline(runtime, @"rfft_tail_fused_u32", error_message, error_message_len)
+            : nil;
+        if (values_log_len >= RFFT_FUSED_TILE_LOG_HOST && fused_pipeline == nil) {
+            return false;
+        }
 
-        uint32_t pair_count = values_len >> 1;
         id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
         if (command_buffer == nil) {
             stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
             return false;
         }
 
-        uint32_t layer_domain_size = 1u;
-        uint32_t layer_domain_offset = pair_count - 2u;
-        for (uint32_t layer = values_log_len - 1u; layer > 0u; --layer) {
-            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-            if (encoder == nil) {
-                stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
-                return false;
-            }
-
-            [encoder setComputePipelineState:line_pipeline];
-            [encoder setBuffer:values.buffer offset:0 atIndex:0];
-            [encoder setBuffer:twiddles.buffer offset:0 atIndex:1];
-            [encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
-            [encoder setBytes:&layer length:sizeof(layer) atIndex:3];
-            [encoder setBytes:&layer_domain_offset length:sizeof(layer_domain_offset) atIndex:4];
-
-            MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
-            MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(line_pipeline), 1, 1);
-            [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
-            [encoder endEncoding];
-
-            layer_domain_size <<= 1u;
-            layer_domain_offset -= layer_domain_size;
-        }
-
-        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-        if (encoder == nil) {
-            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+        if (!stwo_metal_rfft_encode_stages(command_buffer, values.buffer, 0, twiddles.buffer,
+                values_log_len, line_pipeline, circle_pipeline, fused_pipeline,
+                error_message, error_message_len)) {
             return false;
         }
-
-        [encoder setComputePipelineState:circle_pipeline];
-        [encoder setBuffer:values.buffer offset:0 atIndex:0];
-        [encoder setBuffer:twiddles.buffer offset:0 atIndex:1];
-        [encoder setBytes:&values_len length:sizeof(values_len) atIndex:2];
-
-        MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
-        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(circle_pipeline), 1, 1);
-        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
-        [encoder endEncoding];
 
         [command_buffer commit];
         [command_buffer waitUntilCompleted];
@@ -736,8 +824,13 @@ bool stwo_metal_rfft_evaluate_subbuffer_u32(
         if (circle_pipeline == nil) {
             return false;
         }
+        id<MTLComputePipelineState> fused_pipeline = (values_log_len >= RFFT_FUSED_TILE_LOG_HOST)
+            ? stwo_metal_pipeline(runtime, @"rfft_tail_fused_u32", error_message, error_message_len)
+            : nil;
+        if (values_log_len >= RFFT_FUSED_TILE_LOG_HOST && fused_pipeline == nil) {
+            return false;
+        }
 
-        uint32_t pair_count = values_len >> 1;
         NSUInteger value_offset_bytes = value_offset * sizeof(uint32_t);
         id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
         if (command_buffer == nil) {
@@ -745,46 +838,11 @@ bool stwo_metal_rfft_evaluate_subbuffer_u32(
             return false;
         }
 
-        uint32_t layer_domain_size = 1u;
-        uint32_t layer_domain_offset = pair_count - 2u;
-        for (uint32_t layer = values_log_len - 1u; layer > 0u; --layer) {
-            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-            if (encoder == nil) {
-                stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
-                return false;
-            }
-
-            [encoder setComputePipelineState:line_pipeline];
-            [encoder setBuffer:values.buffer offset:value_offset_bytes atIndex:0];
-            [encoder setBuffer:twiddles.buffer offset:0 atIndex:1];
-            [encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
-            [encoder setBytes:&layer length:sizeof(layer) atIndex:3];
-            [encoder setBytes:&layer_domain_offset length:sizeof(layer_domain_offset) atIndex:4];
-
-            MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
-            MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(line_pipeline), 1, 1);
-            [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
-            [encoder endEncoding];
-
-            layer_domain_size <<= 1u;
-            layer_domain_offset -= layer_domain_size;
-        }
-
-        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-        if (encoder == nil) {
-            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+        if (!stwo_metal_rfft_encode_stages(command_buffer, values.buffer, value_offset_bytes, twiddles.buffer,
+                values_log_len, line_pipeline, circle_pipeline, fused_pipeline,
+                error_message, error_message_len)) {
             return false;
         }
-
-        [encoder setComputePipelineState:circle_pipeline];
-        [encoder setBuffer:values.buffer offset:value_offset_bytes atIndex:0];
-        [encoder setBuffer:twiddles.buffer offset:0 atIndex:1];
-        [encoder setBytes:&values_len length:sizeof(values_len) atIndex:2];
-
-        MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
-        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(circle_pipeline), 1, 1);
-        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
-        [encoder endEncoding];
 
         [command_buffer commit];
         [command_buffer waitUntilCompleted];
@@ -832,8 +890,12 @@ bool stwo_metal_rfft_evaluate_multi_u32(
         if (circle_pipeline == nil) {
             return false;
         }
-
-        uint32_t pair_count = values_len >> 1;
+        id<MTLComputePipelineState> fused_pipeline = (values_log_len >= RFFT_FUSED_TILE_LOG_HOST)
+            ? stwo_metal_pipeline(runtime, @"rfft_tail_fused_u32", error_message, error_message_len)
+            : nil;
+        if (values_log_len >= RFFT_FUSED_TILE_LOG_HOST && fused_pipeline == nil) {
+            return false;
+        }
 
         // Create one command buffer per polynomial and submit all concurrently.
         // Each polynomial's RFFT layers are sequential within its command buffer,
@@ -856,47 +918,10 @@ bool stwo_metal_rfft_evaluate_multi_u32(
                 return false;
             }
 
-            uint32_t layer_domain_size = 1u;
-            uint32_t layer_domain_offset = pair_count - 2u;
-            for (uint32_t layer = values_log_len - 1u; layer > 0u; --layer) {
-                id<MTLComputeCommandEncoder> encoder = [cb computeCommandEncoder];
-                if (encoder == nil) {
-                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
-                    return false;
-                }
-
-                [encoder setComputePipelineState:line_pipeline];
-                [encoder setBuffer:values.buffer offset:0 atIndex:0];
-                [encoder setBuffer:twiddles.buffer offset:0 atIndex:1];
-                [encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
-                [encoder setBytes:&layer length:sizeof(layer) atIndex:3];
-                [encoder setBytes:&layer_domain_offset length:sizeof(layer_domain_offset) atIndex:4];
-
-                MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
-                MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(line_pipeline), 1, 1);
-                [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
-                [encoder endEncoding];
-
-                layer_domain_size <<= 1u;
-                layer_domain_offset -= layer_domain_size;
-            }
-
-            {
-                id<MTLComputeCommandEncoder> encoder = [cb computeCommandEncoder];
-                if (encoder == nil) {
-                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
-                    return false;
-                }
-
-                [encoder setComputePipelineState:circle_pipeline];
-                [encoder setBuffer:values.buffer offset:0 atIndex:0];
-                [encoder setBuffer:twiddles.buffer offset:0 atIndex:1];
-                [encoder setBytes:&values_len length:sizeof(values_len) atIndex:2];
-
-                MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
-                MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(circle_pipeline), 1, 1);
-                [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
-                [encoder endEncoding];
+            if (!stwo_metal_rfft_encode_stages(cb, values.buffer, 0, twiddles.buffer,
+                    values_log_len, line_pipeline, circle_pipeline, fused_pipeline,
+                    error_message, error_message_len)) {
+                return false;
             }
 
             [cb commit];

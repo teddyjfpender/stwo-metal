@@ -1,5 +1,6 @@
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
+use std::time::Instant;
 use stwo::core::circle::Coset;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CircleDomain;
@@ -103,6 +104,53 @@ fn metal_ifft_large_column_regression() {
         assert_eq!(
             m, c,
             "IFFT coefficient mismatch at index {i} for log_size {log_size}"
+        );
+    }
+}
+
+/// Benchmark RFFT at various sizes to measure fused-tail kernel improvement.
+/// Run with: cargo test --release -p stwo-metal --features prover --test metal_rfft_ifft_native -- rfft_benchmark --nocapture --ignored
+#[test]
+#[ignore]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn rfft_benchmark() {
+    require_metal_runtime();
+
+    for log_size in [12u32, 14, 16, 18, 20, 22, 24, 25] {
+        let domain = CircleDomain::new(Coset::half_odds(log_size));
+        let mut rng = SmallRng::seed_from_u64(42);
+        let coeffs: Vec<BaseField> = (0..domain.size()).map(|_| rng.gen()).collect();
+
+        let metal_poly = CircleCoefficients::<MetalBackend>::new(coeffs.into_iter().collect());
+        let metal_twiddles = MetalBackend::precompute_twiddles(domain.half_coset);
+
+        // Warmup
+        let _ = MetalBackend::evaluate_into(
+            &metal_poly,
+            domain,
+            &metal_twiddles,
+            (0..domain.size()).map(|_| BaseField::default()).collect(),
+        );
+
+        // Timed runs
+        let n_runs = 5;
+        let start = Instant::now();
+        for _ in 0..n_runs {
+            let _ = MetalBackend::evaluate_into(
+                &metal_poly,
+                domain,
+                &metal_twiddles,
+                (0..domain.size()).map(|_| BaseField::default()).collect(),
+            );
+        }
+        let elapsed = start.elapsed();
+        let per_run = elapsed / n_runs;
+        eprintln!(
+            "RFFT log_size={:2}: {:>8.3}ms (avg of {} runs, {:.1} MB)",
+            log_size,
+            per_run.as_secs_f64() * 1000.0,
+            n_runs,
+            (1u64 << (log_size + 1)) as f64 * 4.0 / 1_000_000.0,
         );
     }
 }
