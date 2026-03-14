@@ -2080,6 +2080,89 @@ pub fn execute_compiled_metal_evaluation_program_v1(
         .collect())
 }
 
+/// Like [`execute_compiled_metal_evaluation_program_v1`] but with an explicit
+/// `threads_per_group` override for TG-size sweep benchmarks.  Pass 0 to use
+/// the default pipeline-selected TG size.
+pub fn execute_compiled_metal_evaluation_program_v1_tg(
+    runtime: MetalEvaluationProgramRuntimeInputsV1<'_>,
+    shader_source: &str,
+    kernel_name: &str,
+    threads_per_group: u32,
+) -> Result<Vec<SecureField>, MetalEvaluationProgramExecutionError> {
+    let map_metal = |e: MetalError| MetalEvaluationProgramExecutionError::MetalRuntime {
+        message: e.message().to_string(),
+    };
+
+    let support = metal_runtime_support();
+    if support != MetalRuntimeSupport::Available {
+        return Err(MetalEvaluationProgramExecutionError::RuntimeUnavailable(support));
+    }
+
+    let n_rows = runtime
+        .trace
+        .trace_interactions
+        .first()
+        .and_then(|interaction| interaction.first().map(|column| column.len()))
+        .or_else(|| {
+            runtime
+                .trace
+                .trace_interactions
+                .iter()
+                .find_map(|interaction| interaction.first().map(|column| column.len()))
+        })
+        .ok_or(MetalEvaluationProgramExecutionError::EmptyTrace)?;
+
+    let (flat_trace, interaction_offsets) =
+        flatten_trace_interactions(runtime.trace.trace_interactions, n_rows);
+    let flat_preprocessed = runtime
+        .trace
+        .preprocessed_columns
+        .iter()
+        .flat_map(|column| column.iter().map(|value| value.0))
+        .collect::<Vec<_>>();
+    let base_params = runtime
+        .base_params
+        .iter()
+        .map(|value| value.0)
+        .collect::<Vec<_>>();
+    let ext_params = runtime
+        .ext_params
+        .iter()
+        .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+        .collect::<Vec<_>>();
+    let random_coeff_powers = runtime
+        .random_coeff_powers
+        .iter()
+        .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+        .collect::<Vec<_>>();
+
+    let trace_values = U32Buffer::from_slice(&flat_trace).map_err(map_metal)?;
+    let interaction_offsets = U32Buffer::from_slice(&interaction_offsets).map_err(map_metal)?;
+    let preprocessed_values = optional_u32_buffer(&flat_preprocessed).map_err(map_metal)?;
+    let base_params = optional_u32_buffer(&base_params).map_err(map_metal)?;
+    let ext_params = optional_u32_buffer(&ext_params).map_err(map_metal)?;
+    let random_coeff_powers = U32Buffer::from_slice(&random_coeff_powers).map_err(map_metal)?;
+
+    let dst = U32Buffer::eval_compiled_program_v1_u32x4_tg(
+        shader_source,
+        kernel_name,
+        &trace_values,
+        &interaction_offsets,
+        &preprocessed_values,
+        &base_params,
+        &ext_params,
+        &random_coeff_powers,
+        n_rows,
+        threads_per_group,
+    ).map_err(map_metal)?;
+
+    let raw = dst.to_vec().map_err(map_metal)?;
+    Ok(raw
+        .chunks_exact(4)
+        .map(|limbs| SecureField::from_u32_unchecked(limbs[0], limbs[1], limbs[2], limbs[3]))
+        .collect())
+}
+
 fn execute_wide_fibonacci_overlay_v1_on_metal(
     program: &OwnedMetalEvaluationProgramV1,
     runtime: MetalEvaluationProgramRuntimeInputsV1<'_>,

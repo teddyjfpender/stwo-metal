@@ -1018,6 +1018,7 @@ mod cairo_prove_main {
             MetalEvaluationProgramTraceViewV1,
             compile_v1_to_metal_source, compiled_kernel_name,
             execute_compiled_metal_evaluation_program_v1,
+            execute_compiled_metal_evaluation_program_v1_tg,
             execute_selected_metal_evaluation_program_v1_on_metal,
             interpret_metal_evaluation_program_v1,
         };
@@ -1042,8 +1043,8 @@ mod cairo_prove_main {
         let profile = MetalEvaluationProgramCapabilityProfileV1::current();
         let mut total_jit_ms = 0.0f64;
 
-        // JIT-compiled native Metal shaders: opt-in via USE_JIT=1.
-        let use_compiled = std::env::var("USE_JIT").is_ok();
+        // JIT-compiled native Metal shaders: opt-in via USE_JIT=1 or TG_SWEEP=1.
+        let use_compiled = std::env::var("USE_JIT").is_ok() || std::env::var("TG_SWEEP").is_ok();
         let mut shader_cache: std::collections::HashMap<u64, (String, String)> =
             std::collections::HashMap::new();
         if use_compiled {
@@ -1152,6 +1153,80 @@ mod cairo_prove_main {
         let (gpu_components, simd_components): (Vec<_>, Vec<_>) =
             components.into_iter().partition::<Vec<_>, _>(|c| !c.use_simd);
         println!("    dispatch: {} GPU, {} SIMD/CPU", gpu_components.len(), simd_components.len());
+
+        // --- TG Size Sweep (opt-in via TG_SWEEP=1) ---
+        // Isolated A/B test for JIT-compiled components, sweeping threadgroup sizes.
+        // Runs each JIT component N_WARMUP+N_RUNS times per TG size and prints median.
+        if std::env::var("TG_SWEEP").is_ok() {
+            const TG_SIZES: &[u32] = &[0, 64, 96, 128, 160, 192, 256];
+            const N_WARMUP: usize = 2;
+            const N_RUNS: usize = 5;
+
+            println!("\n  === TG SIZE SWEEP ===");
+            for comp in gpu_components.iter().chain(simd_components.iter()) {
+                let cache_entry = shader_cache.get(&comp.program.header().semantic_hash);
+                let (source, name) = match cache_entry {
+                    Some((ref s, ref n)) => (s.as_str(), n.as_str()),
+                    None => continue,
+                };
+
+                let interaction_refs: Vec<Vec<&[BaseField]>> = comp.interaction_cols
+                    .iter()
+                    .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
+                    .collect();
+                let interaction_slice_refs: Vec<&[&[BaseField]]> =
+                    interaction_refs.iter().map(|cols| cols.as_slice()).collect();
+                let random_coeff_powers =
+                    &all_random_coeff_powers[comp.coeff_start..comp.coeff_end];
+
+                println!("  Component: {:40} log_size={} eval_rows={} ext_regs={}",
+                    comp.name, comp.log_size, 1u64 << comp.eval_domain_log_size,
+                    comp.program.header().max_ext_regs);
+
+                for &tg in TG_SIZES {
+                    let label = if tg == 0 { "default".to_string() } else { format!("{:>3}", tg) };
+
+                    // Warmup runs.
+                    for _ in 0..N_WARMUP {
+                        let rt = MetalEvaluationProgramRuntimeInputsV1 {
+                            trace: MetalEvaluationProgramTraceViewV1 {
+                                trace_interactions: &interaction_slice_refs,
+                                preprocessed_columns: &[],
+                            },
+                            base_params: &[],
+                            ext_params: &[],
+                            random_coeff_powers,
+                        };
+                        let _ = execute_compiled_metal_evaluation_program_v1_tg(rt, source, name, tg);
+                    }
+
+                    // Timed runs.
+                    let mut times = Vec::with_capacity(N_RUNS);
+                    for _ in 0..N_RUNS {
+                        let rt = MetalEvaluationProgramRuntimeInputsV1 {
+                            trace: MetalEvaluationProgramTraceViewV1 {
+                                trace_interactions: &interaction_slice_refs,
+                                preprocessed_columns: &[],
+                            },
+                            base_params: &[],
+                            ext_params: &[],
+                            random_coeff_powers,
+                        };
+                        let t = Instant::now();
+                        let _ = execute_compiled_metal_evaluation_program_v1_tg(rt, source, name, tg);
+                        times.push(t.elapsed().as_secs_f64() * 1000.0);
+                    }
+                    times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                    let median = times[N_RUNS / 2];
+                    let min = times[0];
+                    let max = times[N_RUNS - 1];
+                    println!("    TG={:>7}: median={:.2}ms  min={:.2}ms  max={:.2}ms",
+                        label, median, min, max);
+                }
+                println!();
+            }
+            println!("  === END TG SIZE SWEEP ===\n");
+        }
 
         // Helper: apply vanishing polynomial inverse (denom_inv) in-place.
         fn apply_denom_inv(row_res: &mut [SecureField], log_size: u32, eval_domain_log_size: u32) {

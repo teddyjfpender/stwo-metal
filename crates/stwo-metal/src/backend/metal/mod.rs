@@ -54,6 +54,7 @@ pub use capability::{
 pub use commitment_slice::MetalFriCommitmentSlice;
 pub use eval_program_v1::{
     execute_compiled_metal_evaluation_program_v1,
+    execute_compiled_metal_evaluation_program_v1_tg,
     execute_metal_evaluation_program_v1_on_metal,
     execute_selected_metal_evaluation_program_v1_on_metal, interpret_metal_evaluation_program_v1,
     lookup_metal_evaluation_program_overlay_v1, lower_registered_metal_evaluation_program_v1,
