@@ -2408,6 +2408,52 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    /// Like [`Self::eval_compiled_program_v1_u32x4`] but non-blocking.
+    ///
+    /// Commits the GPU command buffer and returns immediately. The caller must
+    /// call [`CommandBufferHandle::wait`] (or drop the handle) before reading
+    /// the returned `U32Buffer` contents.
+    #[allow(clippy::too_many_arguments)]
+    pub fn eval_compiled_program_v1_u32x4_async(
+        shader_source: &str,
+        kernel_name: &str,
+        trace_values: &Self,
+        interaction_offsets: &Self,
+        preprocessed_values: &Self,
+        base_params: &Self,
+        ext_params: &Self,
+        random_coeff_powers: &Self,
+        row_count: usize,
+    ) -> Result<(Self, CommandBufferHandle), MetalError> {
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(row_count * 4)?;
+        let handle = unsafe {
+            ffi::eval_compiled_program_v1_u32x4_async(
+                runtime.raw.as_ptr(),
+                shader_source.as_ptr(),
+                shader_source.len(),
+                kernel_name.as_ptr(),
+                kernel_name.len(),
+                trace_values.raw.as_ptr(),
+                interaction_offsets.raw.as_ptr(),
+                preprocessed_values.raw.as_ptr(),
+                base_params.raw.as_ptr(),
+                ext_params.raw.as_ptr(),
+                random_coeff_powers.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                row_count.try_into().expect("row_count should fit in u32"),
+                error_buffer_mut_ptr,
+            )?
+        };
+        Ok((
+            dst,
+            CommandBufferHandle {
+                raw: NonNull::new(handle)
+                    .expect("async eval_compiled_program_v1 returned null handle despite success"),
+            },
+        ))
+    }
+
     pub fn eval_program_v1_wide_fibonacci_u32x4(
         trace_values: &Self,
         interaction_offsets: &Self,
@@ -3422,6 +3468,24 @@ mod ffi {
             dst: *mut c_void,
             row_count: u32,
             threads_per_group: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_eval_compiled_program_v1_u32x4_async(
+            runtime: *mut c_void,
+            shader_source: *const u8,
+            shader_source_len: usize,
+            kernel_name: *const u8,
+            kernel_name_len: usize,
+            trace_values: *mut c_void,
+            interaction_offsets: *mut c_void,
+            preprocessed_values: *mut c_void,
+            base_params: *mut c_void,
+            ext_params: *mut c_void,
+            random_coeff_powers: *mut c_void,
+            dst: *mut c_void,
+            row_count: u32,
+            out_handle: *mut *mut c_void,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -5566,6 +5630,49 @@ mod ffi {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn eval_compiled_program_v1_u32x4_async(
+        runtime: *mut c_void,
+        shader_source: *const u8,
+        shader_source_len: usize,
+        kernel_name: *const u8,
+        kernel_name_len: usize,
+        trace_values: *mut c_void,
+        interaction_offsets: *mut c_void,
+        preprocessed_values: *mut c_void,
+        base_params: *mut c_void,
+        ext_params: *mut c_void,
+        random_coeff_powers: *mut c_void,
+        dst: *mut c_void,
+        row_count: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let mut out_handle: *mut c_void = std::ptr::null_mut();
+        if stwo_metal_eval_compiled_program_v1_u32x4_async(
+            runtime,
+            shader_source,
+            shader_source_len,
+            kernel_name,
+            kernel_name_len,
+            trace_values,
+            interaction_offsets,
+            preprocessed_values,
+            base_params,
+            ext_params,
+            random_coeff_powers,
+            dst,
+            row_count,
+            &mut out_handle,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(out_handle)
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn sampled_values_v1_wide_fibonacci_u32x4(
         runtime: *mut c_void,
         tree_descs: *mut c_void,
@@ -6678,6 +6785,28 @@ mod ffi {
         _threads_per_group: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn eval_compiled_program_v1_u32x4_async(
+        _runtime: *mut c_void,
+        _shader_source: *const u8,
+        _shader_source_len: usize,
+        _kernel_name: *const u8,
+        _kernel_name_len: usize,
+        _trace_values: *mut c_void,
+        _interaction_offsets: *mut c_void,
+        _preprocessed_values: *mut c_void,
+        _base_params: *mut c_void,
+        _ext_params: *mut c_void,
+        _random_coeff_powers: *mut c_void,
+        _dst: *mut c_void,
+        _row_count: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
         Err(MetalError::new(
             "Metal support was not linked into stwo-metal-sys.",
         ))

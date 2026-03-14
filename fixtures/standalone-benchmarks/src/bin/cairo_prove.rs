@@ -1017,10 +1017,12 @@ mod cairo_prove_main {
             MetalEvaluationProgramRuntimeInputsV1,
             MetalEvaluationProgramTraceViewV1,
             compile_v1_to_metal_source, compiled_kernel_name,
-            execute_compiled_metal_evaluation_program_v1,
+            execute_compiled_metal_evaluation_program_v1_async,
             execute_compiled_metal_evaluation_program_v1_tg,
+            complete_compiled_metal_evaluation_program_v1_async,
             execute_selected_metal_evaluation_program_v1_on_metal,
             interpret_metal_evaluation_program_v1,
+            CommandBufferHandle,
         };
         use stwo_metal::MetalBackend;
 
@@ -1251,8 +1253,9 @@ mod cairo_prove_main {
         }
 
         // --- Phase 3: Parallel dispatch (GPU thread + SIMD on main thread) ---
-        // GPU eval kernels block on waitUntilCompleted internally. While the GPU
-        // is busy, SIMD components run on CPU cores on the main thread.
+        // GPU thread: submit all JIT components async (non-blocking), then
+        // submit interpreter components sync, then wait on all async handles.
+        // This pipelines Metal command buffer scheduling across JIT kernels.
         let v1_start = Instant::now();
 
         let (gpu_quotients, simd_quotients, gpu_count, compiled_count, simd_count, cpu_count, gpu_kernel_ms, simd_kernel_ms, total_denom_ms) = std::thread::scope(|s| {
@@ -1261,10 +1264,64 @@ mod cairo_prove_main {
                 let mut gpu_ct = 0usize;
                 let mut compiled_ct = 0usize;
                 let mut cpu_ct = 0usize;
-                let mut kernel_ms = 0.0f64;
+                let mut wait_ms = 0.0f64;
                 let mut denom_ms = 0.0f64;
 
+                // Phase 3a: Submit all JIT-compilable components async.
+                struct PendingGpu<'a> {
+                    handle: CommandBufferHandle,
+                    dst: stwo_metal_sys::metal::U32Buffer,
+                    comp: &'a ComponentWork<'a>,
+                }
+                let mut pending: Vec<PendingGpu<'_>> = Vec::new();
+                let mut sync_components: Vec<&ComponentWork<'_>> = Vec::new();
+
+                let submit_start = Instant::now();
                 for comp in &gpu_components {
+                    let cache_entry = shader_cache.get(&comp.program.header().semantic_hash);
+                    if let Some((ref source, ref name)) = cache_entry {
+                        let interaction_refs: Vec<Vec<&[BaseField]>> = comp.interaction_cols
+                            .iter()
+                            .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
+                            .collect();
+                        let interaction_slice_refs: Vec<&[&[BaseField]]> =
+                            interaction_refs.iter().map(|cols| cols.as_slice()).collect();
+                        let random_coeff_powers =
+                            &all_random_coeff_powers[comp.coeff_start..comp.coeff_end];
+
+                        let runtime = MetalEvaluationProgramRuntimeInputsV1 {
+                            trace: MetalEvaluationProgramTraceViewV1 {
+                                trace_interactions: &interaction_slice_refs,
+                                preprocessed_columns: &[],
+                            },
+                            base_params: &[],
+                            ext_params: &[],
+                            random_coeff_powers,
+                        };
+
+                        match execute_compiled_metal_evaluation_program_v1_async(
+                            runtime, source, name,
+                        ) {
+                            Ok((handle, dst)) => {
+                                compiled_ct += 1;
+                                pending.push(PendingGpu { handle, dst, comp });
+                            }
+                            Err(ref e) => {
+                                eprintln!(
+                                    "    [ASYNC JIT FALLBACK] component '{}': {:?}",
+                                    comp.name, e,
+                                );
+                                sync_components.push(comp);
+                            }
+                        }
+                    } else {
+                        sync_components.push(comp);
+                    }
+                }
+                let submit_ms = submit_start.elapsed().as_secs_f64() * 1000.0;
+
+                // Phase 3b: Dispatch sync (interpreter) components while GPU is running.
+                for comp in &sync_components {
                     let interaction_refs: Vec<Vec<&[BaseField]>> = comp.interaction_cols
                         .iter()
                         .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
@@ -1285,69 +1342,33 @@ mod cairo_prove_main {
                     };
 
                     let kernel_start = Instant::now();
+                    let res = execute_selected_metal_evaluation_program_v1_on_metal(
+                        comp.program, runtime, profile,
+                    );
+                    let comp_kernel_ms = kernel_start.elapsed().as_secs_f64() * 1000.0;
+                    wait_ms += comp_kernel_ms;
 
-                    let gpu_result: Option<Vec<SecureField>> =
-                        if let Some((ref source, ref name)) =
-                            shader_cache.get(&comp.program.header().semantic_hash)
-                        {
-                            match execute_compiled_metal_evaluation_program_v1(
-                                runtime, source, name,
-                            ) {
-                                Ok(values) => {
-                                    compiled_ct += 1;
-                                    Some(values)
-                                }
-                                Err(ref e) => {
-                                    eprintln!(
-                                        "    [JIT FALLBACK] component '{}': {:?}",
-                                        comp.name, e,
-                                    );
-                                    let runtime2 = MetalEvaluationProgramRuntimeInputsV1 {
-                                        trace: MetalEvaluationProgramTraceViewV1 {
-                                            trace_interactions: &interaction_slice_refs,
-                                            preprocessed_columns: &[],
-                                        },
-                                        base_params: &[],
-                                        ext_params: &[],
-                                        random_coeff_powers,
-                                    };
-                                    match execute_selected_metal_evaluation_program_v1_on_metal(
-                                        comp.program, runtime2, profile,
-                                    ) {
-                                        Ok((values, _)) => {
-                                            gpu_ct += 1;
-                                            Some(values)
-                                        }
-                                        Err(_) => None,
-                                    }
-                                }
+                    let mut row_res = match res {
+                        Ok((values, dispatch)) => {
+                            if dispatch == MetalEvaluationProgramDispatchKindV1::JitCompiled {
+                                compiled_ct += 1;
+                            } else {
+                                gpu_ct += 1;
                             }
-                        } else {
-                            let res = execute_selected_metal_evaluation_program_v1_on_metal(
-                                comp.program, runtime, profile,
-                            );
-                            if let Err(ref e) = res {
-                                eprintln!(
-                                    "    [GPU FALLBACK] component '{}' (log_size={}, ext_regs={}): {:?}",
-                                    comp.name,
-                                    comp.log_size,
-                                    comp.program.header().max_ext_regs,
-                                    e,
+                            if comp_kernel_ms > 1.0 {
+                                println!(
+                                    "      {:40} log_size={:>2} eval_rows={:>8} kernel={:.1}ms [GPU sync]",
+                                    comp.name, comp.log_size, 1u64 << comp.eval_domain_log_size,
+                                    comp_kernel_ms
                                 );
                             }
-                            res.ok().map(|(v, dispatch)| {
-                                if dispatch == MetalEvaluationProgramDispatchKindV1::JitCompiled {
-                                    compiled_ct += 1;
-                                } else {
-                                    gpu_ct += 1;
-                                }
-                                v
-                            })
-                        };
-
-                    let mut row_res = match gpu_result {
-                        Some(res) => res,
-                        None => {
+                            values
+                        }
+                        Err(ref e) => {
+                            eprintln!(
+                                "    [GPU FALLBACK] component '{}' (log_size={}, ext_regs={}): {:?}",
+                                comp.name, comp.log_size, comp.program.header().max_ext_regs, e,
+                            );
                             cpu_ct += 1;
                             let runtime_cpu = MetalEvaluationProgramRuntimeInputsV1 {
                                 trace: MetalEvaluationProgramTraceViewV1 {
@@ -1363,21 +1384,42 @@ mod cairo_prove_main {
                         }
                     };
 
-                    let comp_kernel_ms = kernel_start.elapsed().as_secs_f64() * 1000.0;
-                    kernel_ms += comp_kernel_ms;
-                    if comp_kernel_ms > 1.0 {
-                        println!(
-                            "      {:40} log_size={:>2} eval_rows={:>8} kernel={:.1}ms [GPU]",
-                            comp.name, comp.log_size, 1u64 << comp.eval_domain_log_size,
-                            comp_kernel_ms
-                        );
-                    }
-
                     let denom_start = Instant::now();
                     apply_denom_inv(&mut row_res, comp.log_size, comp.eval_domain_log_size);
                     denom_ms += denom_start.elapsed().as_secs_f64() * 1000.0;
 
                     quotients.push((comp.eval_domain_log_size, row_res));
+                }
+
+                // Phase 3c: Wait on all async JIT handles in submission order.
+                let n_async = pending.len();
+                let wait_start = Instant::now();
+                for p in pending {
+                    let comp = p.comp;
+                    match complete_compiled_metal_evaluation_program_v1_async(p.handle, p.dst) {
+                        Ok(mut row_res) => {
+                            let denom_start = Instant::now();
+                            apply_denom_inv(&mut row_res, comp.log_size, comp.eval_domain_log_size);
+                            denom_ms += denom_start.elapsed().as_secs_f64() * 1000.0;
+                            quotients.push((comp.eval_domain_log_size, row_res));
+                        }
+                        Err(ref e) => {
+                            eprintln!(
+                                "    [ASYNC WAIT FAIL] component '{}': {:?}",
+                                comp.name, e,
+                            );
+                        }
+                    }
+                }
+                wait_ms += wait_start.elapsed().as_secs_f64() * 1000.0;
+
+                let kernel_ms = submit_ms + wait_ms;
+                if n_async > 0 {
+                    println!(
+                        "      async pipeline: submit={:.1}ms wait={:.1}ms ({} async, {} sync)",
+                        submit_ms, wait_ms,
+                        n_async, gpu_ct + cpu_ct
+                    );
                 }
 
                 (quotients, gpu_ct, compiled_ct, cpu_ct, kernel_ms, denom_ms)

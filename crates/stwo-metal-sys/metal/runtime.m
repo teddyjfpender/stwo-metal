@@ -5738,6 +5738,135 @@ bool stwo_metal_eval_compiled_program_v1_u32x4_tg(
 }
 
 // ---------------------------------------------------------------------------
+// JIT-compiled V1 evaluation kernel dispatch — async (non-blocking) variant
+// ---------------------------------------------------------------------------
+//
+// Like stwo_metal_eval_compiled_program_v1_u32x4 but returns immediately after
+// committing the command buffer. The caller must wait (or release) the returned
+// handle via stwo_metal_command_buffer_wait / stwo_metal_command_buffer_release
+// before reading dst buffer contents.
+//
+// Returns true and stores a retained command-buffer handle in *out_handle on
+// success. Returns false (and writes an error message) on any setup failure.
+
+bool stwo_metal_eval_compiled_program_v1_u32x4_async(
+    void *runtime_ptr,
+    const char *shader_source,
+    size_t shader_source_len,
+    const char *kernel_name,
+    size_t kernel_name_len,
+    void *trace_values_ptr,
+    void *interaction_offsets_ptr,
+    void *preprocessed_values_ptr,
+    void *base_params_ptr,
+    void *ext_params_ptr,
+    void *random_coeff_powers_ptr,
+    void *dst_ptr,
+    uint32_t row_count,
+    void **out_handle,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *trace_values = stwo_metal_buffer_box(trace_values_ptr);
+        StwoMetalBufferBox *interaction_offsets = stwo_metal_buffer_box(interaction_offsets_ptr);
+        StwoMetalBufferBox *preprocessed_values = stwo_metal_buffer_box(preprocessed_values_ptr);
+        StwoMetalBufferBox *base_params = stwo_metal_buffer_box(base_params_ptr);
+        StwoMetalBufferBox *ext_params = stwo_metal_buffer_box(ext_params_ptr);
+        StwoMetalBufferBox *random_coeff_powers = stwo_metal_buffer_box(random_coeff_powers_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+
+        NSString *nameStr = [[NSString alloc] initWithBytes:kernel_name
+                                                     length:kernel_name_len
+                                                   encoding:NSUTF8StringEncoding];
+
+        // Check if pipeline is already cached.
+        id<MTLComputePipelineState> pipeline = nil;
+        @synchronized(runtime) {
+            pipeline = runtime.pipelines[nameStr];
+        }
+
+        if (pipeline == nil) {
+            // JIT-compile the shader source.
+            NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
+                                                          length:shader_source_len
+                                                        encoding:NSUTF8StringEncoding];
+            MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
+            if (@available(macOS 15.0, *)) {
+                options.mathMode = MTLMathModeFast;
+            } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                options.fastMathEnabled = YES;
+#pragma clang diagnostic pop
+            }
+
+            NSError *compileError = nil;
+            id<MTLLibrary> library = [runtime.device newLibraryWithSource:sourceStr
+                                                                 options:options
+                                                                   error:&compileError];
+            if (library == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    compileError.localizedDescription ?: @"Failed to JIT-compile Metal shader.");
+                return false;
+            }
+
+            id<MTLFunction> function = [library newFunctionWithName:nameStr];
+            if (function == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    [NSString stringWithFormat:@"JIT-compiled library missing kernel '%@'.", nameStr]);
+                return false;
+            }
+
+            NSError *pipelineError = nil;
+            pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&pipelineError];
+            if (pipeline == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    pipelineError.localizedDescription ?: @"Failed to create pipeline from JIT-compiled shader.");
+                return false;
+            }
+
+            @synchronized(runtime) {
+                runtime.pipelines[nameStr] = pipeline;
+            }
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:trace_values.buffer offset:0 atIndex:0];
+        [encoder setBuffer:interaction_offsets.buffer offset:0 atIndex:1];
+        [encoder setBuffer:preprocessed_values.buffer offset:0 atIndex:2];
+        [encoder setBuffer:base_params.buffer offset:0 atIndex:3];
+        [encoder setBuffer:ext_params.buffer offset:0 atIndex:4];
+        [encoder setBuffer:random_coeff_powers.buffer offset:0 atIndex:5];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:9];
+        [encoder setBytes:&row_count length:sizeof(row_count) atIndex:10];
+
+        MTLSize grid_size = MTLSizeMake(row_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        // Do NOT waitUntilCompleted — return the handle for deferred waiting.
+        *out_handle = (__bridge_retained void *)command_buffer;
+        return true;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // GPU Blake2s PoW grind
 // ---------------------------------------------------------------------------
 //

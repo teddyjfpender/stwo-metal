@@ -70,9 +70,12 @@ pub mod prove_runtime {
 
 #[cfg(feature = "prover")]
 pub mod program {
+    pub use stwo_metal_sys::metal::CommandBufferHandle;
     pub use crate::backend::metal::{
         execute_compiled_metal_evaluation_program_v1,
+        execute_compiled_metal_evaluation_program_v1_async,
         execute_compiled_metal_evaluation_program_v1_tg,
+        complete_compiled_metal_evaluation_program_v1_async,
         execute_metal_evaluation_program_v1_on_metal,
         execute_selected_metal_evaluation_program_v1_on_metal,
         interpret_metal_evaluation_program_v1, lookup_metal_evaluation_program_overlay_v1,
