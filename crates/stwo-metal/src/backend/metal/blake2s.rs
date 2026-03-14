@@ -181,7 +181,8 @@ fn build_merkle_layers_native_standard(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
 ) -> Option<Vec<MetalBlake2sHashVec>> {
-    // Prefer the fused single-command-buffer path (leaves + all layers in one dispatch).
+    // Prefer fused single-command-buffer (GPU address indirection, no copy,
+    // leaves + layers in one dispatch).
     if let Some(layers) = build_merkle_tree_fused(columns, lifting_log_size) {
         return Some(layers);
     }
