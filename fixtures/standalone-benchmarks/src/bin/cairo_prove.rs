@@ -1331,6 +1331,7 @@ mod cairo_prove_main {
         commitment_scheme: &CommitmentSchemeProver<'_, stwo_metal::MetalBackend, Blake2sMerkleChannel>,
         random_coeff: SecureField,
         log_blowup_factor: u32,
+        metal_twiddles: &stwo::prover::poly::twiddles::TwiddleTree<stwo_metal::MetalBackend>,
     ) -> stwo::prover::poly::circle::SecureCirclePoly<SimdBackend> {
         compute_metal_composition_poly_impl(
             results,
@@ -1338,6 +1339,7 @@ mod cairo_prove_main {
                 extract_column_on_domain_metal(
                     &commitment_scheme.trees[tree_idx].polynomials[col_idx],
                     domain,
+                    metal_twiddles,
                 )
             },
             random_coeff,
@@ -1367,12 +1369,13 @@ mod cairo_prove_main {
     }
 
     /// Extract polynomial evaluation on a target domain from a MetalBackend
-    /// committed polynomial. Uses stored coefficients to evaluate on the target
-    /// domain, bypassing extended evaluations entirely.
+    /// committed polynomial. Uses GPU RFFT to evaluate on the target domain,
+    /// keeping coefficients on GPU and avoiding CPU-side polynomial evaluation.
     #[cfg(feature = "metal-runtime")]
     fn extract_column_on_domain_metal(
         poly: &stwo::prover::Poly<stwo_metal::MetalBackend>,
         eval_domain: stwo::core::poly::circle::CircleDomain,
+        twiddles: &stwo::prover::poly::twiddles::TwiddleTree<stwo_metal::MetalBackend>,
     ) -> Vec<stwo::core::fields::m31::BaseField> {
         use stwo::prover::backend::Column;
 
@@ -1381,18 +1384,12 @@ mod cairo_prove_main {
             return poly.evals.values.to_cpu();
         }
 
-        // Fallback: download coefficients, evaluate on CPU.
-        use stwo::prover::backend::CpuBackend;
+        // GPU evaluation: extend coefficients and RFFT on Metal.
         use stwo::prover::poly::circle::PolyOps;
         let coeffs_ref = poly.coeffs.as_ref()
             .expect("extract_column_on_domain_metal requires store_polynomials_coefficients=true");
-        let cpu_coeffs: Vec<stwo::core::fields::m31::BaseField> = coeffs_ref.coeffs.to_cpu();
-        let cpu_coeffs_poly = stwo::prover::poly::circle::CircleCoefficients::<CpuBackend>::new(
-            cpu_coeffs,
-        );
-        let twiddles_to = CpuBackend::precompute_twiddles(eval_domain.half_coset);
-        let extended = cpu_coeffs_poly.evaluate_with_twiddles(eval_domain, &twiddles_to);
-        extended.values
+        let eval = stwo_metal::MetalBackend::evaluate(coeffs_ref, eval_domain, twiddles);
+        eval.values.to_cpu()
     }
 
     #[cfg(feature = "metal-runtime")]
@@ -1873,6 +1870,7 @@ mod cairo_prove_main {
             &commitment_scheme,
             random_coeff,
             log_blowup_factor,
+            &metal_twiddles,
         );
         let composition_ms = composition_start.elapsed().as_secs_f64() * 1000.0;
 
