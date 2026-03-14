@@ -154,12 +154,38 @@ fn build_leaves_native_wide_packed(
     .ok()
 }
 
+/// Fused single-command-buffer Merkle tree: leaf building + all layers in one
+/// GPU dispatch, eliminating the CPU round-trip between leaves and layers.
+fn build_merkle_tree_fused(
+    columns: &[&MetalBaseFieldVec],
+    lifting_log_size: u32,
+) -> Option<Vec<MetalBlake2sHashVec>> {
+    if columns.is_empty() || lifting_log_size < 12 || columns.len() <= 16 {
+        return None;
+    }
+    let column_buffers: Vec<&U32Buffer> =
+        columns.iter().map(|column| &column.buffer).collect();
+    let column_log_sizes: Vec<u32> = columns.iter().map(|c| c.len().ilog2()).collect();
+    let packed_layers =
+        U32Buffer::blake2s_build_merkle_tree_fast(&column_buffers, &column_log_sizes, lifting_log_size)
+            .ok()?;
+    let mut layers = packed_layers
+        .into_iter()
+        .map(MetalBlake2sHashVec::from_buffer)
+        .collect::<Vec<_>>();
+    layers.reverse();
+    Some(layers)
+}
+
 fn build_merkle_layers_native_standard(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
 ) -> Option<Vec<MetalBlake2sHashVec>> {
-    // Prefer the fast single-pass kernel (GPU address indirection, zero copy).
-    // Falls back to wide chunked path, then old flat-buffer path.
+    // Prefer the fused single-command-buffer path (leaves + all layers in one dispatch).
+    if let Some(layers) = build_merkle_tree_fused(columns, lifting_log_size) {
+        return Some(layers);
+    }
+    // Fallback: separate leaf + layer dispatches.
     let packed_layer = build_leaves_native_fast_packed(columns, lifting_log_size)
         .or_else(|| build_leaves_native_wide_packed(columns, lifting_log_size))
         .or_else(|| build_leaves_native_standard_packed(columns, lifting_log_size))?;

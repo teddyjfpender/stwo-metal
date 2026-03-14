@@ -1781,6 +1781,62 @@ impl U32Buffer {
         Ok(layers)
     }
 
+    /// Fused leaf-build + layer-build in a single Metal command buffer.
+    /// Eliminates the CPU round-trip between the two GPU phases.
+    pub fn blake2s_build_merkle_tree_fast(
+        column_buffers: &[&Self],
+        column_log_sizes: &[u32],
+        lifting_log_size: u32,
+    ) -> Result<Vec<Self>, MetalError> {
+        assert_eq!(
+            column_buffers.len(),
+            column_log_sizes.len(),
+            "column_buffers and column_log_sizes must have the same length"
+        );
+        let n_columns: u32 = column_buffers
+            .len()
+            .try_into()
+            .expect("column count should fit in u32");
+        let leaf_count: usize = 1 << lifting_log_size;
+
+        let runtime = shared_runtime()?;
+        let leaf_layer = Self::uninitialized(leaf_count * 8)?;
+
+        let mut current_hash_count = leaf_count;
+        let mut upper_layers = Vec::with_capacity(lifting_log_size as usize);
+        while current_hash_count > 1 {
+            current_hash_count /= 2;
+            upper_layers.push(Self::uninitialized(current_hash_count * 8)?);
+        }
+
+        let col_ptrs: Vec<*mut std::ffi::c_void> = column_buffers
+            .iter()
+            .map(|buf| buf.raw.as_ptr())
+            .collect();
+        let layer_ptrs: Vec<*mut std::ffi::c_void> = upper_layers
+            .iter_mut()
+            .map(|layer| layer.raw.as_ptr())
+            .collect();
+
+        unsafe {
+            ffi::blake2s_build_merkle_tree_fast_u32(
+                runtime.raw.as_ptr(),
+                col_ptrs.as_ptr(),
+                leaf_layer.raw.as_ptr(),
+                layer_ptrs.as_ptr(),
+                column_log_sizes.as_ptr(),
+                n_columns,
+                lifting_log_size,
+                error_buffer_mut_ptr,
+            )?;
+        }
+
+        let mut layers = Vec::with_capacity(upper_layers.len() + 1);
+        layers.push(leaf_layer);
+        layers.extend(upper_layers);
+        Ok(layers)
+    }
+
     /// Dispatch a GPU Blake2s PoW grind batch for a given `nonce_hi` value.
     ///
     /// Tries `batch_size` nonce candidates `(nonce_hi << 32) | 0 .. batch_size-1` and
@@ -3179,6 +3235,17 @@ mod ffi {
             leaf_layer: *mut c_void,
             layer_ptrs: *const *mut c_void,
             leaf_log_size: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_blake2s_build_merkle_tree_fast_u32(
+            runtime: *mut c_void,
+            column_buffers: *const *mut c_void,
+            leaf_layer: *mut c_void,
+            layer_ptrs: *const *mut c_void,
+            column_log_sizes: *const u32,
+            n_columns: u32,
+            lifting_log_size: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -4961,6 +5028,35 @@ mod ffi {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub unsafe fn blake2s_build_merkle_tree_fast_u32(
+        runtime: *mut c_void,
+        column_buffers: *const *mut c_void,
+        leaf_layer: *mut c_void,
+        layer_ptrs: *const *mut c_void,
+        column_log_sizes: *const u32,
+        n_columns: u32,
+        lifting_log_size: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_blake2s_build_merkle_tree_fast_u32(
+            runtime,
+            column_buffers,
+            leaf_layer,
+            layer_ptrs,
+            column_log_sizes,
+            n_columns,
+            lifting_log_size,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub unsafe fn eval_program_v1_reference_u32x4(
         runtime: *mut c_void,
         trace_values: *mut c_void,
@@ -6446,6 +6542,22 @@ mod ffi {
         _leaf_layer: *mut c_void,
         _layer_ptrs: *const *mut c_void,
         _leaf_log_size: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn blake2s_build_merkle_tree_fast_u32(
+        _runtime: *mut c_void,
+        _column_buffers: *const *mut c_void,
+        _leaf_layer: *mut c_void,
+        _layer_ptrs: *const *mut c_void,
+        _column_log_sizes: *const u32,
+        _n_columns: u32,
+        _lifting_log_size: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

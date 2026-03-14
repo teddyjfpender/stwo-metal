@@ -5390,6 +5390,156 @@ bool stwo_metal_blake2s_build_merkle_layers_u32(
     }
 }
 
+// Fused leaf-build + layer-build in a single command buffer.
+// Eliminates the CPU round-trip (waitUntilCompleted) between the two phases,
+// letting Metal pipeline the leaf→layer GPU transition.
+bool stwo_metal_blake2s_build_merkle_tree_fast_u32(
+    void *runtime_ptr,
+    void *const *column_buffers_ptr,
+    void *leaf_layer_ptr,
+    void *const *layer_ptrs,
+    const uint32_t *column_log_sizes,
+    uint32_t n_columns,
+    uint32_t lifting_log_size,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *leaf_dst = stwo_metal_buffer_box(leaf_layer_ptr);
+        NSUInteger row_count = ((NSUInteger)1) << lifting_log_size;
+
+        if (n_columns == 0 || leaf_dst.len != row_count * 8u) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Fused Merkle tree: invalid arguments.");
+            return false;
+        }
+
+        // --- Pipeline states ---
+        id<MTLComputePipelineState> leaf_pipeline = stwo_metal_pipeline(
+            runtime, @"blake2s_build_leaves_lifted_fast_u32",
+            error_message, error_message_len);
+        if (leaf_pipeline == nil) return false;
+
+        id<MTLComputePipelineState> layer_pipeline = stwo_metal_pipeline(
+            runtime, @"blake2s_build_next_layer_u32",
+            error_message, error_message_len);
+        if (layer_pipeline == nil) return false;
+
+        // --- GPU address buffer for column indirection ---
+        NSUInteger addr_buf_len = n_columns * sizeof(uint64_t);
+        id<MTLBuffer> addr_buffer = [runtime.device
+            newBufferWithLength:addr_buf_len
+            options:MTLResourceStorageModeShared];
+        if (addr_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to allocate GPU address buffer.");
+            return false;
+        }
+        uint64_t *addrs = (uint64_t *)addr_buffer.contents;
+        for (uint32_t i = 0; i < n_columns; i++) {
+            StwoMetalBufferBox *col = stwo_metal_buffer_box(column_buffers_ptr[i]);
+            addrs[i] = col.buffer.gpuAddress;
+        }
+
+        // --- Column log sizes buffer ---
+        NSUInteger log_sizes_buf_len = n_columns * sizeof(uint32_t);
+        id<MTLBuffer> log_sizes_buffer = [runtime.device
+            newBufferWithLength:log_sizes_buf_len
+            options:MTLResourceStorageModeShared];
+        if (log_sizes_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to allocate log sizes buffer.");
+            return false;
+        }
+        memcpy(log_sizes_buffer.contents, column_log_sizes,
+               n_columns * sizeof(uint32_t));
+
+        // --- Single command buffer for the entire tree ---
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        // --- Encoder 1: Leaf building ---
+        {
+            id<MTLComputeCommandEncoder> encoder =
+                [command_buffer computeCommandEncoder];
+            if (encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    @"Failed to create leaf compute encoder.");
+                return false;
+            }
+
+            [encoder setComputePipelineState:leaf_pipeline];
+            [encoder setBuffer:addr_buffer offset:0 atIndex:0];
+            [encoder setBuffer:log_sizes_buffer offset:0 atIndex:1];
+            [encoder setBuffer:leaf_dst.buffer offset:0 atIndex:2];
+            [encoder setBytes:&n_columns length:sizeof(n_columns) atIndex:3];
+            [encoder setBytes:&lifting_log_size
+                       length:sizeof(lifting_log_size) atIndex:4];
+
+            for (uint32_t i = 0; i < n_columns; i++) {
+                StwoMetalBufferBox *col =
+                    stwo_metal_buffer_box(column_buffers_ptr[i]);
+                [encoder useResource:col.buffer usage:MTLResourceUsageRead];
+            }
+
+            MTLSize grid_size = MTLSizeMake(row_count, 1, 1);
+            MTLSize threadgroup_size = MTLSizeMake(
+                stwo_metal_threads_per_group(leaf_pipeline), 1, 1);
+            [encoder dispatchThreads:grid_size
+                threadsPerThreadgroup:threadgroup_size];
+            [encoder endEncoding];
+        }
+
+        // --- Encoders 2..N+1: Layer building (same command buffer) ---
+        StwoMetalBufferBox *src_layer = leaf_dst;
+        uint32_t next_len = ((uint32_t)1u) << lifting_log_size;
+        for (uint32_t layer_index = 0u; layer_index < lifting_log_size; ++layer_index) {
+            next_len >>= 1u;
+            StwoMetalBufferBox *dst_layer = stwo_metal_buffer_box(layer_ptrs[layer_index]);
+
+            id<MTLComputeCommandEncoder> encoder =
+                [command_buffer computeCommandEncoder];
+            if (encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    @"Failed to create layer compute encoder.");
+                return false;
+            }
+
+            [encoder setComputePipelineState:layer_pipeline];
+            [encoder setBuffer:src_layer.buffer offset:0 atIndex:0];
+            [encoder setBuffer:dst_layer.buffer offset:0 atIndex:1];
+            [encoder setBytes:&next_len length:sizeof(next_len) atIndex:2];
+
+            MTLSize grid_size = MTLSizeMake(next_len, 1, 1);
+            MTLSize threadgroup_size = MTLSizeMake(
+                stwo_metal_threads_per_group(layer_pipeline), 1, 1);
+            [encoder dispatchThreads:grid_size
+                threadsPerThreadgroup:threadgroup_size];
+            [encoder endEncoding];
+
+            src_layer = dst_layer;
+        }
+
+        // --- Single commit + wait for entire tree ---
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                command_buffer.error.localizedDescription
+                    ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_generate_wide_fibonacci_trace_u32(
     void *runtime_ptr,
     void *input_a_ptr,
