@@ -35,6 +35,7 @@ pub mod interaction_trace_id_to_big;
 pub mod witness_memory_addr_to_id;
 pub mod witness_memory_id_to_big;
 pub mod witness_range_check;
+pub mod witness_opcodes;
 pub mod witness_verify_instruction;
 mod workload;
 mod workload_contract;
@@ -154,6 +155,11 @@ pub use witness_memory_id_to_big::{
 };
 pub use witness_range_check::{
     generate_range_check_trace, MetalRangeCheckTrace, RangeCheckTraceError,
+};
+pub use witness_opcodes::{
+    generate_add_opcode_small_trace, generate_assert_eq_double_deref_trace,
+    generate_call_opcode_rel_imm_trace, generate_jnz_opcode_taken_trace,
+    generate_jump_opcode_rel_imm_trace, generate_ret_opcode_trace, OpcodeTraceError,
 };
 pub use witness_verify_instruction::{
     generate_verify_instruction_trace, MetalVerifyInstructionTrace, VerifyInstructionTraceError,

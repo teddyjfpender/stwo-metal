@@ -2872,6 +2872,20 @@ mod cairo_prove_main {
             .map(|addr| input.memory.address_to_id[addr].0)
             .collect();
 
+        // Clone memory data for GPU opcode dispatch (separate from memory witness).
+        let opcode_addr_to_id = gpu_addr_to_id_raw.clone();
+        let opcode_big_values: Vec<u32> = gpu_big_values
+            .iter()
+            .flat_map(|v| v.iter().copied())
+            .collect();
+        let opcode_small_values: Vec<u32> = gpu_small_values
+            .iter()
+            .flat_map(|v| {
+                let limbs = stwo_cairo_adapter::memory::u128_to_4_limbs(*v);
+                limbs.into_iter()
+            })
+            .collect();
+
         // Spawn claim generator on background thread (CPU-only, overlaps with
         // commit below).  `input` is not used again after this point.
         let preprocessed_trace_for_claim = preprocessed_trace.clone();
@@ -3010,9 +3024,7 @@ mod cairo_prove_main {
         // GpuPrecomputedMetalValues BEFORE write_trace(), so only lightweight
         // multiplicity upload (~5ms) happens on the critical path after opcodes.
         {
-            use stwo_cairo_prover::witness::cairo_claim_generator::{
-                GpuPrecomputedMetalTraces, GpuPrecomputedMetalValues,
-            };
+            use stwo_cairo_prover::witness::cairo_claim_generator::GpuPrecomputedMetalValues;
             use stwo::prover::backend::simd::m31::N_LANES;
 
             let gpu_big = gpu_big_value_evals;
@@ -3080,7 +3092,122 @@ mod cairo_prove_main {
             };
 
             cairo_claim_generator.gpu_precomputed_metal_values = Some(precomputed_values);
+        }
 
+        // --- GPU opcode dispatch: run opcode kernels on GPU in parallel with CPU ---
+        // Extract opcode inputs (pc, ap, fp) and dispatch GPU kernels on a
+        // background thread. The GPU thread runs concurrently with the CPU rayon
+        // opcode scope inside write_trace(). After the CPU scope finishes
+        // (multiplicities accumulated), the GPU results are joined and committed.
+        {
+            use stwo_cairo_prover::witness::cairo_claim_generator::GpuOpcodeTraces;
+            use stwo_metal::{
+                generate_add_opcode_small_trace, generate_assert_eq_double_deref_trace,
+                generate_jnz_opcode_taken_trace, generate_jump_opcode_rel_imm_trace,
+                generate_call_opcode_rel_imm_trace, generate_ret_opcode_trace,
+            };
+
+            let t_opcode_gpu = Instant::now();
+            let opcode_inputs = cairo_claim_generator.extract_gpu_opcode_inputs();
+
+            // Move memory data into the GPU thread closure.
+            let addr_to_id = opcode_addr_to_id;
+            let big_vals = opcode_big_values;
+            let small_vals = opcode_small_values;
+
+            let gpu_opcode_handle = std::thread::spawn(move || {
+                let mut traces = GpuOpcodeTraces::default();
+
+                if let Some(inp) = opcode_inputs.add_opcode_small {
+                    match generate_add_opcode_small_trace(
+                        &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
+                    ) {
+                        Ok(evals) => {
+                            traces.add_opcode_small =
+                                Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                        }
+                        Err(e) => eprintln!("  [gpu-opcode] add_opcode_small error: {e}"),
+                    }
+                }
+
+                if let Some(inp) = opcode_inputs.assert_eq_opcode_double_deref {
+                    match generate_assert_eq_double_deref_trace(
+                        &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
+                    ) {
+                        Ok(evals) => {
+                            traces.assert_eq_opcode_double_deref =
+                                Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                        }
+                        Err(e) => eprintln!("  [gpu-opcode] assert_eq_double_deref error: {e}"),
+                    }
+                }
+
+                if let Some(inp) = opcode_inputs.jnz_opcode_taken {
+                    match generate_jnz_opcode_taken_trace(
+                        &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
+                    ) {
+                        Ok(evals) => {
+                            traces.jnz_opcode_taken =
+                                Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                        }
+                        Err(e) => eprintln!("  [gpu-opcode] jnz_opcode_taken error: {e}"),
+                    }
+                }
+
+                if let Some(inp) = opcode_inputs.jump_opcode_rel_imm {
+                    match generate_jump_opcode_rel_imm_trace(
+                        &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
+                    ) {
+                        Ok(evals) => {
+                            traces.jump_opcode_rel_imm =
+                                Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                        }
+                        Err(e) => eprintln!("  [gpu-opcode] jump_opcode_rel_imm error: {e}"),
+                    }
+                }
+
+                if let Some(inp) = opcode_inputs.call_opcode_rel_imm {
+                    match generate_call_opcode_rel_imm_trace(
+                        &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
+                    ) {
+                        Ok(evals) => {
+                            traces.call_opcode_rel_imm =
+                                Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                        }
+                        Err(e) => eprintln!("  [gpu-opcode] call_opcode_rel_imm error: {e}"),
+                    }
+                }
+
+                if let Some(inp) = opcode_inputs.ret_opcode {
+                    match generate_ret_opcode_trace(
+                        &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
+                    ) {
+                        Ok(evals) => {
+                            traces.ret_opcode =
+                                Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                        }
+                        Err(e) => eprintln!("  [gpu-opcode] ret_opcode error: {e}"),
+                    }
+                }
+
+                let gpu_ms = t_opcode_gpu.elapsed().as_secs_f64() * 1000.0;
+                if std::env::var("GPU_WITNESS").is_ok() {
+                    eprintln!("  [GPU_WITNESS] GPU opcode dispatch thread: {:.1} ms", gpu_ms);
+                }
+
+                traces
+            });
+
+            cairo_claim_generator.gpu_opcode_handle = Some(gpu_opcode_handle);
+        }
+
+        {
+            use stwo_cairo_prover::witness::cairo_claim_generator::{
+                GpuPrecomputedMetalTraces, GpuPrecomputedMetalValues,
+            };
+            use stwo::prover::backend::simd::m31::N_LANES;
+            const LOG_MAX_BIG_SIZE_CB: u32 = 25;
+            let max_big_size = 1usize << LOG_MAX_BIG_SIZE_CB;
             // Lightweight mult-upload callback: only uploads CPU multiplicities
             // and appends them to pre-computed value columns (~5ms on critical path).
             cairo_claim_generator.gpu_metal_mult_upload_fn = Some(Box::new(
