@@ -440,7 +440,6 @@ mod cairo_prove_main {
             stwo::core::fields::m31::BaseField,
             stwo::prover::poly::BitReversedOrder,
         >>> {
-            use stwo::prover::backend::Column;
             let idx = self.big_next.get();
             if columns.len() != Self::BIG_TOTAL_COLS || idx >= self.big_value_evals.len() {
                 return None;
@@ -458,14 +457,10 @@ mod cairo_prove_main {
                 stwo::core::fields::m31::BaseField,
                 stwo::prover::poly::BitReversedOrder,
             >> = gpu_vals.clone();
-            // Convert only the multiplicity column (last) from CPU to Metal.
+            // Convert only the multiplicity column (last) from CPU to Metal
+            // via zero-copy bridge (bulk memcpy of PackedM31 data).
             let mult_eval = &columns[Self::BIG_VALUE_COLS];
-            let domain = mult_eval.domain;
-            let metal_values = mult_eval.values.to_cpu().into_iter().collect();
-            result.push(stwo::prover::poly::circle::CircleEvaluation::new(
-                domain,
-                metal_values,
-            ));
+            result.push(stwo_metal::simd_eval_to_metal_eval(mult_eval));
             self.big_cols_replaced.set(
                 self.big_cols_replaced.get() + Self::BIG_VALUE_COLS,
             );
@@ -487,7 +482,6 @@ mod cairo_prove_main {
             stwo::core::fields::m31::BaseField,
             stwo::prover::poly::BitReversedOrder,
         >>> {
-            use stwo::prover::backend::Column;
             if self.small_done.get() || columns.len() != Self::SMALL_TOTAL_COLS {
                 return None;
             }
@@ -505,13 +499,9 @@ mod cairo_prove_main {
                 stwo::core::fields::m31::BaseField,
                 stwo::prover::poly::BitReversedOrder,
             >> = gpu_vals.clone();
+            // Convert multiplicity column via zero-copy bridge.
             let mult_eval = &columns[Self::SMALL_VALUE_COLS];
-            let domain = mult_eval.domain;
-            let metal_values = mult_eval.values.to_cpu().into_iter().collect();
-            result.push(stwo::prover::poly::circle::CircleEvaluation::new(
-                domain,
-                metal_values,
-            ));
+            result.push(stwo_metal::simd_eval_to_metal_eval(mult_eval));
             self.small_cols_replaced.set(Self::SMALL_VALUE_COLS);
             Some(result)
         }
@@ -536,7 +526,6 @@ mod cairo_prove_main {
             stwo::core::fields::m31::BaseField,
             stwo::prover::poly::BitReversedOrder,
         >>> {
-            use stwo::prover::backend::Column;
             if self.addr_to_id_done.get() || columns.len() != Self::ADDR_TO_ID_TOTAL_COLS {
                 return None;
             }
@@ -561,14 +550,9 @@ mod cairo_prove_main {
                 let mult_col = chunk * 2 + 1;
                 // GPU id column.
                 result.push(gpu_evals[id_col].clone());
-                // CPU multiplicity column (upload to Metal).
+                // CPU multiplicity column via zero-copy bridge.
                 let mult_eval = &columns[mult_col];
-                let domain = mult_eval.domain;
-                let metal_values = mult_eval.values.to_cpu().into_iter().collect();
-                result.push(stwo::prover::poly::circle::CircleEvaluation::new(
-                    domain,
-                    metal_values,
-                ));
+                result.push(stwo_metal::simd_eval_to_metal_eval(mult_eval));
             }
             self.addr_to_id_cols_replaced.set(Self::ADDR_TO_ID_SPLIT);
             Some(result)
@@ -603,8 +587,6 @@ mod cairo_prove_main {
                 stwo::prover::poly::BitReversedOrder,
             >>,
         ) -> stwo::core::pcs::TreeSubspan {
-            use stwo::prover::backend::Column;
-
             // Try GPU replacement for memory_id_to_big and memory_address_to_id columns.
             if let Some(gpu) = self.gpu_witness {
                 if let Some(metal_cols) = gpu.try_replace_big(&columns) {
@@ -618,19 +600,9 @@ mod cairo_prove_main {
                 }
             }
 
-            // Default path: convert SimdBackend → MetalBackend via CPU copy.
-            let metal_columns: Vec<stwo::prover::poly::circle::CircleEvaluation<
-                stwo_metal::MetalBackend,
-                stwo::core::fields::m31::BaseField,
-                stwo::prover::poly::BitReversedOrder,
-            >> = columns
-                .into_iter()
-                .map(|eval| {
-                    let domain = eval.domain;
-                    let metal_values = eval.values.to_cpu().into_iter().collect();
-                    stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
-                })
-                .collect();
+            // Default path: convert SimdBackend → MetalBackend via zero-copy bridge.
+            // Uses bulk memcpy of PackedM31 data instead of element-by-element conversion.
+            let metal_columns = stwo_metal::simd_evals_to_metal_evals(&columns);
             self.inner.extend_evals(metal_columns)
         }
     }

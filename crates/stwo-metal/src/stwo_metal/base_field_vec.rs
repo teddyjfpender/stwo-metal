@@ -2,6 +2,7 @@ use std::sync::OnceLock;
 
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
+use stwo::prover::backend::simd::m31::{PackedM31, N_LANES};
 use stwo_metal_sys::metal::U32Buffer;
 
 use super::SecureFieldVec;
@@ -250,6 +251,78 @@ impl BaseFieldVec {
             Self::from_vec(left.to_vec()),
             Self::from_vec(right.to_vec()),
         )
+    }
+
+    /// Creates a `BaseFieldVec` from a `&[PackedM31]` slice by uploading the raw
+    /// u32 data directly to a Metal buffer.
+    ///
+    /// This is significantly faster than the naive `from_vec(to_cpu())` path because
+    /// it avoids element-by-element conversion: `PackedM31` is `#[repr(transparent)]`
+    /// over `Simd<u32, 16>`, so the slice can be reinterpreted as `&[u32]` and
+    /// uploaded in a single bulk copy.
+    pub fn from_packed_m31_slice(packed: &[PackedM31]) -> Self {
+        let size = packed.len() * N_LANES;
+        // SAFETY: PackedM31 is #[repr(transparent)] over Simd<u32, 16> which has
+        // the same layout as [u32; 16]. Reinterpreting &[PackedM31] as &[u32] is
+        // safe because both are POD types with compatible layouts.
+        let raw_u32_slice: &[u32] =
+            unsafe { std::slice::from_raw_parts(packed.as_ptr() as *const u32, size) };
+        let buffer =
+            U32Buffer::from_slice(raw_u32_slice).expect("Metal BaseFieldVec upload should initialize");
+        Self {
+            buffer,
+            size,
+            host_cache: OnceLock::new(),
+        }
+    }
+
+    /// Returns a zero-copy view of the GPU buffer as a `&[PackedM31]` slice.
+    ///
+    /// On Apple Silicon unified memory, the GPU buffer's host pointer points to
+    /// the same physical memory used by the GPU. `PackedM31` is `#[repr(transparent)]`
+    /// over `Simd<u32, 16>`, which has the same layout as `[u32; 16]`. Since both
+    /// `M31` and `u32` are `#[repr(transparent)]`, the contiguous u32 values in
+    /// the GPU buffer can be reinterpreted as `PackedM31` groups of 16 without
+    /// any data transformation.
+    ///
+    /// # Panics
+    /// Panics if the buffer length is not a multiple of `N_LANES` (16), or if
+    /// the host pointer is null (discrete GPU without unified memory).
+    pub fn as_packed_m31_slice(&self) -> &[PackedM31] {
+        assert!(
+            self.size % N_LANES == 0,
+            "as_packed_m31_slice requires buffer length {} to be a multiple of N_LANES ({})",
+            self.size,
+            N_LANES,
+        );
+
+        // Try direct host pointer first (zero-copy on unified memory).
+        let raw = unsafe { self.buffer.host_ptr() };
+        assert!(
+            !raw.is_null(),
+            "as_packed_m31_slice requires unified memory (host_ptr must be non-null)"
+        );
+
+        let packed_len = self.size / N_LANES;
+        // SAFETY: PackedM31 is #[repr(transparent)] over Simd<u32, 16> which has
+        // the same layout as [u32; 16]. M31 is #[repr(transparent)] over u32.
+        // The pointer is valid for `self.size` u32 values = `packed_len` PackedM31 values.
+        // The alignment of Simd<u32, 16> is at least that of u32, and Metal buffers
+        // are page-aligned, so alignment is satisfied.
+        unsafe { std::slice::from_raw_parts(raw as *const PackedM31, packed_len) }
+    }
+
+    /// Copies the GPU buffer contents into a new `Vec<PackedM31>`.
+    ///
+    /// This is significantly faster than the naive path of
+    /// `to_cpu() -> iter -> collect::<BaseColumn>()` because it performs a single
+    /// memcpy of the contiguous host-mapped memory rather than element-by-element
+    /// conversion and re-packing.
+    ///
+    /// # Panics
+    /// Panics if the buffer length is not a multiple of `N_LANES` (16).
+    pub fn to_packed_m31_vec(&self) -> Vec<PackedM31> {
+        self.as_packed_m31_slice().to_vec()
     }
 }
 
