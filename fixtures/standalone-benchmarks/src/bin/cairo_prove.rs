@@ -2181,6 +2181,7 @@ mod cairo_prove_main {
         }
     }
 
+    #[cfg(feature = "metal-runtime")]
     fn run_metal_full_pipeline(
         input: ProverInput,
         preprocessed_trace: Arc<PreProcessedTrace>,

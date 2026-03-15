@@ -9,3 +9,7 @@ target*
 flamegraph.svg
 perf.data
 perf.data.old
+
+# Generated benchmark data (large prover inputs + results).
+fixtures/standalone-benchmarks/test_data/cairo_fib_*/
+fixtures/standalone-benchmarks/bench_results_*.jsonl

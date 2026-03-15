@@ -21,42 +21,10 @@ use crate::stwo_metal::base_field_vec::BaseFieldVec;
 use crate::stwo_metal::secure_field_vec::SecureFieldVec;
 
 type QuotientDomainCache = Mutex<BTreeMap<u32, Arc<(U32Buffer, U32Buffer)>>>;
-type PackedPartialNumeratorCache = Mutex<BTreeMap<([usize; 4], usize), Arc<U32Buffer>>>;
 
 fn quotient_domain_cache() -> &'static QuotientDomainCache {
     static CACHE: OnceLock<QuotientDomainCache> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
-}
-
-fn packed_partial_numerator_cache() -> &'static PackedPartialNumeratorCache {
-    static CACHE: OnceLock<PackedPartialNumeratorCache> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
-}
-
-fn partial_cache_key(columns: &[BaseFieldVec; 4]) -> ([usize; 4], usize) {
-    (
-        [
-            columns[0].buffer_identity(),
-            columns[1].buffer_identity(),
-            columns[2].buffer_identity(),
-            columns[3].buffer_identity(),
-        ],
-        columns[0].len(),
-    )
-}
-
-fn cache_packed_partial_numerators(columns: &[BaseFieldVec; 4], packed: Arc<U32Buffer>) {
-    packed_partial_numerator_cache()
-        .lock()
-        .expect("packed partial numerator cache mutex should not be poisoned")
-        .insert(partial_cache_key(columns), packed);
-}
-
-fn take_cached_packed_partial_numerators(columns: &[BaseFieldVec; 4]) -> Option<Arc<U32Buffer>> {
-    packed_partial_numerator_cache()
-        .lock()
-        .expect("packed partial numerator cache mutex should not be poisoned")
-        .remove(&partial_cache_key(columns))
 }
 
 fn pack_cm31(value: CM31) -> [u32; 2] {
@@ -455,7 +423,6 @@ impl QuotientOps for MetalBackend {
                 .copy_from_offset(&columns[orig_idx].values.buffer, compact_idx * size)
                 .expect("Metal quotient batched column staging should copy");
         }
-
         // Build concatenated kernel inputs for ALL batches.
         let mut all_indices: Vec<u32> = Vec::new();
         let mut all_b_coeffs: Vec<u32> = Vec::new();
@@ -485,7 +452,9 @@ impl QuotientOps for MetalBackend {
             first_linear_term_accs.push(coeffs.iter().map(|(a, ..)| a).sum());
         }
 
-        // Single kernel dispatch for ALL batches.
+        // Fused kernel dispatch: accumulate + unpack in one command buffer.
+        // Eliminates N GPU round-trips (clone_range + per-batch unpack) that
+        // previously cost ~20ms for large groups.
         let column_indices_buf = U32Buffer::from_slice(&all_indices)
             .expect("Metal quotient batched index upload should initialize");
         let b_coeffs_buf = U32Buffer::from_slice(&all_b_coeffs)
@@ -497,38 +466,23 @@ impl QuotientOps for MetalBackend {
         let term_counts_buf = U32Buffer::from_slice(&term_counts)
             .expect("Metal quotient batched term-count upload should initialize");
 
-        let batched_values = U32Buffer::accumulate_partial_numerators_batched(
-            &flat_columns,
-            &column_indices_buf,
-            &b_coeffs_buf,
-            &c_coeffs_buf,
-            &term_offsets_buf,
-            &term_counts_buf,
-            size,
-        )
-        .expect("Metal batched partial numerator accumulation should succeed");
+        let per_batch_coords =
+            U32Buffer::accumulate_and_unpack_partial_numerators_batched(
+                &flat_columns,
+                &column_indices_buf,
+                &b_coeffs_buf,
+                &c_coeffs_buf,
+                &term_offsets_buf,
+                &term_counts_buf,
+                size,
+            )
+            .expect("Metal fused accumulate+unpack should succeed");
 
-        // Release staging buffers immediately.
-        drop(flat_columns);
-        drop(column_indices_buf);
-        drop(b_coeffs_buf);
-        drop(c_coeffs_buf);
-        drop(term_offsets_buf);
-        drop(term_counts_buf);
-
-        // Extract per-batch results from the combined output.
-        let batch_stride = size * 4;
+        // Build AccumulatedNumerators from coordinate buffers.
         for (batch_idx, batch) in sample_batches.iter().enumerate() {
-            let packed_values = Arc::new(
-                batched_values
-                    .clone_range(batch_idx * batch_stride, batch_stride)
-                    .expect("Metal batched partial numerator slice should clone"),
-            );
-            let partial_columns = packed_values
-                .unpack_secure_column_coords()
-                .expect("Metal partial numerator unpack should succeed")
-                .map(BaseFieldVec::from_buffer);
-            cache_packed_partial_numerators(&partial_columns, packed_values);
+            let partial_columns = per_batch_coords[batch_idx]
+                .each_ref()
+                .map(|buf| BaseFieldVec::from_buffer(buf.clone()));
             accumulated_numerators_vec.push(AccumulatedNumerators {
                 sample_point: batch.point,
                 partial_numerators_acc: stwo::prover::secure_column::SecureColumnByCoords {
@@ -561,35 +515,14 @@ impl QuotientOps for MetalBackend {
         let mut partial_log_sizes = Vec::with_capacity(accumulations.len());
         let mut sample_points = Vec::with_capacity(accumulations.len() * 8);
         let mut first_linear_terms = Vec::with_capacity(accumulations.len() * 4);
-        let packed_accumulations = accumulations
-            .iter()
-            .map(|accumulation| {
-                take_cached_packed_partial_numerators(&accumulation.partial_numerators_acc.columns)
-            })
-            .collect::<Option<Vec<_>>>();
 
-        let mut partials_packed = packed_accumulations.as_ref().map(|_| {
-            U32Buffer::uninitialized(total_partial_len * 4)
-                .expect("Metal packed quotient-combine partial staging should allocate")
+        let mut partial_coords: [U32Buffer; 4] = std::array::from_fn(|_| {
+            U32Buffer::uninitialized(total_partial_len)
+                .expect("Metal quotient-combine partial staging should allocate")
         });
-        let mut partial_coords: Option<[U32Buffer; 4]> = if packed_accumulations.is_none() {
-            Some(std::array::from_fn(|_| {
-                U32Buffer::uninitialized(total_partial_len)
-                    .expect("Metal quotient-combine partial staging should allocate")
-            }))
-        } else {
-            None
-        };
         let mut offset = 0usize;
 
-        for (accumulation, packed_partial) in accumulations.iter().zip(
-            packed_accumulations
-                .as_ref()
-                .map(|partials| partials.iter().map(Some))
-                .into_iter()
-                .flatten()
-                .chain(std::iter::repeat(None).take(accumulations.len())),
-        ) {
+        for accumulation in accumulations.iter() {
             let partial_len = accumulation.partial_numerators_acc.len();
             partial_offsets.push(
                 offset
@@ -605,21 +538,13 @@ impl QuotientOps for MetalBackend {
                     .map(|limb| limb.0),
             );
 
-            if let (Some(partials_packed), Some(packed_partial)) =
-                (partials_packed.as_mut(), packed_partial)
+            for (coord_buffer, column) in partial_coords
+                .iter_mut()
+                .zip(accumulation.partial_numerators_acc.columns.each_ref())
             {
-                partials_packed
-                    .copy_range_from(packed_partial.as_ref(), 0, partial_len * 4, offset * 4)
-                    .expect("Metal packed quotient-combine partial staging should copy");
-            } else if let Some(partial_coords) = partial_coords.as_mut() {
-                for (coord_buffer, column) in partial_coords
-                    .iter_mut()
-                    .zip(accumulation.partial_numerators_acc.columns.each_ref())
-                {
-                    coord_buffer
-                        .copy_range_from(&column.buffer, 0, partial_len, offset)
-                        .expect("Metal quotient-combine partial staging should copy");
-                }
+                coord_buffer
+                    .copy_range_from(&column.buffer, 0, partial_len, offset)
+                    .expect("Metal quotient-combine partial staging should copy");
             }
             offset += partial_len;
         }
@@ -633,48 +558,22 @@ impl QuotientOps for MetalBackend {
         let partial_offsets = U32Buffer::from_slice(&partial_offsets)
             .expect("Metal quotient-combine partial offset upload should initialize");
         let domain_coords = cached_quotient_domain_coords(lifting_log_size);
-        let result = if let Some(partials_packed) = partials_packed.as_ref() {
-            U32Buffer::compute_quotients_and_combine_packed(
-                partials_packed,
-                &sample_points,
-                &first_linear_terms,
-                &partial_log_sizes,
-                &partial_offsets,
-                &domain_coords.0,
-                &domain_coords.1,
-                lifting_log_size,
-            )
-            .expect("Metal packed quotient-combine kernel should succeed")
-        } else {
-            let partial_coords = partial_coords
-                .as_ref()
-                .expect("coordinate quotient-combine staging should be present");
-            U32Buffer::compute_quotients_and_combine(
-                [
-                    &partial_coords[0],
-                    &partial_coords[1],
-                    &partial_coords[2],
-                    &partial_coords[3],
-                ],
-                &sample_points,
-                &first_linear_terms,
-                &partial_log_sizes,
-                &partial_offsets,
-                &domain_coords.0,
-                &domain_coords.1,
-                lifting_log_size,
-            )
-            .expect("Metal quotient-combine kernel should succeed")
-        };
-
-        // Clear cached partial numerators to release GPU memory before subsequent phases.
-        packed_partial_numerator_cache()
-            .lock()
-            .expect("packed partial numerator cache mutex should not be poisoned")
-            .clear();
-        drop(partials_packed);
-        drop(partial_coords);
-        drop(packed_accumulations);
+        let result = U32Buffer::compute_quotients_and_combine(
+            [
+                &partial_coords[0],
+                &partial_coords[1],
+                &partial_coords[2],
+                &partial_coords[3],
+            ],
+            &sample_points,
+            &first_linear_terms,
+            &partial_log_sizes,
+            &partial_offsets,
+            &domain_coords.0,
+            &domain_coords.1,
+            lifting_log_size,
+        )
+        .expect("Metal quotient-combine kernel should succeed");
 
         let columns = SecureFieldVec::from_buffer(result).to_base_coords();
         SecureEvaluation::new(

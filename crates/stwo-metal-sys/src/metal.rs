@@ -1475,6 +1475,66 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    /// Fused accumulate + unpack: single command buffer encodes the batched
+    /// partial-numerator accumulation kernel followed by N per-batch unpack
+    /// kernels.  Eliminates N GPU round-trips and intermediate clone copies.
+    ///
+    /// Returns `n_batches` arrays of 4 coordinate buffers (one per QM31 limb).
+    pub fn accumulate_and_unpack_partial_numerators_batched(
+        columns: &Self,
+        column_indices: &Self,
+        b_coeffs: &Self,
+        c_coeffs: &Self,
+        term_offsets: &Self,
+        term_counts: &Self,
+        row_count: usize,
+    ) -> Result<Vec<[Self; 4]>, MetalError> {
+        let n_batches = term_counts.len;
+        assert!(
+            row_count > 0 && n_batches > 0,
+            "fused accumulate+unpack requires non-zero row count and batch count"
+        );
+        let runtime = shared_runtime()?;
+        // Pre-allocate output coordinate buffers.
+        let mut coord_buffers: Vec<Self> = Vec::with_capacity(n_batches * 4);
+        let mut coord_ptrs: Vec<*mut c_void> = Vec::with_capacity(n_batches * 4);
+        for _ in 0..(n_batches * 4) {
+            let buf = Self::uninitialized(row_count)?;
+            coord_ptrs.push(buf.raw.as_ptr());
+            coord_buffers.push(buf);
+        }
+        unsafe {
+            ffi::accumulate_and_unpack_partial_numerators_batched_u32x4(
+                runtime.raw.as_ptr(),
+                columns.raw.as_ptr(),
+                column_indices.raw.as_ptr(),
+                b_coeffs.raw.as_ptr(),
+                c_coeffs.raw.as_ptr(),
+                term_offsets.raw.as_ptr(),
+                term_counts.raw.as_ptr(),
+                row_count
+                    .try_into()
+                    .expect("fused accumulate+unpack row count should fit in u32"),
+                n_batches
+                    .try_into()
+                    .expect("fused accumulate+unpack batch count should fit in u32"),
+                coord_ptrs.as_mut_ptr(),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        // Reshape flat vec into per-batch [coord0, coord1, coord2, coord3].
+        let mut result = Vec::with_capacity(n_batches);
+        let mut drain = coord_buffers.into_iter();
+        for _ in 0..n_batches {
+            let c0 = drain.next().unwrap();
+            let c1 = drain.next().unwrap();
+            let c2 = drain.next().unwrap();
+            let c3 = drain.next().unwrap();
+            result.push([c0, c1, c2, c3]);
+        }
+        Ok(result)
+    }
+
     pub fn compute_quotients_and_combine(
         partial_coord_columns: [&Self; 4],
         sample_points: &Self,
@@ -3143,6 +3203,20 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_accumulate_and_unpack_partial_numerators_batched_u32x4(
+            runtime: *mut c_void,
+            columns: *mut c_void,
+            column_indices: *mut c_void,
+            b_coeffs: *mut c_void,
+            c_coeffs: *mut c_void,
+            term_offsets: *mut c_void,
+            term_counts: *mut c_void,
+            row_count: u32,
+            n_batches: u32,
+            output_coord_buffers: *mut *mut c_void,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_compute_quotients_and_combine_u32x4(
             runtime: *mut c_void,
             partial_coord_0: *mut c_void,
@@ -4779,6 +4853,41 @@ mod ffi {
             dst,
             row_count,
             n_batches,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn accumulate_and_unpack_partial_numerators_batched_u32x4(
+        runtime: *mut c_void,
+        columns: *mut c_void,
+        column_indices: *mut c_void,
+        b_coeffs: *mut c_void,
+        c_coeffs: *mut c_void,
+        term_offsets: *mut c_void,
+        term_counts: *mut c_void,
+        row_count: u32,
+        n_batches: u32,
+        output_coord_buffers: *mut *mut c_void,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_accumulate_and_unpack_partial_numerators_batched_u32x4(
+            runtime,
+            columns,
+            column_indices,
+            b_coeffs,
+            c_coeffs,
+            term_offsets,
+            term_counts,
+            row_count,
+            n_batches,
+            output_coord_buffers,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -6488,6 +6597,25 @@ mod ffi {
         _dst: *mut c_void,
         _row_count: u32,
         _n_batches: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn accumulate_and_unpack_partial_numerators_batched_u32x4(
+        _runtime: *mut c_void,
+        _columns: *mut c_void,
+        _column_indices: *mut c_void,
+        _b_coeffs: *mut c_void,
+        _c_coeffs: *mut c_void,
+        _term_offsets: *mut c_void,
+        _term_counts: *mut c_void,
+        _row_count: u32,
+        _n_batches: u32,
+        _output_coord_buffers: *mut *mut c_void,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(
