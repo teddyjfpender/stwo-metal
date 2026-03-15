@@ -3378,6 +3378,54 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    /// Fused composition dispatch: evaluates the JIT constraint program,
+    /// applies denom_inv multiplication, and writes directly to 4 coordinate
+    /// buffers.  This eliminates the GPU->CPU->GPU round-trip.
+    #[allow(clippy::too_many_arguments)]
+    pub fn eval_compiled_fused_composition_v1(
+        shader_source: &str,
+        kernel_name: &str,
+        trace_values: &Self,
+        interaction_offsets: &Self,
+        preprocessed_values: &Self,
+        base_params: &Self,
+        ext_params: &Self,
+        random_coeff_powers: &Self,
+        denom_inv: &Self,
+        row_count: usize,
+        log_n_rows: u32,
+    ) -> Result<[Self; 4], MetalError> {
+        let runtime = shared_runtime()?;
+        let coord_0 = Self::uninitialized(row_count)?;
+        let coord_1 = Self::uninitialized(row_count)?;
+        let coord_2 = Self::uninitialized(row_count)?;
+        let coord_3 = Self::uninitialized(row_count)?;
+        unsafe {
+            ffi::eval_compiled_fused_composition_v1(
+                runtime.raw.as_ptr(),
+                shader_source.as_ptr(),
+                shader_source.len(),
+                kernel_name.as_ptr(),
+                kernel_name.len(),
+                trace_values.raw.as_ptr(),
+                interaction_offsets.raw.as_ptr(),
+                preprocessed_values.raw.as_ptr(),
+                base_params.raw.as_ptr(),
+                ext_params.raw.as_ptr(),
+                random_coeff_powers.raw.as_ptr(),
+                denom_inv.raw.as_ptr(),
+                coord_0.raw.as_ptr(),
+                coord_1.raw.as_ptr(),
+                coord_2.raw.as_ptr(),
+                coord_3.raw.as_ptr(),
+                row_count.try_into().expect("row_count should fit in u32"),
+                log_n_rows,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok([coord_0, coord_1, coord_2, coord_3])
+    }
+
     pub fn eval_compiled_program_v1_u32x4_tg(
         shader_source: &str,
         kernel_name: &str,
@@ -4846,6 +4894,28 @@ mod ffi {
             random_coeff_powers: *mut c_void,
             dst: *mut c_void,
             row_count: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_eval_compiled_fused_composition_v1(
+            runtime: *mut c_void,
+            shader_source: *const u8,
+            shader_source_len: usize,
+            kernel_name: *const u8,
+            kernel_name_len: usize,
+            trace_values: *mut c_void,
+            interaction_offsets: *mut c_void,
+            preprocessed_values: *mut c_void,
+            base_params: *mut c_void,
+            ext_params: *mut c_void,
+            random_coeff_powers: *mut c_void,
+            denom_inv: *mut c_void,
+            coord_0: *mut c_void,
+            coord_1: *mut c_void,
+            coord_2: *mut c_void,
+            coord_3: *mut c_void,
+            row_count: u32,
+            log_n_rows: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -7622,6 +7692,57 @@ mod ffi {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub unsafe fn eval_compiled_fused_composition_v1(
+        runtime: *mut c_void,
+        shader_source: *const u8,
+        shader_source_len: usize,
+        kernel_name: *const u8,
+        kernel_name_len: usize,
+        trace_values: *mut c_void,
+        interaction_offsets: *mut c_void,
+        preprocessed_values: *mut c_void,
+        base_params: *mut c_void,
+        ext_params: *mut c_void,
+        random_coeff_powers: *mut c_void,
+        denom_inv: *mut c_void,
+        coord_0: *mut c_void,
+        coord_1: *mut c_void,
+        coord_2: *mut c_void,
+        coord_3: *mut c_void,
+        row_count: u32,
+        log_n_rows: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_eval_compiled_fused_composition_v1(
+            runtime,
+            shader_source,
+            shader_source_len,
+            kernel_name,
+            kernel_name_len,
+            trace_values,
+            interaction_offsets,
+            preprocessed_values,
+            base_params,
+            ext_params,
+            random_coeff_powers,
+            denom_inv,
+            coord_0,
+            coord_1,
+            coord_2,
+            coord_3,
+            row_count,
+            log_n_rows,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub unsafe fn eval_compiled_program_v1_u32x4_tg(
         runtime: *mut c_void,
         shader_source: *const u8,
@@ -9304,6 +9425,33 @@ mod ffi {
         _random_coeff_powers: *mut c_void,
         _dst: *mut c_void,
         _row_count: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn eval_compiled_fused_composition_v1(
+        _runtime: *mut c_void,
+        _shader_source: *const u8,
+        _shader_source_len: usize,
+        _kernel_name: *const u8,
+        _kernel_name_len: usize,
+        _trace_values: *mut c_void,
+        _interaction_offsets: *mut c_void,
+        _preprocessed_values: *mut c_void,
+        _base_params: *mut c_void,
+        _ext_params: *mut c_void,
+        _random_coeff_powers: *mut c_void,
+        _denom_inv: *mut c_void,
+        _coord_0: *mut c_void,
+        _coord_1: *mut c_void,
+        _coord_2: *mut c_void,
+        _coord_3: *mut c_void,
+        _row_count: u32,
+        _log_n_rows: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

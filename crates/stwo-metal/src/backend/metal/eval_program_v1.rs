@@ -2186,6 +2186,128 @@ pub fn execute_eval_program_v1_with_gpu_trace(
         .collect(), dispatch))
 }
 
+/// Execute a fused composition: JIT kernel + denom_inv multiply + coordinate unpack,
+/// all on GPU.  Returns 4 `U32Buffer` coordinate buffers suitable for constructing
+/// a `SecureColumnByCoords` without any GPU->CPU round-trip.
+///
+/// This fuses three steps that were previously separated by CPU reads/writes:
+/// 1. Evaluate the constraint accumulation (JIT shader)
+/// 2. Multiply each QM31 result by `denom_inv[row_index >> log_n_rows]`
+/// 3. Write the 4 QM31 coordinates to separate buffers
+///
+/// The denominator inverses are uploaded as a small GPU buffer (typically 2
+/// elements for composition).
+#[allow(clippy::too_many_arguments)]
+pub fn execute_fused_composition_v1_with_gpu_trace(
+    program: &OwnedMetalEvaluationProgramV1,
+    gpu_trace_values: U32Buffer,
+    interaction_offsets_cpu: &[u32],
+    n_rows: usize,
+    base_params_cpu: &[BaseField],
+    ext_params_cpu: &[SecureField],
+    random_coeff_powers_cpu: &[SecureField],
+    denominator_inverses_cpu: &[BaseField],
+    log_n_rows: u32,
+) -> Result<([U32Buffer; 4], MetalEvaluationProgramDispatchKindV1), MetalEvaluationProgramExecutionError>
+{
+    let map_metal = |e: MetalError| MetalEvaluationProgramExecutionError::MetalRuntime {
+        message: e.message().to_string(),
+    };
+
+    // Only attempt JIT for large components (same threshold as standard path).
+    if n_rows >= JIT_MIN_EVAL_ROWS {
+        let hash = program.header().semantic_hash;
+        let cache = jit_fused_shader_cache();
+        let (source, name) = {
+            let mut guard = cache.lock().unwrap();
+            guard.entry(hash).or_insert_with(|| {
+                let s = super::shader_compiler_v1::compile_v1_to_metal_source_with_fused(program);
+                let n = super::shader_compiler_v1::compiled_fused_kernel_name(hash);
+                (s, n)
+            }).clone()
+        };
+
+        // Build CPU params as U32Buffers.
+        let interaction_offsets = U32Buffer::from_slice(interaction_offsets_cpu).map_err(map_metal)?;
+        let preprocessed_values = U32Buffer::zeroed(1).map_err(map_metal)?;
+        let base_params = optional_u32_buffer(
+            &base_params_cpu.iter().map(|v| v.0).collect::<Vec<_>>(),
+        ).map_err(map_metal)?;
+        let ext_params = optional_u32_buffer(
+            &ext_params_cpu.iter().flat_map(|v| v.to_m31_array().map(|l| l.0)).collect::<Vec<_>>(),
+        ).map_err(map_metal)?;
+        let random_coeff_powers = U32Buffer::from_slice(
+            &random_coeff_powers_cpu.iter().flat_map(|v| v.to_m31_array().map(|l| l.0)).collect::<Vec<_>>(),
+        ).map_err(map_metal)?;
+        let denom_inv = U32Buffer::from_slice(
+            &denominator_inverses_cpu.iter().map(|v| v.0).collect::<Vec<_>>(),
+        ).map_err(map_metal)?;
+
+        match U32Buffer::eval_compiled_fused_composition_v1(
+            &source,
+            &name,
+            &gpu_trace_values,
+            &interaction_offsets,
+            &preprocessed_values,
+            &base_params,
+            &ext_params,
+            &random_coeff_powers,
+            &denom_inv,
+            n_rows,
+            log_n_rows,
+        ) {
+            Ok(coords) => {
+                return Ok((coords, MetalEvaluationProgramDispatchKindV1::JitCompiled));
+            }
+            Err(_) => {
+                // JIT fused failed — fall through to standard path.
+            }
+        }
+    }
+
+    // Fallback: use the standard path and apply denom_inv on CPU.
+    let (mut row_res, dispatch) = execute_eval_program_v1_with_gpu_trace(
+        program,
+        gpu_trace_values,
+        interaction_offsets_cpu,
+        n_rows,
+        2, // n_interactions (composition)
+        0, // n_preprocessed_columns
+        base_params_cpu,
+        ext_params_cpu,
+        random_coeff_powers_cpu,
+    )?;
+
+    // Apply denom_inv on CPU (fallback path).
+    for (row_index, value) in row_res.iter_mut().enumerate() {
+        *value = *value * denominator_inverses_cpu[row_index >> log_n_rows];
+    }
+
+    // Convert to 4 coordinate buffers via CPU.
+    let mut coord_vecs: [Vec<u32>; 4] = std::array::from_fn(|_| Vec::with_capacity(n_rows));
+    for value in &row_res {
+        let limbs = value.to_m31_array();
+        coord_vecs[0].push(limbs[0].0);
+        coord_vecs[1].push(limbs[1].0);
+        coord_vecs[2].push(limbs[2].0);
+        coord_vecs[3].push(limbs[3].0);
+    }
+    let coords = [
+        U32Buffer::from_slice(&coord_vecs[0]).map_err(map_metal)?,
+        U32Buffer::from_slice(&coord_vecs[1]).map_err(map_metal)?,
+        U32Buffer::from_slice(&coord_vecs[2]).map_err(map_metal)?,
+        U32Buffer::from_slice(&coord_vecs[3]).map_err(map_metal)?,
+    ];
+
+    Ok((coords, dispatch))
+}
+
+/// Cache for JIT-compiled fused shader source strings, keyed by semantic hash.
+fn jit_fused_shader_cache() -> &'static Mutex<HashMap<u64, (String, String)>> {
+    static CACHE: OnceLock<Mutex<HashMap<u64, (String, String)>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 /// Execute a V1 program on Metal using a JIT-compiled native shader.
 ///
 /// Instead of interpreting the V1 bytecode in the generic interpreter kernel,

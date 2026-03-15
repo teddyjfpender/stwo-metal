@@ -263,6 +263,256 @@ pub fn compiled_kernel_name(semantic_hash: u64) -> String {
     format!("eval_compiled_{:016x}", semantic_hash)
 }
 
+/// Returns the fused kernel name for a given semantic hash.
+///
+/// The fused variant applies denominator inverse multiplication and writes
+/// directly to 4 coordinate buffers, eliminating the GPU->CPU->GPU
+/// round-trip in the composition pipeline.
+pub fn compiled_fused_kernel_name(semantic_hash: u64) -> String {
+    format!("eval_compiled_fused_{:016x}", semantic_hash)
+}
+
+/// Compile a V1 evaluation program into a Metal shader source string with a
+/// fused composition variant.
+///
+/// The returned source contains **two** kernel entry points:
+/// 1. The standard `eval_compiled_<hash>` kernel (same as [`compile_v1_to_metal_source`]).
+/// 2. A fused `eval_compiled_fused_<hash>` kernel that:
+///    - Evaluates the constraint accumulation (same as standard kernel).
+///    - Multiplies the result by a per-row denominator inverse scalar
+///      (`denom_inv[row_index >> log_n_rows]`).
+///    - Writes the 4 QM31 coordinates directly to separate output buffers
+///      (`coord_0..coord_3`), matching `SecureColumnByCoords` layout.
+///
+/// This eliminates the GPU->CPU->GPU round-trip that occurs when the
+/// standard kernel output is read back to CPU for denom_inv application
+/// and then re-uploaded for IFFT.
+pub fn compile_v1_to_metal_source_with_fused(
+    program: &OwnedMetalEvaluationProgramV1,
+) -> String {
+    // Start with the standard kernel.
+    let mut src = compile_v1_to_metal_source(program);
+
+    // Now emit the fused variant.
+    let header = program.header();
+    let base_insts = program.base_insts();
+    let ext_insts = program.ext_insts();
+    let constraint_roots = program.constraint_roots();
+
+    let fused_name = compiled_fused_kernel_name(header.semantic_hash);
+
+    // ── Fused kernel signature ──────────────────────────────────────────
+    //
+    // Same inputs as the standard kernel, plus:
+    //   buffer(6): denom_inv — small array of M31 denominator inverses
+    //   buffer(7): coord_0 — output coordinate buffer 0
+    //   buffer(8): coord_1 — output coordinate buffer 1
+    //   buffer(11): coord_2 — output coordinate buffer 2
+    //   buffer(12): coord_3 — output coordinate buffer 3
+    //   buffer(13): log_n_rows — shift amount for denom_inv indexing
+    src.push_str(&format!(
+        "\nkernel void {fused_name}(\n\
+         \x20   device const uint *trace_values [[buffer(0)]],\n\
+         \x20   device const uint *interaction_offsets [[buffer(1)]],\n\
+         \x20   device const uint *preprocessed_values [[buffer(2)]],\n\
+         \x20   device const uint *base_params [[buffer(3)]],\n\
+         \x20   device const uint *ext_params [[buffer(4)]],\n\
+         \x20   device const uint *random_coeff_powers [[buffer(5)]],\n\
+         \x20   device const uint *denom_inv [[buffer(6)]],\n\
+         \x20   device uint *coord_0 [[buffer(7)]],\n\
+         \x20   device uint *coord_1 [[buffer(8)]],\n\
+         \x20   constant uint &row_count [[buffer(10)]],\n\
+         \x20   device uint *coord_2 [[buffer(11)]],\n\
+         \x20   device uint *coord_3 [[buffer(12)]],\n\
+         \x20   constant uint &log_n_rows [[buffer(13)]],\n\
+         \x20   uint row_index [[thread_position_in_grid]]\n\
+         ) {{\n"
+    ));
+
+    src.push_str("    if (row_index >= row_count) {\n");
+    src.push_str("        return;\n");
+    src.push_str("    }\n\n");
+
+    // ── Base instructions (same as standard kernel) ─────────────────────
+    let n_base_regs = header.max_base_regs as usize;
+    let n_ext_regs = header.max_ext_regs as usize;
+    let mut base_declared = vec![false; n_base_regs];
+    let mut ext_declared = vec![false; n_ext_regs];
+
+    src.push_str("    // ── Base instructions ──\n");
+    for inst in base_insts {
+        let dst = inst.dst as usize;
+        let decl = if !base_declared[dst] {
+            base_declared[dst] = true;
+            "uint "
+        } else {
+            ""
+        };
+        let dst_var = format!("b{}", dst);
+        let opcode = MetalEvaluationProgramBaseOpcodeV1::from_raw(inst.op)
+            .unwrap_or_else(|| panic!("unknown base opcode {}", inst.op));
+
+        match opcode {
+            MetalEvaluationProgramBaseOpcodeV1::TraceCol => {
+                let interaction = inst.interaction;
+                let column = inst.a;
+                let offset = inst.imm;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_eval_program_trace_value(\
+                     trace_values, interaction_offsets, row_count, \
+                     {interaction}u, {column}u, row_index, {offset});\n"
+                ));
+            }
+            MetalEvaluationProgramBaseOpcodeV1::PreprocessedCol => {
+                let column = inst.a;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_eval_program_preprocessed_value(\
+                     preprocessed_values, row_count, {column}u, row_index);\n"
+                ));
+            }
+            MetalEvaluationProgramBaseOpcodeV1::Param => {
+                let slot = inst.a;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = base_params[{slot}u];\n"
+                ));
+            }
+            MetalEvaluationProgramBaseOpcodeV1::Const => {
+                let value = inst.a;
+                src.push_str(&format!("    {decl}{dst_var} = {value}u;\n"));
+            }
+            MetalEvaluationProgramBaseOpcodeV1::Add => {
+                let a = inst.a;
+                let b = inst.b;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_m31_add(b{a}, b{b});\n"
+                ));
+            }
+            MetalEvaluationProgramBaseOpcodeV1::Sub => {
+                let a = inst.a;
+                let b = inst.b;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_m31_sub(b{a}, b{b});\n"
+                ));
+            }
+            MetalEvaluationProgramBaseOpcodeV1::Mul => {
+                let a = inst.a;
+                let b = inst.b;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_m31_mul(b{a}, b{b});\n"
+                ));
+            }
+            MetalEvaluationProgramBaseOpcodeV1::Neg => {
+                let a = inst.a;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_m31_neg(b{a});\n"
+                ));
+            }
+            MetalEvaluationProgramBaseOpcodeV1::Inv => {
+                let a = inst.a;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_m31_inv(b{a});\n"
+                ));
+            }
+        }
+    }
+    src.push('\n');
+
+    // ── Ext instructions ────────────────────────────────────────────────
+    src.push_str("    // ── Ext instructions ──\n");
+    for inst in ext_insts {
+        let dst = inst.dst as usize;
+        let decl = if !ext_declared[dst] {
+            ext_declared[dst] = true;
+            "StwoMetalQm31 "
+        } else {
+            ""
+        };
+        let dst_var = format!("e{}", dst);
+        let opcode = MetalEvaluationProgramExtOpcodeV1::from_raw(inst.op)
+            .unwrap_or_else(|| panic!("unknown ext opcode {}", inst.op));
+
+        match opcode {
+            MetalEvaluationProgramExtOpcodeV1::SecureCol => {
+                let a = inst.a;
+                let b = inst.b;
+                let c = inst.c;
+                let d = inst.d;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = StwoMetalQm31 {{ b{a}, b{b}, b{c}, b{d} }};\n"
+                ));
+            }
+            MetalEvaluationProgramExtOpcodeV1::Param => {
+                let slot = inst.a;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_load_qm31(ext_params, {slot}u);\n"
+                ));
+            }
+            MetalEvaluationProgramExtOpcodeV1::Const => {
+                let a = inst.a;
+                let b = inst.b;
+                let c = inst.c;
+                let d = inst.d;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = StwoMetalQm31 {{ {a}u, {b}u, {c}u, {d}u }};\n"
+                ));
+            }
+            MetalEvaluationProgramExtOpcodeV1::Add => {
+                let a = inst.a;
+                let b = inst.b;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_qm31_add(e{a}, e{b});\n"
+                ));
+            }
+            MetalEvaluationProgramExtOpcodeV1::Sub => {
+                let a = inst.a;
+                let b = inst.b;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_qm31_sub(e{a}, e{b});\n"
+                ));
+            }
+            MetalEvaluationProgramExtOpcodeV1::Mul => {
+                let a = inst.a;
+                let b = inst.b;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_qm31_mul(e{a}, e{b});\n"
+                ));
+            }
+            MetalEvaluationProgramExtOpcodeV1::Neg => {
+                let a = inst.a;
+                src.push_str(&format!(
+                    "    {decl}{dst_var} = stwo_metal_qm31_sub(\
+                     StwoMetalQm31 {{ 0u, 0u, 0u, 0u }}, e{a});\n"
+                ));
+            }
+        }
+    }
+    src.push('\n');
+
+    // ── Constraint accumulation ─────────────────────────────────────────
+    src.push_str("    // ── Constraint accumulation ──\n");
+    src.push_str("    StwoMetalQm31 acc = StwoMetalQm31 { 0u, 0u, 0u, 0u };\n");
+    for (i, &root) in constraint_roots.iter().enumerate() {
+        src.push_str(&format!(
+            "    acc = stwo_metal_qm31_add(acc, \
+             stwo_metal_qm31_mul(e{root}, \
+             stwo_metal_load_qm31(random_coeff_powers, {i}u)));\n"
+        ));
+    }
+    src.push('\n');
+
+    // ── Fused denom_inv multiply + coordinate store ─────────────────────
+    src.push_str("    // ── Fused denom_inv multiply + coordinate unpack ──\n");
+    src.push_str("    uint denom_idx = row_index >> log_n_rows;\n");
+    src.push_str("    StwoMetalQm31 result = stwo_metal_qm31_mul_base(acc, denom_inv[denom_idx]);\n");
+    src.push_str("    coord_0[row_index] = result.a;\n");
+    src.push_str("    coord_1[row_index] = result.b;\n");
+    src.push_str("    coord_2[row_index] = result.c;\n");
+    src.push_str("    coord_3[row_index] = result.d;\n");
+    src.push_str("}\n");
+
+    src
+}
+
 // ---------------------------------------------------------------------------
 // Preamble: inline field arithmetic and helper functions
 // ---------------------------------------------------------------------------
@@ -405,12 +655,10 @@ static inline void stwo_metal_store_qm31(device uint *values, uint index, StwoMe
 
 // ── Trace value helper ─────────────────────────────────────────────────────
 static inline uint stwo_metal_bit_reverse(uint index, uint bits) {
-    uint result = 0u;
-    for (uint i = 0u; i < bits; ++i) {
-        result = (result << 1u) | (index & 1u);
-        index >>= 1u;
-    }
-    return result;
+    // Use Metal's hardware reverse_bits intrinsic and shift to get
+    // 'bits'-wide reversal.  This replaces a variable-iteration loop with
+    // a single ALU instruction + shift.
+    return reverse_bits(index) >> (32u - bits);
 }
 
 static inline uint stwo_metal_offset_bit_reversed_circle_domain_index(
@@ -859,5 +1107,68 @@ mod tests {
         assert!(source.contains("stwo_metal_qm31_mul(e0, stwo_metal_load_qm31(random_coeff_powers, 0u))"));
         assert!(source.contains("stwo_metal_qm31_mul(e1, stwo_metal_load_qm31(random_coeff_powers, 1u))"));
         assert!(source.contains("stwo_metal_qm31_mul(e2, stwo_metal_load_qm31(random_coeff_powers, 2u))"));
+    }
+
+    #[test]
+    fn test_compile_fused_variant() {
+        let base_insts = vec![
+            MetalEvaluationProgramBaseInstV1::trace_col(0, 1, 0, 0),
+            MetalEvaluationProgramBaseInstV1::trace_col(1, 1, 1, 0),
+            MetalEvaluationProgramBaseInstV1::binary(
+                MetalEvaluationProgramBaseOpcodeV1::Mul,
+                2,
+                0,
+                1,
+            ),
+            MetalEvaluationProgramBaseInstV1::const_value(3, 42),
+            MetalEvaluationProgramBaseInstV1::binary(
+                MetalEvaluationProgramBaseOpcodeV1::Sub,
+                4,
+                2,
+                3,
+            ),
+        ];
+        let ext_insts = vec![MetalEvaluationProgramExtInstV1::secure_col(0, 4, 3, 3, 3)];
+
+        let source = compile_v1_to_metal_source_with_fused(&build_test_program(
+            base_insts,
+            ext_insts,
+            vec![0],
+            5,
+            1,
+        ));
+
+        // Should contain the standard kernel.
+        assert!(source.contains("eval_compiled_123456789abcdef0"));
+
+        // Should contain the fused kernel.
+        assert!(source.contains("eval_compiled_fused_123456789abcdef0"));
+
+        // Fused kernel should have denom_inv buffer binding.
+        assert!(source.contains("device const uint *denom_inv [[buffer(6)]]"));
+
+        // Fused kernel should have coordinate output buffers.
+        assert!(source.contains("device uint *coord_0 [[buffer(7)]]"));
+        assert!(source.contains("device uint *coord_1 [[buffer(8)]]"));
+        assert!(source.contains("device uint *coord_2 [[buffer(11)]]"));
+        assert!(source.contains("device uint *coord_3 [[buffer(12)]]"));
+
+        // Fused kernel should apply denom_inv and write coordinates.
+        assert!(source.contains("denom_inv[denom_idx]"));
+        assert!(source.contains("coord_0[row_index] = result.a;"));
+        assert!(source.contains("coord_1[row_index] = result.b;"));
+        assert!(source.contains("coord_2[row_index] = result.c;"));
+        assert!(source.contains("coord_3[row_index] = result.d;"));
+
+        // Should use reverse_bits instead of loop.
+        assert!(source.contains("reverse_bits(index)"));
+    }
+
+    #[test]
+    fn test_fused_kernel_name() {
+        assert_eq!(
+            compiled_fused_kernel_name(0xdeadbeef_cafebabe),
+            "eval_compiled_fused_deadbeefcafebabe"
+        );
     }
 }

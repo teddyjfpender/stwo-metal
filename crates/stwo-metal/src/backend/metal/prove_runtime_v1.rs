@@ -34,9 +34,8 @@ use stwo::prover::{
     compute_fri_quotients,
 };
 
-use super::accumulation::metal_secure_column_from_values;
 use super::eval_program_v1::{
-    execute_eval_program_v1_with_gpu_trace,
+    execute_fused_composition_v1_with_gpu_trace,
     execute_selected_metal_evaluation_program_v1_on_metal, interpret_metal_evaluation_program_v1,
     MetalEvaluationProgramCapabilityProfileV1, MetalEvaluationProgramDispatchKindV1,
     MetalEvaluationProgramExecutionError, MetalEvaluationProgramInterpreterError,
@@ -550,46 +549,37 @@ pub fn compute_composition_polynomial_v1(
 
     // interaction 0 = empty (preprocessed, handled separately), interaction 1 = all trace columns
     let interaction_offsets: Vec<u32> = vec![0, 0, n_trace_columns as u32];
-    let n_interactions = 2u32;
+
+    // Pre-compute denominator inverses (small array, typically 2 elements).
+    let denominator_inverses =
+        denominator_inverses_for_eval_domain(ctx.log_n_rows, eval_domain.log_size());
 
     let eval_program_start = std::time::Instant::now();
-    let (mut row_res, dispatch) = execute_eval_program_v1_with_gpu_trace(
+    // Fused GPU path: JIT kernel evaluates constraints, multiplies by
+    // denom_inv, and writes directly to 4 coordinate buffers — all on GPU.
+    // This eliminates the GPU->CPU->GPU round-trip that previously cost
+    // ~27ms for denom_inv application + significant time for data transfer.
+    let (coord_buffers, dispatch) = execute_fused_composition_v1_with_gpu_trace(
         &ctx.program,
         gpu_trace_buffer,
         &interaction_offsets,
         eval_domain.size(),
-        n_interactions,
-        0, // n_preprocessed_columns
         &[], // base_params
         &[], // ext_params
         &random_coeff_powers,
+        &denominator_inverses,
+        ctx.log_n_rows,
     ).map_err(|source| MetalProveRuntimeCompositionError::ProgramExecution { source })?;
     let eval_program_ms = eval_program_start.elapsed().as_secs_f64() * 1000.0;
 
-    if row_res.len() != eval_domain.size() {
-        return Err(MetalProveRuntimeCompositionError::CompositionShape {
-            message: format!(
-                "V1 runtime composition expected {} eval rows, got {}",
-                eval_domain.size(),
-                row_res.len()
-            ),
-        });
-    }
-
-    let quotient_start = std::time::Instant::now();
-    let denominator_inverses =
-        denominator_inverses_for_eval_domain(ctx.log_n_rows, eval_domain.log_size());
-    // Apply denominator inverses in-place to avoid a second allocation.
-    let log_n_rows = ctx.log_n_rows;
-    for (row_index, value) in row_res.iter_mut().enumerate() {
-        *value = *value * denominator_inverses[row_index >> log_n_rows];
-    }
-    let quotient_application_ms = quotient_start.elapsed().as_secs_f64() * 1000.0;
+    // denom_inv is already fused into the GPU kernel — no separate CPU step.
+    let quotient_application_ms = 0.0;
 
     let interpolation_start = std::time::Instant::now();
+    let columns = coord_buffers.map(crate::stwo_metal::base_field_vec::BaseFieldVec::from_buffer);
     let composition_eval = SecureEvaluation::new(
         eval_domain,
-        metal_secure_column_from_values(row_res),
+        stwo::prover::secure_column::SecureColumnByCoords { columns },
     );
     let composition_poly = composition_eval.interpolate_with_twiddles(&twiddles);
     let interpolation_ms = interpolation_start.elapsed().as_secs_f64() * 1000.0;
