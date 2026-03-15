@@ -33,6 +33,8 @@ mod witness;
 pub mod interaction_trace_id_to_big;
 pub mod witness_memory_addr_to_id;
 pub mod witness_memory_id_to_big;
+pub mod witness_range_check;
+pub mod witness_verify_instruction;
 mod workload;
 mod workload_contract;
 pub mod zero_copy_bridge;
@@ -148,6 +150,9 @@ pub use witness_memory_addr_to_id::{
 pub use witness_memory_id_to_big::{
     generate_memory_id_to_big_trace, generate_memory_id_to_big_small_trace,
     MemoryIdToBigTraceError, MetalMemoryIdToBigSmallTrace, MetalMemoryIdToBigTrace,
+};
+pub use witness_range_check::{
+    generate_range_check_trace, MetalRangeCheckTrace, RangeCheckTraceError,
 };
 pub use workload::{
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,

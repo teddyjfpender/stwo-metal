@@ -1522,6 +1522,207 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    /// Generate the trace for the add_opcode_small witness component on GPU.
+    ///
+    /// # Arguments
+    ///
+    /// * `inputs` - Flat buffer of (pc, ap, fp) tuples, row-major [n_rows * 3].
+    /// * `address_to_id` - The address-to-raw-ID lookup table.
+    /// * `big_values` - Row-major [n_big][8] u32 F252 values.
+    /// * `small_values` - Row-major [n_small][4] u32 small values.
+    /// * `n_rows` - Number of real input rows.
+    /// * `column_length` - Power-of-two padded column length.
+    ///
+    /// # Returns
+    ///
+    /// Column-major output buffer with 39 columns * `column_length` entries.
+    pub fn witness_add_opcode_small_trace(
+        inputs: &Self,
+        address_to_id: &Self,
+        big_values: &Self,
+        small_values: &Self,
+        n_rows: u32,
+        column_length: u32,
+    ) -> Result<Self, MetalError> {
+        assert!(
+            column_length.is_power_of_two(),
+            "column_length must be a power of two"
+        );
+        assert!(
+            n_rows as usize <= column_length as usize,
+            "n_rows must be <= column_length"
+        );
+        assert!(
+            inputs.len >= n_rows as usize * 3,
+            "inputs length must be >= n_rows * 3"
+        );
+        let n_trace_columns: usize = 39;
+        let output_len = n_trace_columns * column_length as usize;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            ffi::witness_add_opcode_small_trace(
+                runtime.raw.as_ptr(),
+                inputs.raw.as_ptr(),
+                address_to_id.raw.as_ptr(),
+                big_values.raw.as_ptr(),
+                small_values.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_rows,
+                column_length,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    /// Generate the trace for the assert_eq_opcode_double_deref witness
+    /// component on GPU.
+    ///
+    /// # Arguments
+    ///
+    /// * `inputs` - Flat buffer of (pc, ap, fp) tuples, row-major [n_rows * 3].
+    /// * `address_to_id` - The address-to-raw-ID lookup table.
+    /// * `big_values` - Row-major [n_big][8] u32 F252 values.
+    /// * `small_values` - Row-major [n_small][4] u32 small values.
+    /// * `n_rows` - Number of real input rows.
+    /// * `column_length` - Power-of-two padded column length.
+    ///
+    /// # Returns
+    ///
+    /// Column-major output buffer with 19 columns * `column_length` entries.
+    pub fn witness_assert_eq_double_deref_trace(
+        inputs: &Self,
+        address_to_id: &Self,
+        big_values: &Self,
+        small_values: &Self,
+        n_rows: u32,
+        column_length: u32,
+    ) -> Result<Self, MetalError> {
+        assert!(
+            column_length.is_power_of_two(),
+            "column_length must be a power of two"
+        );
+        assert!(
+            n_rows as usize <= column_length as usize,
+            "n_rows must be <= column_length"
+        );
+        assert!(
+            inputs.len >= n_rows as usize * 3,
+            "inputs length must be >= n_rows * 3"
+        );
+        let n_trace_columns: usize = 19;
+        let output_len = n_trace_columns * column_length as usize;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            ffi::witness_assert_eq_double_deref_trace(
+                runtime.raw.as_ptr(),
+                inputs.raw.as_ptr(),
+                address_to_id.raw.as_ptr(),
+                big_values.raw.as_ptr(),
+                small_values.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_rows,
+                column_length,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    /// Generic range-check witness trace generation on GPU.
+    ///
+    /// Copies `n_columns` multiplicity buffers (packed contiguously in column-major
+    /// layout) into the output trace columns. Works for all range-check components:
+    /// range_check_9_9, range_check_7_2_5, range_check_4_3, range_check_4_4,
+    /// range_check_6, range_check_8, range_check_11, range_check_12,
+    /// range_check_18, range_check_20, range_check_3_6_6_3, range_check_3_3_3_3_3,
+    /// range_check_4_4_4_4.
+    ///
+    /// # Arguments
+    /// * `mults`          - column-major [n_columns][column_length] u32 multiplicities
+    /// * `n_columns`      - number of multiplicity / trace columns (= N_TRACE_COLUMNS)
+    /// * `column_length`  - number of rows per column
+    ///
+    /// # Returns
+    /// Column-major [n_columns][column_length] u32 trace output.
+    pub fn witness_range_check_trace(
+        mults: &Self,
+        n_columns: u32,
+        column_length: u32,
+    ) -> Result<Self, MetalError> {
+        let expected_len = n_columns as usize * column_length as usize;
+        assert_eq!(
+            mults.len, expected_len,
+            "mults length must be n_columns * column_length"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(expected_len)?;
+        unsafe {
+            ffi::witness_range_check_trace(
+                runtime.raw.as_ptr(),
+                mults.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_columns,
+                column_length,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    /// Generate the verify_instruction witness trace on GPU.
+    ///
+    /// Decodes Cairo instructions into their constituent bit-fields (offsets,
+    /// felt5_high, felt6, opcode extension) and performs the address-to-id
+    /// memory lookup, producing a 17-column trace in column-major layout.
+    ///
+    /// # Arguments
+    /// * `inputs`       - Row-major [n_rows * 7] u32: (pc, off0, off1, off2, felt5h, felt6, opext)
+    /// * `mults`        - [n_rows] u32 multiplicities
+    /// * `addr_to_id`   - [addr_to_id_len] u32 address-to-id lookup table
+    /// * `n_rows`       - number of real instruction rows
+    /// * `column_length` - padded column length (power-of-two >= n_rows)
+    ///
+    /// # Returns
+    /// Column-major [17][column_length] u32 trace output.
+    pub fn witness_verify_instruction_trace(
+        inputs: &Self,
+        mults: &Self,
+        addr_to_id: &Self,
+        n_rows: u32,
+        column_length: u32,
+    ) -> Result<Self, MetalError> {
+        assert!(
+            column_length.is_power_of_two(),
+            "column_length must be a power of two"
+        );
+        assert_eq!(
+            inputs.len,
+            n_rows as usize * 7,
+            "inputs length must be n_rows * 7"
+        );
+        assert_eq!(mults.len, n_rows as usize, "mults length must be n_rows");
+        let output_len = 17 * column_length as usize;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            ffi::witness_verify_instruction_trace(
+                runtime.raw.as_ptr(),
+                inputs.raw.as_ptr(),
+                mults.raw.as_ptr(),
+                addr_to_id.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_rows,
+                column_length,
+                addr_to_id.len as u32,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
     /// Generate the interaction trace for memory_id_to_big (big values).
     ///
     /// Computes logup fractions on GPU: for each row, compute 7 range-check
@@ -3804,6 +4005,39 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_witness_add_opcode_small_trace(
+            runtime: *mut c_void,
+            inputs: *mut c_void,
+            address_to_id: *mut c_void,
+            big_values: *mut c_void,
+            small_values: *mut c_void,
+            trace: *mut c_void,
+            n_rows: u32,
+            column_length: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_witness_assert_eq_double_deref_trace(
+            runtime: *mut c_void,
+            inputs: *mut c_void,
+            address_to_id: *mut c_void,
+            big_values: *mut c_void,
+            small_values: *mut c_void,
+            trace: *mut c_void,
+            n_rows: u32,
+            column_length: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_witness_range_check_trace(
+            runtime: *mut c_void,
+            mults: *mut c_void,
+            trace: *mut c_void,
+            n_columns: u32,
+            column_length: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_interaction_trace_id_to_big(
             runtime: *mut c_void,
             limbs: *mut c_void,
@@ -3827,6 +4061,19 @@ mod ffi {
             relation_ids: *mut c_void,
             trace: *mut c_void,
             n_rows: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_interaction_trace_addr_to_id(
+            runtime: *mut c_void,
+            ids: *mut c_void,
+            mults: *mut c_void,
+            alpha_powers: *mut c_void,
+            z: *mut c_void,
+            relation_id: *mut c_void,
+            trace: *mut c_void,
+            n_rows: u32,
+            split: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -4411,6 +4658,18 @@ mod ffi {
             nonce_hi: u32,
             batch_size: u32,
             out_nonce_lo: *mut u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_witness_verify_instruction_trace(
+            runtime: *mut c_void,
+            inputs: *mut c_void,
+            mults: *mut c_void,
+            addr_to_id: *mut c_void,
+            trace: *mut c_void,
+            n_rows: u32,
+            column_length: u32,
+            addr_to_id_len: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -5612,6 +5871,120 @@ mod ffi {
             n_ids,
             column_length,
             split,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn witness_add_opcode_small_trace(
+        runtime: *mut c_void,
+        inputs: *mut c_void,
+        address_to_id: *mut c_void,
+        big_values: *mut c_void,
+        small_values: *mut c_void,
+        trace: *mut c_void,
+        n_rows: u32,
+        column_length: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_witness_add_opcode_small_trace(
+            runtime,
+            inputs,
+            address_to_id,
+            big_values,
+            small_values,
+            trace,
+            n_rows,
+            column_length,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn witness_assert_eq_double_deref_trace(
+        runtime: *mut c_void,
+        inputs: *mut c_void,
+        address_to_id: *mut c_void,
+        big_values: *mut c_void,
+        small_values: *mut c_void,
+        trace: *mut c_void,
+        n_rows: u32,
+        column_length: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_witness_assert_eq_double_deref_trace(
+            runtime,
+            inputs,
+            address_to_id,
+            big_values,
+            small_values,
+            trace,
+            n_rows,
+            column_length,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn witness_range_check_trace(
+        runtime: *mut c_void,
+        mults: *mut c_void,
+        trace: *mut c_void,
+        n_columns: u32,
+        column_length: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_witness_range_check_trace(
+            runtime,
+            mults,
+            trace,
+            n_columns,
+            column_length,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn witness_verify_instruction_trace(
+        runtime: *mut c_void,
+        inputs: *mut c_void,
+        mults: *mut c_void,
+        addr_to_id: *mut c_void,
+        trace: *mut c_void,
+        n_rows: u32,
+        column_length: u32,
+        addr_to_id_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_witness_verify_instruction_trace(
+            runtime,
+            inputs,
+            mults,
+            addr_to_id,
+            trace,
+            n_rows,
+            column_length,
+            addr_to_id_len,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -7797,6 +8170,67 @@ mod ffi {
         _n_ids: u32,
         _column_length: u32,
         _split: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn witness_add_opcode_small_trace(
+        _runtime: *mut c_void,
+        _inputs: *mut c_void,
+        _address_to_id: *mut c_void,
+        _big_values: *mut c_void,
+        _small_values: *mut c_void,
+        _trace: *mut c_void,
+        _n_rows: u32,
+        _column_length: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn witness_assert_eq_double_deref_trace(
+        _runtime: *mut c_void,
+        _inputs: *mut c_void,
+        _address_to_id: *mut c_void,
+        _big_values: *mut c_void,
+        _small_values: *mut c_void,
+        _trace: *mut c_void,
+        _n_rows: u32,
+        _column_length: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn witness_range_check_trace(
+        _runtime: *mut c_void,
+        _mults: *mut c_void,
+        _trace: *mut c_void,
+        _n_columns: u32,
+        _column_length: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn witness_verify_instruction_trace(
+        _runtime: *mut c_void,
+        _inputs: *mut c_void,
+        _mults: *mut c_void,
+        _addr_to_id: *mut c_void,
+        _trace: *mut c_void,
+        _n_rows: u32,
+        _column_length: u32,
+        _addr_to_id_len: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(
