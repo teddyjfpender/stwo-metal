@@ -3087,6 +3087,7 @@ mod cairo_prove_main {
                     let max_big_size = 1usize << LOG_MAX_BIG_SIZE;
 
                     let mut all_big_evals: Vec<Vec<MetalCircleEval>> = Vec::new();
+                    let mut big_log_sizes: Vec<u32> = Vec::new();
                     let mut offset = 0usize;
 
                     for (chunk_idx, gpu_val_evals) in gpu_big.into_iter().enumerate() {
@@ -3106,10 +3107,27 @@ mod cairo_prove_main {
                             &[] as &[u32]
                         };
                         evals.push(upload_mult_column(chunk_mults, col_len, domain));
+                        big_log_sizes.push(log_size);
                         all_big_evals.push(evals);
                         offset += chunk_len;
                     }
 
+                    // Extract PackedM31 data from Metal GPU buffers via zero-copy
+                    // as_packed_m31_slice(). This is used by the interaction
+                    // generator to skip CPU F252 splitting entirely.
+                    let packed_big: Vec<Vec<Vec<stwo::prover::backend::simd::m31::PackedM31>>> =
+                        all_big_evals
+                            .iter()
+                            .map(|chunk_evals| {
+                                chunk_evals
+                                    .iter()
+                                    .map(|eval| eval.values.as_packed_m31_slice().to_vec())
+                                    .collect()
+                            })
+                            .collect();
+
+                    metal_traces.memory_id_to_big_packed_big =
+                        Some((packed_big, big_log_sizes));
                     metal_traces.memory_id_to_big_big = Some(
                         Box::new(all_big_evals) as Box<dyn std::any::Any + Send>,
                     );
@@ -3128,6 +3146,15 @@ mod cairo_prove_main {
                     let mult_end = std::cmp::min(mults_raw.len(), col_len);
                     evals.push(upload_mult_column(&mults_raw[..mult_end], col_len, domain));
 
+                    // Extract PackedM31 data from Metal GPU buffers via zero-copy.
+                    let packed_small: Vec<Vec<stwo::prover::backend::simd::m31::PackedM31>> =
+                        evals
+                            .iter()
+                            .map(|eval| eval.values.as_packed_m31_slice().to_vec())
+                            .collect();
+
+                    metal_traces.memory_id_to_big_packed_small =
+                        Some((packed_small, log_size));
                     metal_traces.memory_id_to_big_small = Some(
                         Box::new(evals) as Box<dyn std::any::Any + Send>,
                     );
