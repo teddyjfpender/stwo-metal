@@ -256,6 +256,10 @@ pub use witness::{
     PoseidonTraceRequest, WideFibonacciTraceRequest,
 };
 #[cfg(feature = "prover")]
+pub use crate::backend::metal::witness_memory_addr_to_id::{
+    generate_memory_addr_to_id_trace, MemoryAddrToIdTraceError, MetalMemoryAddrToIdTrace,
+};
+#[cfg(feature = "prover")]
 pub use crate::backend::metal::witness_memory_id_to_big::{
     generate_memory_id_to_big_trace, generate_memory_id_to_big_small_trace,
     MemoryIdToBigTraceError, MetalMemoryIdToBigTrace, MetalMemoryIdToBigSmallTrace,

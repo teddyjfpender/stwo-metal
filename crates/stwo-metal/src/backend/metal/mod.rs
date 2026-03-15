@@ -30,6 +30,7 @@ mod sampled_values_v1;
 mod sequence;
 mod subpath;
 mod witness;
+pub mod witness_memory_addr_to_id;
 pub mod witness_memory_id_to_big;
 mod workload;
 mod workload_contract;
@@ -135,6 +136,9 @@ pub use witness::{
     generate_metal_wide_fibonacci_trace, gpu_trace_column_to_evaluation,
     gpu_trace_columns_to_evaluations, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
     MetalWideFibonacciTraceRequest,
+};
+pub use witness_memory_addr_to_id::{
+    generate_memory_addr_to_id_trace, MemoryAddrToIdTraceError, MetalMemoryAddrToIdTrace,
 };
 pub use witness_memory_id_to_big::{
     generate_memory_id_to_big_trace, generate_memory_id_to_big_small_trace,

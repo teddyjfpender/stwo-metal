@@ -389,14 +389,25 @@ mod cairo_prove_main {
             stwo::core::fields::m31::BaseField,
             stwo::prover::poly::BitReversedOrder,
         >>>,
+        /// GPU-computed evaluations for memory_address_to_id trace.
+        /// Has split*2 columns (id+mult pairs), all GPU-resident.
+        addr_to_id_evals: Option<Vec<stwo::prover::poly::circle::CircleEvaluation<
+            stwo_metal::MetalBackend,
+            stwo::core::fields::m31::BaseField,
+            stwo::prover::poly::BitReversedOrder,
+        >>>,
         /// Next big trace chunk index to substitute.
         big_next: std::cell::Cell<usize>,
         /// Whether the small trace has been substituted.
         small_done: std::cell::Cell<bool>,
+        /// Whether the addr_to_id trace has been substituted.
+        addr_to_id_done: std::cell::Cell<bool>,
         /// Number of big value columns replaced (for timing report).
         big_cols_replaced: std::cell::Cell<usize>,
         /// Number of small value columns replaced (for timing report).
         small_cols_replaced: std::cell::Cell<usize>,
+        /// Number of addr_to_id columns replaced (for timing report).
+        addr_to_id_cols_replaced: std::cell::Cell<usize>,
     }
 
     #[cfg(feature = "metal-runtime")]
@@ -409,6 +420,10 @@ mod cairo_prove_main {
         const SMALL_VALUE_COLS: usize = 8;
         /// Total columns in a small trace (8 limbs + 1 multiplicity).
         const SMALL_TOTAL_COLS: usize = 9;
+        /// MEMORY_ADDRESS_TO_ID_SPLIT = 1 << (29 - 25) = 16.
+        const ADDR_TO_ID_SPLIT: usize = 16;
+        /// Total columns for memory_address_to_id trace = SPLIT * 2 = 32.
+        const ADDR_TO_ID_TOTAL_COLS: usize = Self::ADDR_TO_ID_SPLIT * 2;
 
         /// Try to match a batch of SimdBackend columns as a memory_id_to_big
         /// big trace and, if so, return MetalBackend evaluations with GPU
@@ -500,6 +515,64 @@ mod cairo_prove_main {
             self.small_cols_replaced.set(Self::SMALL_VALUE_COLS);
             Some(result)
         }
+
+        /// Try to match a batch of SimdBackend columns as a memory_address_to_id
+        /// trace and, if so, return MetalBackend evaluations with GPU-computed
+        /// id columns and CPU-generated multiplicity columns.
+        ///
+        /// The memory_address_to_id trace has SPLIT*2 = 32 columns, organized
+        /// as (id0, mult0, id1, mult1, ..., id15, mult15). We replace the id
+        /// columns (even indices) with GPU-computed values and keep the CPU
+        /// multiplicity columns (odd indices) by uploading them.
+        fn try_replace_addr_to_id(
+            &self,
+            columns: &[stwo::prover::poly::circle::CircleEvaluation<
+                SimdBackend,
+                stwo::core::fields::m31::BaseField,
+                stwo::prover::poly::BitReversedOrder,
+            >],
+        ) -> Option<Vec<stwo::prover::poly::circle::CircleEvaluation<
+            stwo_metal::MetalBackend,
+            stwo::core::fields::m31::BaseField,
+            stwo::prover::poly::BitReversedOrder,
+        >>> {
+            use stwo::prover::backend::Column;
+            if self.addr_to_id_done.get() || columns.len() != Self::ADDR_TO_ID_TOTAL_COLS {
+                return None;
+            }
+            let gpu_evals = match &self.addr_to_id_evals {
+                Some(v) => v,
+                None => return None,
+            };
+            // Verify we have the right number of GPU columns.
+            if gpu_evals.len() != Self::ADDR_TO_ID_TOTAL_COLS {
+                return None;
+            }
+            // Verify domain match.
+            if gpu_evals[0].domain != columns[0].domain {
+                return None;
+            }
+            self.addr_to_id_done.set(true);
+
+            // For each chunk: use GPU id column (even index), CPU mult column (odd index).
+            let mut result = Vec::with_capacity(Self::ADDR_TO_ID_TOTAL_COLS);
+            for chunk in 0..Self::ADDR_TO_ID_SPLIT {
+                let id_col = chunk * 2;
+                let mult_col = chunk * 2 + 1;
+                // GPU id column.
+                result.push(gpu_evals[id_col].clone());
+                // CPU multiplicity column (upload to Metal).
+                let mult_eval = &columns[mult_col];
+                let domain = mult_eval.domain;
+                let metal_values = mult_eval.values.to_cpu().into_iter().collect();
+                result.push(stwo::prover::poly::circle::CircleEvaluation::new(
+                    domain,
+                    metal_values,
+                ));
+            }
+            self.addr_to_id_cols_replaced.set(Self::ADDR_TO_ID_SPLIT);
+            Some(result)
+        }
     }
 
     /// Hybrid TreeBuilder that accepts evaluations from both SimdBackend (CPU)
@@ -507,9 +580,11 @@ mod cairo_prove_main {
     /// `ConvertingTreeBuilder`); GPU evaluations pass through directly with no
     /// CPU round-trip.
     ///
-    /// When a `GpuWitnessPrecompute` is attached, memory_id_to_big value
-    /// columns are sourced from the GPU trace instead of being uploaded from
-    /// CPU, eliminating the CPU-to-Metal copy for 28+8 = 36 columns.
+    /// When a `GpuWitnessPrecompute` is attached:
+    /// - memory_id_to_big value columns (28 big + 8 small = 36 columns) are
+    ///   sourced from the GPU trace, eliminating CPU-to-Metal upload.
+    /// - memory_address_to_id id columns (16 columns) are sourced from the
+    ///   GPU trace, with only multiplicity columns uploaded from CPU.
     #[cfg(feature = "metal-runtime")]
     struct HybridTreeBuilder<'a, 'b, 'g> {
         inner: stwo::prover::TreeBuilder<'a, 'b, stwo_metal::MetalBackend, Blake2sMerkleChannel>,
@@ -530,12 +605,15 @@ mod cairo_prove_main {
         ) -> stwo::core::pcs::TreeSubspan {
             use stwo::prover::backend::Column;
 
-            // Try GPU replacement for memory_id_to_big columns.
+            // Try GPU replacement for memory_id_to_big and memory_address_to_id columns.
             if let Some(gpu) = self.gpu_witness {
                 if let Some(metal_cols) = gpu.try_replace_big(&columns) {
                     return self.inner.extend_evals(metal_cols);
                 }
                 if let Some(metal_cols) = gpu.try_replace_small(&columns) {
+                    return self.inner.extend_evals(metal_cols);
+                }
+                if let Some(metal_cols) = gpu.try_replace_addr_to_id(&columns) {
                     return self.inner.extend_evals(metal_cols);
                 }
             }
@@ -1367,10 +1445,10 @@ mod cairo_prove_main {
     /// `extract_column(tree_idx, col_idx, eval_domain)` returns the column
     /// evaluation as a `Vec<BaseField>` on the given domain.
     #[cfg(feature = "metal-runtime")]
-    fn compute_metal_composition_poly_impl(
+    fn compute_metal_composition_poly_impl<'cs>(
         results: &[LoweringResult],
         extract_column: impl Fn(usize, usize, stwo::core::poly::circle::CircleDomain) -> Vec<stwo::core::fields::m31::BaseField>,
-        extract_column_gpu: Option<&dyn Fn(usize, usize, stwo::core::poly::circle::CircleDomain) -> stwo_metal::MetalBaseFieldVec>,
+        extract_column_gpu: Option<&dyn Fn(usize, usize, stwo::core::poly::circle::CircleDomain) -> GpuColumnRef<'cs>>,
         random_coeff: SecureField,
         _log_blowup_factor: u32,
     ) -> stwo::prover::poly::circle::SecureCirclePoly<SimdBackend> {
@@ -1444,7 +1522,8 @@ mod cairo_prove_main {
             interaction_cols: Vec<Vec<Vec<BaseField>>>,
             /// GPU-resident columns for JIT dispatch (avoids CPU round-trip).
             /// When `Some`, `interaction_cols` is empty — populated lazily on fallback.
-            gpu_interaction_cols: Option<Vec<Vec<stwo_metal::MetalBaseFieldVec>>>,
+            /// Uses `GpuColumnRef` for zero-copy borrowing when domains match.
+            gpu_interaction_cols: Option<Vec<Vec<GpuColumnRef<'a>>>>,
             coeff_start: usize,
             coeff_end: usize,
             use_simd: bool,
@@ -1475,16 +1554,16 @@ mod cairo_prove_main {
             let use_gpu_extraction = has_jit && extract_column_gpu.is_some();
 
             let mut interaction_cols: Vec<Vec<Vec<BaseField>>> = Vec::new();
-            let mut gpu_cols: Option<Vec<Vec<stwo_metal::MetalBaseFieldVec>>> = None;
+            let mut gpu_cols: Option<Vec<Vec<GpuColumnRef<'_>>>> = None;
 
             if use_gpu_extraction {
                 // GPU-resident extraction: keep columns on GPU for JIT dispatch.
                 let extractor = extract_column_gpu.unwrap();
-                let mut gpu_interactions: Vec<Vec<stwo_metal::MetalBaseFieldVec>> = Vec::new();
+                let mut gpu_interactions: Vec<Vec<GpuColumnRef<'_>>> = Vec::new();
                 for interaction_idx in 0..n_interactions {
                     let tree_idx = interaction_idx;
                     if interaction_idx == 0 && !r.preprocessed_column_indices.is_empty() {
-                        let cols: Vec<stwo_metal::MetalBaseFieldVec> = r
+                        let cols: Vec<GpuColumnRef<'_>> = r
                             .preprocessed_column_indices
                             .iter()
                             .map(|&idx| extractor(0, idx, eval_domain))
@@ -1498,7 +1577,7 @@ mod cairo_prove_main {
                             .iter()
                             .find(|loc| loc.tree_index == tree_idx);
                         if let Some(loc) = location {
-                            let cols: Vec<stwo_metal::MetalBaseFieldVec> = (loc.col_start..loc.col_end)
+                            let cols: Vec<GpuColumnRef<'_>> = (loc.col_start..loc.col_end)
                                 .map(|col_idx| extractor(tree_idx, col_idx, eval_domain))
                                 .collect();
                             gpu_interactions.push(cols);
@@ -1989,6 +2068,7 @@ mod cairo_prove_main {
         random_coeff: SecureField,
         log_blowup_factor: u32,
     ) -> stwo::prover::poly::circle::SecureCirclePoly<SimdBackend> {
+        let no_gpu: Option<&dyn Fn(usize, usize, stwo::core::poly::circle::CircleDomain) -> GpuColumnRef<'static>> = None;
         compute_metal_composition_poly_impl(
             results,
             |tree_idx, col_idx, domain| {
@@ -1997,7 +2077,7 @@ mod cairo_prove_main {
                     domain,
                 )
             },
-            None, // No GPU extraction for SimdBackend
+            no_gpu,
             random_coeff,
             log_blowup_factor,
         )
@@ -2005,13 +2085,20 @@ mod cairo_prove_main {
 
     /// Composition from a MetalBackend commitment scheme (full pipeline).
     #[cfg(feature = "metal-runtime")]
-    fn compute_metal_composition_poly_metal(
+    fn compute_metal_composition_poly_metal<'cs>(
         results: &[LoweringResult],
-        commitment_scheme: &CommitmentSchemeProver<'_, stwo_metal::MetalBackend, Blake2sMerkleChannel>,
+        commitment_scheme: &'cs CommitmentSchemeProver<'_, stwo_metal::MetalBackend, Blake2sMerkleChannel>,
         random_coeff: SecureField,
         log_blowup_factor: u32,
         metal_twiddles: &stwo::prover::poly::twiddles::TwiddleTree<stwo_metal::MetalBackend>,
     ) -> stwo::prover::poly::circle::SecureCirclePoly<SimdBackend> {
+        let gpu_extractor = |tree_idx: usize, col_idx: usize, domain: stwo::core::poly::circle::CircleDomain| -> GpuColumnRef<'cs> {
+            extract_column_on_domain_metal_gpu(
+                &commitment_scheme.trees[tree_idx].polynomials[col_idx],
+                domain,
+                metal_twiddles,
+            )
+        };
         compute_metal_composition_poly_impl(
             results,
             |tree_idx, col_idx, domain| {
@@ -2021,13 +2108,7 @@ mod cairo_prove_main {
                     metal_twiddles,
                 )
             },
-            Some(&|tree_idx, col_idx, domain| {
-                extract_column_on_domain_metal_gpu(
-                    &commitment_scheme.trees[tree_idx].polynomials[col_idx],
-                    domain,
-                    metal_twiddles,
-                )
-            }),
+            Some(&gpu_extractor),
             random_coeff,
             log_blowup_factor,
         )
@@ -2078,18 +2159,67 @@ mod cairo_prove_main {
         eval.values.to_cpu()
     }
 
-    /// Extract polynomial evaluation on a target domain from a MetalBackend
-    /// committed polynomial, returning a GPU-resident `BaseFieldVec` to avoid
-    /// downloading to CPU.  Used for GPU+JIT composition dispatch.
+    /// A GPU column reference that is either borrowed (zero-copy, zero-alloc)
+    /// from the committed polynomial or owned (freshly allocated via RFFT).
+    ///
+    /// When the polynomial's evaluation domain matches the composition eval
+    /// domain (the common Cairo case), we return `Borrowed` — no GPU buffer
+    /// clone, no allocation.  When the domains differ, we allocate a new buffer
+    /// via RFFT and return `Owned`.
     #[cfg(feature = "metal-runtime")]
-    fn extract_column_on_domain_metal_gpu(
-        poly: &stwo::prover::Poly<stwo_metal::MetalBackend>,
+    enum GpuColumnRef<'a> {
+        /// Zero-copy reference to the existing GPU buffer inside the committed
+        /// polynomial evaluation.
+        Borrowed(&'a stwo_metal_sys::metal::U32Buffer, usize),
+        /// Freshly allocated GPU buffer (domain extension via RFFT).
+        Owned(stwo_metal::MetalBaseFieldVec),
+    }
+
+    #[cfg(feature = "metal-runtime")]
+    impl<'a> GpuColumnRef<'a> {
+        fn gpu_buffer(&self) -> &stwo_metal_sys::metal::U32Buffer {
+            match self {
+                GpuColumnRef::Borrowed(buf, _) => buf,
+                GpuColumnRef::Owned(v) => v.gpu_buffer(),
+            }
+        }
+
+        fn len(&self) -> usize {
+            match self {
+                GpuColumnRef::Borrowed(_, len) => *len,
+                GpuColumnRef::Owned(v) => v.len(),
+            }
+        }
+
+        fn to_vec(&self) -> Vec<stwo::core::fields::m31::BaseField> {
+            use stwo::core::fields::m31::BaseField;
+            match self {
+                GpuColumnRef::Borrowed(buf, len) => {
+                    buf.to_vec()
+                        .expect("GpuColumnRef::Borrowed readback should succeed")
+                        .into_iter()
+                        .take(*len)
+                        .map(BaseField::from_u32_unchecked)
+                        .collect()
+                }
+                GpuColumnRef::Owned(v) => v.to_vec(),
+            }
+        }
+    }
+
+    /// Extract polynomial evaluation on a target domain from a MetalBackend
+    /// committed polynomial, returning a `GpuColumnRef` to avoid cloning the
+    /// GPU buffer when the domains match (zero-copy fast path).
+    #[cfg(feature = "metal-runtime")]
+    fn extract_column_on_domain_metal_gpu<'a>(
+        poly: &'a stwo::prover::Poly<stwo_metal::MetalBackend>,
         eval_domain: stwo::core::poly::circle::CircleDomain,
         twiddles: &stwo::prover::poly::twiddles::TwiddleTree<stwo_metal::MetalBackend>,
-    ) -> stwo_metal::MetalBaseFieldVec {
+    ) -> GpuColumnRef<'a> {
         if poly.evals.domain == eval_domain {
-            // Already on the right domain — clone the GPU buffer (no CPU download).
-            return poly.evals.values.clone();
+            // Already on the right domain — zero-copy borrow of the GPU buffer.
+            let len = poly.evals.values.len();
+            return GpuColumnRef::Borrowed(poly.evals.values.gpu_buffer(), len);
         }
 
         // GPU evaluation: extend coefficients and RFFT on Metal.
@@ -2097,7 +2227,7 @@ mod cairo_prove_main {
         let coeffs_ref = poly.coeffs.as_ref()
             .expect("extract_column_on_domain_metal_gpu requires store_polynomials_coefficients=true");
         let eval = stwo_metal::MetalBackend::evaluate(coeffs_ref, eval_domain, twiddles);
-        eval.values
+        GpuColumnRef::Owned(eval.values)
     }
 
     #[cfg(feature = "metal-runtime")]
@@ -2575,6 +2705,12 @@ mod cairo_prove_main {
         let gpu_big_values = input.memory.f252_values.clone();
         let gpu_small_values = input.memory.small_values.clone();
 
+        // Extract address-to-id mapping for GPU witness generation.
+        // Skip address 0 (reserved), use addresses 1..len as raw u32 IDs.
+        let gpu_addr_to_id_raw: Vec<u32> = (1..input.memory.address_to_id.len())
+            .map(|addr| input.memory.address_to_id[addr].0)
+            .collect();
+
         // Spawn claim generator on background thread (CPU-only, overlaps with
         // commit below).  `input` is not used again after this point.
         let preprocessed_trace_for_claim = preprocessed_trace.clone();
@@ -2588,10 +2724,14 @@ mod cairo_prove_main {
         let gpu_witness_handle = std::thread::spawn(move || {
             use stwo_metal::{
                 generate_memory_id_to_big_trace, generate_memory_id_to_big_small_trace,
+                generate_memory_addr_to_id_trace,
             };
             // Use the same MAX_SEQUENCE_LOG_SIZE = 25 as stwo-cairo for chunking.
             const LOG_MAX_BIG_SIZE: u32 = 25;
             let max_big_size = 1usize << LOG_MAX_BIG_SIZE;
+
+            // MEMORY_ADDRESS_TO_ID_SPLIT = 1 << (29 - 25) = 16.
+            const ADDR_TO_ID_SPLIT: u32 = 16;
 
             // Pad big_values to SIMD alignment (multiple of 16).
             let mut big_values = gpu_big_values;
@@ -2633,7 +2773,25 @@ mod cairo_prove_main {
                 None
             };
 
-            (big_value_evals, small_value_evals)
+            // Generate memory_address_to_id trace on GPU.
+            // Pad to SIMD alignment (multiple of 16).
+            let mut addr_ids = gpu_addr_to_id_raw;
+            let simd_padded_addr_size = addr_ids.len().next_multiple_of(16);
+            addr_ids.resize(simd_padded_addr_size, 0);
+            // Zero multiplicities: the GPU-generated id columns don't depend on them,
+            // and we substitute only the id columns (not multiplicities) from GPU.
+            let zero_mults = vec![0u32; addr_ids.len()];
+            let addr_to_id_evals = match generate_memory_addr_to_id_trace(
+                &addr_ids, &zero_mults, ADDR_TO_ID_SPLIT,
+            ) {
+                Ok(trace) => Some(trace.to_metal_evaluations()),
+                Err(e) => {
+                    eprintln!("  [gpu-witness] addr_to_id trace error: {e}");
+                    None
+                }
+            };
+
+            (big_value_evals, small_value_evals, addr_to_id_evals)
         });
 
         // 3. MetalBackend commitment scheme.
@@ -2675,24 +2833,28 @@ mod cairo_prove_main {
             .expect("claim generator thread should not panic");
 
         // Join GPU witness pre-computation (should already be done by now).
-        let (gpu_big_value_evals, gpu_small_value_evals) = gpu_witness_handle
+        let (gpu_big_value_evals, gpu_small_value_evals, gpu_addr_to_id_evals) = gpu_witness_handle
             .join()
             .expect("GPU witness thread should not panic");
         let gpu_witness_ms = t_gpu_witness.elapsed().as_secs_f64() * 1000.0;
         println!(
-            "  GPU witness pre-compute: {} big chunks, small={}  ({:.1} ms, overlapped)",
+            "  GPU witness pre-compute: {} big chunks, small={}, addr_to_id={}  ({:.1} ms, overlapped)",
             gpu_big_value_evals.len(),
             gpu_small_value_evals.is_some(),
+            gpu_addr_to_id_evals.is_some(),
             gpu_witness_ms,
         );
 
         let gpu_precompute = GpuWitnessPrecompute {
             big_value_evals: gpu_big_value_evals,
             small_value_evals: gpu_small_value_evals,
+            addr_to_id_evals: gpu_addr_to_id_evals,
             big_next: std::cell::Cell::new(0),
             small_done: std::cell::Cell::new(false),
+            addr_to_id_done: std::cell::Cell::new(false),
             big_cols_replaced: std::cell::Cell::new(0),
             small_cols_replaced: std::cell::Cell::new(0),
+            addr_to_id_cols_replaced: std::cell::Cell::new(0),
         };
 
         let mut hybrid_tb = HybridTreeBuilder {
@@ -2706,10 +2868,11 @@ mod cairo_prove_main {
         // Report GPU witness column substitution.
         let big_replaced = gpu_precompute.big_cols_replaced.get();
         let small_replaced = gpu_precompute.small_cols_replaced.get();
-        if big_replaced + small_replaced > 0 {
+        let addr_to_id_replaced = gpu_precompute.addr_to_id_cols_replaced.get();
+        if big_replaced + small_replaced + addr_to_id_replaced > 0 {
             println!(
-                "  GPU witness substitution: {} big + {} small value columns replaced (saved CPU->Metal upload)",
-                big_replaced, small_replaced,
+                "  GPU witness substitution: {} big + {} small + {} addr_to_id columns replaced (saved CPU->Metal upload)",
+                big_replaced, small_replaced, addr_to_id_replaced,
             );
         }
 

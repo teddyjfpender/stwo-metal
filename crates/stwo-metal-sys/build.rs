@@ -24,6 +24,7 @@ const METAL_SOURCES: &[&str] = &[
     "blake2s",
     "grind",
     "witness_memory_id_to_big",
+    "witness_memory_addr_to_id",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -133,6 +134,7 @@ fn main() {
     println!("cargo:rerun-if-changed=metal/blake2s.metal");
     println!("cargo:rerun-if-changed=metal/grind.metal");
     println!("cargo:rerun-if-changed=metal/witness_memory_id_to_big.metal");
+    println!("cargo:rerun-if-changed=metal/witness_memory_addr_to_id.metal");
     for var in [
         CUDA_MODE_VAR,
         METAL_MODE_VAR,
