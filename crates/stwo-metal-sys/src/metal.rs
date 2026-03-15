@@ -7,6 +7,17 @@ include!(concat!(env!("OUT_DIR"), "/metal_autogen.rs"));
 
 const ERROR_BUFFER_LEN: usize = 512;
 
+/// FFI-compatible descriptor for one size-group in a multi-group batch point
+/// evaluation.  Must match `StwoMetalBatchEvalGroup` in `runtime.m`.
+#[repr(C)]
+pub struct BatchEvalGroupDescriptor {
+    pub flat_coeffs_ptr: *mut c_void,
+    pub factors_ptr: *mut c_void,
+    pub dst_ptr: *mut c_void,
+    pub coeffs_log_len: u32,
+    pub n_polys: u32,
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalRuntimeSupport {
     Available,
@@ -579,6 +590,59 @@ impl U32Buffer {
             )?;
         }
         Ok(dst)
+    }
+
+    /// Evaluate multiple groups of same-size polynomials in a single Metal
+    /// command buffer, avoiding per-group GPU round-trip overhead.
+    ///
+    /// Each entry in `groups` is `(flat_coeffs, factors, coeffs_log_len, n_polys)`.
+    /// Returns one `U32Buffer` per group containing `n_polys * 4` u32 results
+    /// (packed qm31 values).
+    pub fn batch_eval_at_point_multi_group(
+        groups: &[(&Self, &Self, u32, usize)],
+    ) -> Result<Vec<Self>, MetalError> {
+        if groups.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let runtime = shared_runtime()?;
+
+        // Allocate destination buffers up front.
+        let dst_buffers: Vec<Self> = groups
+            .iter()
+            .map(|(_, _, _, n_polys)| Self::uninitialized(*n_polys * 4))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Build FFI descriptors.
+        let descriptors: Vec<BatchEvalGroupDescriptor> = groups
+            .iter()
+            .zip(dst_buffers.iter())
+            .map(|((coeffs, factors, coeffs_log_len, n_polys), dst)| {
+                BatchEvalGroupDescriptor {
+                    flat_coeffs_ptr: coeffs.raw.as_ptr(),
+                    factors_ptr: factors.raw.as_ptr(),
+                    dst_ptr: dst.raw.as_ptr(),
+                    coeffs_log_len: *coeffs_log_len,
+                    n_polys: (*n_polys)
+                        .try_into()
+                        .expect("multi-group batch eval polynomial count should fit in u32"),
+                }
+            })
+            .collect();
+
+        unsafe {
+            ffi::batch_eval_at_point_multi_group_u32(
+                runtime.raw.as_ptr(),
+                descriptors.as_ptr(),
+                descriptors
+                    .len()
+                    .try_into()
+                    .expect("multi-group batch eval group count should fit in u32"),
+                error_buffer_mut_ptr,
+            )?;
+        }
+
+        Ok(dst_buffers)
     }
 
     pub fn fix_first_variable_base_field(
@@ -3023,7 +3087,10 @@ fn decode_error_buffer(buffer: &[i8; ERROR_BUFFER_LEN]) -> String {
 
 #[cfg(stwo_metal_link)]
 mod ffi {
-    use super::{c_void, decode_error_buffer, MetalError, NonNull, ERROR_BUFFER_LEN};
+    use super::{
+        c_void, decode_error_buffer, BatchEvalGroupDescriptor, MetalError, NonNull,
+        ERROR_BUFFER_LEN,
+    };
 
     unsafe extern "C" {
         fn stwo_metal_runtime_create(
@@ -3179,6 +3246,13 @@ mod ffi {
             dst: *mut c_void,
             coeffs_log_len: u32,
             n_polys: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_batch_eval_at_point_multi_group_u32(
+            runtime: *mut c_void,
+            groups: *const BatchEvalGroupDescriptor,
+            n_groups: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -4424,6 +4498,26 @@ mod ffi {
             dst,
             coeffs_log_len,
             n_polys,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn batch_eval_at_point_multi_group_u32(
+        runtime: *mut c_void,
+        groups: *const super::BatchEvalGroupDescriptor,
+        n_groups: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_batch_eval_at_point_multi_group_u32(
+            runtime,
+            groups,
+            n_groups,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -6484,7 +6578,7 @@ mod ffi {
 
 #[cfg(not(stwo_metal_link))]
 mod ffi {
-    use super::{c_void, MetalError, NonNull};
+    use super::{c_void, BatchEvalGroupDescriptor, MetalError, NonNull};
 
     pub unsafe fn runtime_create(
         _metallib_bytes: *const u8,
@@ -6708,6 +6802,17 @@ mod ffi {
         _dst: *mut c_void,
         _coeffs_log_len: u32,
         _n_polys: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn batch_eval_at_point_multi_group_u32(
+        _runtime: *mut c_void,
+        _groups: *const super::BatchEvalGroupDescriptor,
+        _n_groups: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

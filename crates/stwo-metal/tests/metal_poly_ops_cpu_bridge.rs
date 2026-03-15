@@ -244,6 +244,45 @@ fn metal_poly_ops_first_pass_partials_match_cpu_chunk_folds() {
 
 #[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn metal_poly_ops_batch_eval_multi_size_fused_matches_cpu() {
+    require_metal_runtime();
+
+    // Create polynomials of three different sizes to exercise the multi-group
+    // fused command buffer path (all GPU-eligible: log_size > 9).
+    let mut rng = SmallRng::seed_from_u64(42);
+    let log_sizes: Vec<u32> = vec![10, 13, 19];
+    let counts: Vec<usize> = vec![3, 2, 1]; // polys per size group
+
+    let mut cpu_polys = Vec::new();
+    let mut metal_polys = Vec::new();
+    for (&log_size, &count) in log_sizes.iter().zip(counts.iter()) {
+        for _ in 0..count {
+            let coeffs: Vec<BaseField> = (0..(1 << log_size)).map(|_| rng.gen()).collect();
+            cpu_polys.push(CircleCoefficients::<CpuBackend>::new(coeffs.clone()));
+            metal_polys.push(CircleCoefficients::<MetalBackend>::new(
+                MetalBaseFieldVec::from_vec(coeffs),
+            ));
+        }
+    }
+
+    let point = CirclePoint::get_point(1 << 17).into_ef::<SecureField>();
+    let cpu_refs = cpu_polys.iter().collect::<Vec<_>>();
+    let metal_refs = metal_polys.iter().collect::<Vec<_>>();
+
+    let cpu_expected: Vec<SecureField> = cpu_refs
+        .iter()
+        .map(|poly| CpuBackend::eval_at_point(poly, point))
+        .collect();
+    let metal_batch = MetalBackend::batch_eval_at_point(&metal_refs, point);
+
+    assert_eq!(
+        metal_batch, cpu_expected,
+        "multi-size fused batch eval must match CPU reference"
+    );
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn metal_poly_ops_cpu_bridge_surface_types_stay_stable() {
     require_metal_runtime();
 

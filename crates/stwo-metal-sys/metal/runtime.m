@@ -1485,6 +1485,157 @@ bool stwo_metal_batch_eval_first_pass_base_field_u32(
     }
 }
 
+/// Descriptor for one size-group in a multi-group batch point evaluation.
+typedef struct {
+    void *flat_coeffs_ptr;
+    void *factors_ptr;
+    void *dst_ptr;
+    uint32_t coeffs_log_len;
+    uint32_t n_polys;
+} StwoMetalBatchEvalGroup;
+
+/// Evaluate multiple groups of same-size polynomials at their respective points
+/// in a single Metal command buffer.  Each group has its own flattened
+/// coefficient buffer, folding factors, and destination buffer.  Encoding all
+/// groups into one command buffer avoids the per-group GPU round-trip overhead.
+bool stwo_metal_batch_eval_at_point_multi_group_u32(
+    void *runtime_ptr,
+    const StwoMetalBatchEvalGroup *groups,
+    uint32_t n_groups,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        if (n_groups == 0u) {
+            return true;
+        }
+
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+
+        id<MTLComputePipelineState> first_pass_pipeline =
+            stwo_metal_pipeline(runtime, @"batch_eval_at_point_first_pass_u32", error_message, error_message_len);
+        if (first_pass_pipeline == nil) {
+            return false;
+        }
+        id<MTLComputePipelineState> reduce_pipeline =
+            stwo_metal_pipeline(runtime, @"batch_eval_at_point_reduce_u32", error_message, error_message_len);
+        if (reduce_pipeline == nil) {
+            return false;
+        }
+        id<MTLComputePipelineState> finalize_pipeline =
+            stwo_metal_pipeline(runtime, @"batch_eval_at_point_finalize_u32", error_message, error_message_len);
+        if (finalize_pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        for (uint32_t g = 0; g < n_groups; g++) {
+            StwoMetalBufferBox *flat_coeffs = stwo_metal_buffer_box(groups[g].flat_coeffs_ptr);
+            StwoMetalBufferBox *factors = stwo_metal_buffer_box(groups[g].factors_ptr);
+            StwoMetalBufferBox *dst = stwo_metal_buffer_box(groups[g].dst_ptr);
+            uint32_t coeffs_log_len = groups[g].coeffs_log_len;
+            uint32_t n_polys = groups[g].n_polys;
+            uint32_t coeffs_size = 1u << coeffs_log_len;
+            uint32_t blocks_per_poly = coeffs_log_len > 9u ? (coeffs_size >> 9u) : 1u;
+
+            // Allocate per-group temporaries for the reduction tree.
+            NSUInteger temp_len = (NSUInteger)(blocks_per_poly * n_polys * 4u);
+            id<MTLBuffer> temp_a = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
+                                                               options:MTLResourceStorageModeShared];
+            id<MTLBuffer> temp_b = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
+                                                               options:MTLResourceStorageModeShared];
+            if (temp_a == nil || temp_b == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal point-evaluation temporary buffers.");
+                return false;
+            }
+
+            // First pass: reduce 512-element blocks.
+            {
+                id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+                if (encoder == nil) {
+                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                    return false;
+                }
+                [encoder setComputePipelineState:first_pass_pipeline];
+                [encoder setBuffer:flat_coeffs.buffer offset:0 atIndex:0];
+                [encoder setBuffer:factors.buffer offset:0 atIndex:1];
+                [encoder setBuffer:temp_a offset:0 atIndex:2];
+                [encoder setBytes:&coeffs_log_len length:sizeof(coeffs_log_len) atIndex:3];
+                [encoder setBytes:&blocks_per_poly length:sizeof(blocks_per_poly) atIndex:4];
+                [encoder dispatchThreadgroups:MTLSizeMake(blocks_per_poly, n_polys, 1)
+                         threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+                [encoder endEncoding];
+            }
+
+            // Reduce passes: repeatedly halve until stride == 1.
+            uint32_t current_stride = blocks_per_poly;
+            uint32_t remaining_log_len = coeffs_log_len > 9u ? coeffs_log_len - 9u : 0u;
+            id<MTLBuffer> current = temp_a;
+            id<MTLBuffer> next = temp_b;
+
+            while (current_stride > 1u) {
+                uint32_t output_stride = remaining_log_len > 9u ? (current_stride >> 9u) : 1u;
+                uint32_t factor_offset = remaining_log_len - 1u;
+
+                id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+                if (encoder == nil) {
+                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                    return false;
+                }
+
+                [encoder setComputePipelineState:reduce_pipeline];
+                [encoder setBuffer:current offset:0 atIndex:0];
+                [encoder setBuffer:factors.buffer offset:0 atIndex:1];
+                [encoder setBuffer:next offset:0 atIndex:2];
+                [encoder setBytes:&current_stride length:sizeof(current_stride) atIndex:3];
+                [encoder setBytes:&output_stride length:sizeof(output_stride) atIndex:4];
+                [encoder setBytes:&factor_offset length:sizeof(factor_offset) atIndex:5];
+                [encoder dispatchThreadgroups:MTLSizeMake(output_stride, n_polys, 1)
+                              threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+                [encoder endEncoding];
+
+                current_stride = output_stride;
+                remaining_log_len = remaining_log_len > 9u ? remaining_log_len - 9u : 0u;
+                id<MTLBuffer> swap = current;
+                current = next;
+                next = swap;
+            }
+
+            // Finalize: copy the single qm31 result per polynomial to the destination buffer.
+            {
+                id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+                if (encoder == nil) {
+                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                    return false;
+                }
+                [encoder setComputePipelineState:finalize_pipeline];
+                [encoder setBuffer:current offset:0 atIndex:0];
+                [encoder setBuffer:dst.buffer offset:0 atIndex:1];
+                [encoder setBytes:&current_stride length:sizeof(current_stride) atIndex:2];
+                [encoder setBytes:&n_polys length:sizeof(n_polys) atIndex:3];
+                [encoder dispatchThreads:MTLSizeMake(n_polys, 1, 1)
+                           threadsPerThreadgroup:MTLSizeMake(stwo_metal_threads_per_group(finalize_pipeline), 1, 1)];
+                [encoder endEncoding];
+            }
+        }
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal multi-group point evaluation failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_fix_first_variable_base_field_u32(
     void *runtime_ptr,
     void *src_ptr,

@@ -387,14 +387,91 @@ impl PolyOps for MetalBackend {
         }
 
         let mut results = vec![SecureField::zero(); polys.len()];
-        for group in grouped.into_values() {
-            let group_polys = group.iter().map(|(_, poly)| *poly).collect_vec();
-            if let Some(native_values) = batch_eval_same_size_native(&group_polys, point) {
-                for ((index, _), value) in group.into_iter().zip(native_values) {
-                    results[index] = value;
-                }
-                continue;
+
+        // Separate GPU-eligible groups (log_size > 9) from CPU-fallback groups.
+        let mut gpu_groups: Vec<(usize, Vec<(usize, &CircleCoefficients<Self>)>)> = Vec::new();
+        let mut cpu_groups: Vec<Vec<(usize, &CircleCoefficients<Self>)>> = Vec::new();
+        for (coeffs_len, group) in grouped {
+            let coeffs_log_len = coeffs_len.ilog2();
+            if coeffs_log_len > 9 {
+                gpu_groups.push((coeffs_len, group));
+            } else {
+                cpu_groups.push(group);
             }
+        }
+
+        // Fuse ALL GPU-eligible groups into a single Metal command buffer.
+        if !gpu_groups.is_empty() {
+            // Prepare flat coefficient buffers and factor buffers for each group.
+            // `flat_coeffs_owned` keeps owned buffers alive; for single-poly
+            // groups we reference the polynomial's buffer directly.
+            let mut flat_coeffs_owned: Vec<Option<Arc<U32Buffer>>> =
+                Vec::with_capacity(gpu_groups.len());
+            let mut factors_owned: Vec<U32Buffer> = Vec::with_capacity(gpu_groups.len());
+            let mut meta: Vec<(u32, usize)> = Vec::with_capacity(gpu_groups.len()); // (coeffs_log_len, n_polys)
+
+            for (coeffs_len, ref group) in &gpu_groups {
+                let coeffs_log_len = coeffs_len.ilog2();
+                let group_polys: Vec<&CircleCoefficients<Self>> =
+                    group.iter().map(|(_, poly)| *poly).collect();
+
+                let factor_limbs = folding_mappings(point, coeffs_log_len)
+                    .into_iter()
+                    .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+                    .collect_vec();
+                let factors_buffer = U32Buffer::from_slice(&factor_limbs)
+                    .expect("Metal multi-group eval factor upload should succeed");
+
+                if group_polys.len() == 1 {
+                    // Single polynomial -- reference its buffer directly, no copy.
+                    flat_coeffs_owned.push(None);
+                } else {
+                    flat_coeffs_owned.push(Some(
+                        cached_flat_coeffs_buffer(&group_polys, *coeffs_len, coeffs_log_len)
+                            .expect("Metal multi-group eval coefficient staging should succeed"),
+                    ));
+                }
+                factors_owned.push(factors_buffer);
+                meta.push((coeffs_log_len, group_polys.len()));
+            }
+
+            // Build the multi-group call arguments, resolving references.
+            let group_args: Vec<(&U32Buffer, &U32Buffer, u32, usize)> = gpu_groups
+                .iter()
+                .enumerate()
+                .map(|(i, (_, group))| {
+                    let coeffs_ref = match &flat_coeffs_owned[i] {
+                        Some(arc) => arc.as_ref(),
+                        None => &group[0].1.coeffs.buffer,
+                    };
+                    (coeffs_ref, &factors_owned[i], meta[i].0, meta[i].1)
+                })
+                .collect();
+
+            let result_buffers = U32Buffer::batch_eval_at_point_multi_group(&group_args)
+                .expect("Metal multi-group batch eval should succeed");
+
+            // Scatter results back to the output vector.
+            for ((_, group), result_buffer) in gpu_groups.iter().zip(result_buffers.iter()) {
+                let raw_results = result_buffer
+                    .to_vec()
+                    .expect("Metal multi-group eval readback should succeed");
+                for (group_idx, (original_index, _)) in group.iter().enumerate() {
+                    let base = group_idx * 4;
+                    results[*original_index] = SecureField::from_u32_unchecked(
+                        raw_results[base],
+                        raw_results[base + 1],
+                        raw_results[base + 2],
+                        raw_results[base + 3],
+                    );
+                }
+            }
+        }
+
+        // Handle CPU-fallback groups (log_size <= 9).
+        for group in cpu_groups {
+            let group_polys: Vec<&CircleCoefficients<Self>> =
+                group.iter().map(|(_, poly)| *poly).collect();
 
             #[cfg(not(feature = "parallel"))]
             let fallback_values = group_polys
