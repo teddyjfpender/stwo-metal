@@ -24,107 +24,6 @@
 @implementation StwoMetalBufferBox
 @end
 
-// ---------------------------------------------------------------------------
-// GPU Buffer Pool
-//
-// Size-bucketed pool that caches freed MTLBuffer objects for reuse.  Sizes are
-// rounded up to the next power of two (minimum 256 bytes = 64 u32s) so that
-// similarly-sized allocations share a bucket.  Each bucket keeps at most
-// STWO_BUFFER_POOL_MAX_PER_BUCKET buffers.  The pool is process-global and
-// protected by an os_unfair_lock.
-// ---------------------------------------------------------------------------
-
-#include <os/lock.h>
-
-#define STWO_BUFFER_POOL_MAX_PER_BUCKET 16
-#define STWO_BUFFER_POOL_MIN_BYTES 256
-
-static NSUInteger stwo_next_power_of_two(NSUInteger v) {
-    if (v == 0) return 1;
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v |= v >> 32;
-    v++;
-    return v;
-}
-
-@interface StwoMetalBufferPool : NSObject {
-    NSMutableDictionary<NSNumber *, NSMutableArray *> *_buckets;
-    os_unfair_lock _lock;
-}
-+ (instancetype)shared;
-- (id<MTLBuffer>)acquireWithDevice:(id<MTLDevice>)device byteSize:(NSUInteger)byteSize;
-- (void)returnBuffer:(id<MTLBuffer>)buffer;
-@end
-
-@implementation StwoMetalBufferPool
-
-+ (instancetype)shared {
-    static StwoMetalBufferPool *pool = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        pool = [[StwoMetalBufferPool alloc] init];
-    });
-    return pool;
-}
-
-- (instancetype)init {
-    self = [super init];
-    if (self) {
-        _buckets = [NSMutableDictionary dictionary];
-        _lock = OS_UNFAIR_LOCK_INIT;
-    }
-    return self;
-}
-
-- (id<MTLBuffer>)acquireWithDevice:(id<MTLDevice>)device byteSize:(NSUInteger)byteSize {
-    if (byteSize < STWO_BUFFER_POOL_MIN_BYTES) {
-        return [device newBufferWithLength:byteSize options:MTLResourceStorageModeShared];
-    }
-    NSUInteger bucket = stwo_next_power_of_two(byteSize);
-    NSNumber *key = @(bucket);
-
-    os_unfair_lock_lock(&_lock);
-    NSMutableArray *arr = _buckets[key];
-    id<MTLBuffer> buffer = nil;
-    if (arr.count > 0) {
-        buffer = arr.lastObject;
-        [arr removeLastObject];
-    }
-    os_unfair_lock_unlock(&_lock);
-
-    if (buffer != nil) {
-        return buffer;
-    }
-    return [device newBufferWithLength:bucket options:MTLResourceStorageModeShared];
-}
-
-- (void)returnBuffer:(id<MTLBuffer>)buffer {
-    NSUInteger byteSize = buffer.length;
-    if (byteSize < STWO_BUFFER_POOL_MIN_BYTES) {
-        return;
-    }
-    NSNumber *key = @(byteSize);
-
-    os_unfair_lock_lock(&_lock);
-    NSMutableArray *arr = _buckets[key];
-    if (arr == nil) {
-        arr = [NSMutableArray array];
-        _buckets[key] = arr;
-    }
-    if (arr.count < STWO_BUFFER_POOL_MAX_PER_BUCKET) {
-        [arr addObject:buffer];
-    }
-    os_unfair_lock_unlock(&_lock);
-}
-
-@end
-
-
 typedef struct {
     uint32_t initial_x;
     uint32_t initial_y;
@@ -374,7 +273,7 @@ void *stwo_metal_u32_buffer_from_host(
     @autoreleasepool {
         StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
         NSUInteger bytes = len * sizeof(uint32_t);
-        id<MTLBuffer> buffer = [[StwoMetalBufferPool shared] acquireWithDevice:runtime.device byteSize:bytes];
+        id<MTLBuffer> buffer = [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
         if (buffer == nil) {
             stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal buffer.");
             return NULL;
@@ -400,7 +299,7 @@ void *stwo_metal_u32_buffer_alloc_zeroed(
     @autoreleasepool {
         StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
         NSUInteger bytes = len * sizeof(uint32_t);
-        id<MTLBuffer> buffer = [[StwoMetalBufferPool shared] acquireWithDevice:runtime.device byteSize:bytes];
+        id<MTLBuffer> buffer = [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
         if (buffer == nil) {
             stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal buffer.");
             return NULL;
@@ -426,7 +325,7 @@ void *stwo_metal_u32_buffer_alloc_uninitialized(
     @autoreleasepool {
         StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
         NSUInteger bytes = len * sizeof(uint32_t);
-        id<MTLBuffer> buffer = [[StwoMetalBufferPool shared] acquireWithDevice:runtime.device byteSize:bytes];
+        id<MTLBuffer> buffer = [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
         if (buffer == nil) {
             stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal buffer.");
             return NULL;
@@ -444,16 +343,9 @@ void stwo_metal_u32_buffer_destroy(void *buffer) {
         return;
     }
     @autoreleasepool {
-        StwoMetalBufferBox *box = (__bridge_transfer StwoMetalBufferBox *)buffer;
-        [[StwoMetalBufferPool shared] returnBuffer:box.buffer];
+        __unused id released = (__bridge_transfer id)buffer;
     }
 }
-
-void stwo_metal_drain_buffer_pool(void) {
-    // No-op: pool draining is currently automatic via bucket caps.
-    // Kept as a future extension point.
-}
-
 
 bool stwo_metal_u32_buffer_read(
     void *runtime_ptr,
@@ -1743,6 +1635,177 @@ bool stwo_metal_batch_eval_at_point_multi_group_u32(
         return true;
     }
 }
+
+/// Descriptor for one size-group in an indirect multi-group batch point evaluation.
+/// Instead of a flat coefficient buffer, this uses an array of per-polynomial
+/// MTLBuffer pointers whose GPU addresses are resolved at dispatch time.
+typedef struct {
+    const void * const *coeff_buffer_ptrs;  // array of n_polys StwoMetalBufferBox* pointers
+    void *factors_ptr;                      // StwoMetalBufferBox* for folding factors
+    void *dst_ptr;                          // StwoMetalBufferBox* for results
+    uint32_t coeffs_log_len;
+    uint32_t n_polys;
+} StwoMetalBatchEvalIndirectGroup;
+
+/// Evaluate multiple groups of same-size polynomials at their respective points
+/// in a single Metal command buffer, reading polynomial coefficients indirectly
+/// via GPU virtual addresses.  This eliminates the CPU-side memcpy needed to
+/// concatenate polynomial coefficients into a flat staging buffer.
+bool stwo_metal_batch_eval_at_point_indirect_u32(
+    void *runtime_ptr,
+    const StwoMetalBatchEvalIndirectGroup *groups,
+    uint32_t n_groups,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        if (n_groups == 0u) {
+            return true;
+        }
+
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+
+        id<MTLComputePipelineState> indirect_first_pass_pipeline =
+            stwo_metal_pipeline(runtime, @"batch_eval_at_point_first_pass_indirect_u32", error_message, error_message_len);
+        if (indirect_first_pass_pipeline == nil) {
+            return false;
+        }
+        id<MTLComputePipelineState> reduce_pipeline =
+            stwo_metal_pipeline(runtime, @"batch_eval_at_point_reduce_u32", error_message, error_message_len);
+        if (reduce_pipeline == nil) {
+            return false;
+        }
+        id<MTLComputePipelineState> finalize_pipeline =
+            stwo_metal_pipeline(runtime, @"batch_eval_at_point_finalize_u32", error_message, error_message_len);
+        if (finalize_pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        for (uint32_t g = 0; g < n_groups; g++) {
+            uint32_t coeffs_log_len = groups[g].coeffs_log_len;
+            uint32_t n_polys = groups[g].n_polys;
+            StwoMetalBufferBox *factors = stwo_metal_buffer_box(groups[g].factors_ptr);
+            StwoMetalBufferBox *dst = stwo_metal_buffer_box(groups[g].dst_ptr);
+            uint32_t coeffs_size = 1u << coeffs_log_len;
+            uint32_t blocks_per_poly = coeffs_log_len > 9u ? (coeffs_size >> 9u) : 1u;
+
+            // Build GPU address buffer from per-polynomial MTLBuffer pointers.
+            id<MTLBuffer> addr_buffer = [runtime.device newBufferWithLength:(n_polys * sizeof(uint64_t))
+                                                                    options:MTLResourceStorageModeShared];
+            if (addr_buffer == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate GPU address buffer for indirect batch eval.");
+                return false;
+            }
+            uint64_t *addr_contents = (uint64_t *)addr_buffer.contents;
+            for (uint32_t i = 0; i < n_polys; ++i) {
+                StwoMetalBufferBox *coeff_buf = stwo_metal_buffer_box((void *)groups[g].coeff_buffer_ptrs[i]);
+                addr_contents[i] = coeff_buf.buffer.gpuAddress;
+            }
+
+            // Allocate per-group temporaries for the reduction tree.
+            NSUInteger temp_len = (NSUInteger)(blocks_per_poly * n_polys * 4u);
+            id<MTLBuffer> temp_a = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
+                                                               options:MTLResourceStorageModeShared];
+            id<MTLBuffer> temp_b = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
+                                                               options:MTLResourceStorageModeShared];
+            if (temp_a == nil || temp_b == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal indirect eval temporary buffers.");
+                return false;
+            }
+
+            // First pass: indirect read from per-polynomial GPU buffers.
+            {
+                id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+                if (encoder == nil) {
+                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                    return false;
+                }
+                [encoder setComputePipelineState:indirect_first_pass_pipeline];
+                [encoder setBuffer:addr_buffer offset:0 atIndex:0];
+                [encoder setBuffer:factors.buffer offset:0 atIndex:1];
+                [encoder setBuffer:temp_a offset:0 atIndex:2];
+                [encoder setBytes:&coeffs_log_len length:sizeof(coeffs_log_len) atIndex:3];
+                [encoder setBytes:&blocks_per_poly length:sizeof(blocks_per_poly) atIndex:4];
+                // Mark all coefficient buffers as readable so Metal can page them in.
+                for (uint32_t i = 0; i < n_polys; ++i) {
+                    StwoMetalBufferBox *coeff_buf = stwo_metal_buffer_box((void *)groups[g].coeff_buffer_ptrs[i]);
+                    [encoder useResource:coeff_buf.buffer usage:MTLResourceUsageRead];
+                }
+                [encoder dispatchThreadgroups:MTLSizeMake(blocks_per_poly, n_polys, 1)
+                         threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+                [encoder endEncoding];
+            }
+
+            // Reduce passes: same as the flat-buffer variant.
+            uint32_t current_stride = blocks_per_poly;
+            uint32_t remaining_log_len = coeffs_log_len > 9u ? coeffs_log_len - 9u : 0u;
+            id<MTLBuffer> current = temp_a;
+            id<MTLBuffer> next = temp_b;
+
+            while (current_stride > 1u) {
+                uint32_t output_stride = remaining_log_len > 9u ? (current_stride >> 9u) : 1u;
+                uint32_t factor_offset = remaining_log_len - 1u;
+
+                id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+                if (encoder == nil) {
+                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                    return false;
+                }
+
+                [encoder setComputePipelineState:reduce_pipeline];
+                [encoder setBuffer:current offset:0 atIndex:0];
+                [encoder setBuffer:factors.buffer offset:0 atIndex:1];
+                [encoder setBuffer:next offset:0 atIndex:2];
+                [encoder setBytes:&current_stride length:sizeof(current_stride) atIndex:3];
+                [encoder setBytes:&output_stride length:sizeof(output_stride) atIndex:4];
+                [encoder setBytes:&factor_offset length:sizeof(factor_offset) atIndex:5];
+                [encoder dispatchThreadgroups:MTLSizeMake(output_stride, n_polys, 1)
+                              threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+                [encoder endEncoding];
+
+                current_stride = output_stride;
+                remaining_log_len = remaining_log_len > 9u ? remaining_log_len - 9u : 0u;
+                id<MTLBuffer> swap = current;
+                current = next;
+                next = swap;
+            }
+
+            // Finalize: copy the single qm31 result per polynomial to the destination.
+            {
+                id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+                if (encoder == nil) {
+                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+                    return false;
+                }
+                [encoder setComputePipelineState:finalize_pipeline];
+                [encoder setBuffer:current offset:0 atIndex:0];
+                [encoder setBuffer:dst.buffer offset:0 atIndex:1];
+                [encoder setBytes:&current_stride length:sizeof(current_stride) atIndex:2];
+                [encoder setBytes:&n_polys length:sizeof(n_polys) atIndex:3];
+                [encoder dispatchThreads:MTLSizeMake(n_polys, 1, 1)
+                           threadsPerThreadgroup:MTLSizeMake(stwo_metal_threads_per_group(finalize_pipeline), 1, 1)];
+                [encoder endEncoding];
+            }
+        }
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal indirect multi-group point evaluation failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 
 bool stwo_metal_fix_first_variable_base_field_u32(
     void *runtime_ptr,
