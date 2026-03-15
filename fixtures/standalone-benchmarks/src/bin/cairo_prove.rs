@@ -3447,13 +3447,13 @@ mod cairo_prove_main {
         {
             use stwo_cairo_prover::witness::cairo_claim_generator::GpuPrecomputedInteractionTraces;
             use stwo_metal::backend::metal::interaction_trace_id_to_big::{
-                gpu_gen_big_memory_interaction_trace,
-                gpu_gen_small_memory_interaction_trace,
+                gpu_gen_big_memory_interaction_trace_metal,
+                gpu_gen_small_memory_interaction_trace_metal,
                 extract_lookup_elements_for_gpu,
                 InteractionRelationIds,
             };
             use stwo_metal::backend::metal::interaction_trace_addr_to_id::{
-                gpu_gen_addr_to_id_interaction_trace,
+                gpu_gen_addr_to_id_interaction_trace_metal,
             };
             use cairo_air::relations::{
                 MEMORY_ADDRESS_TO_ID_RELATION_ID,
@@ -3521,7 +3521,7 @@ mod cairo_prove_main {
                             .iter()
                             .zip(id_to_big_gen.big_multiplicities.iter())
                         {
-                            match gpu_gen_big_memory_interaction_trace(
+                            match gpu_gen_big_memory_interaction_trace_metal(
                                 big_values,
                                 big_mults,
                                 &gpu_lookup,
@@ -3541,7 +3541,7 @@ mod cairo_prove_main {
                             offset += big_mults.len() as u32 * N_LANES as u32;
                         }
 
-                        match gpu_gen_small_memory_interaction_trace(
+                        match gpu_gen_small_memory_interaction_trace_metal(
                             &id_to_big_gen.small_values,
                             &id_to_big_gen.small_multiplicities,
                             &gpu_lookup,
@@ -3550,8 +3550,8 @@ mod cairo_prove_main {
                             Ok((small_trace, small_claimed_sum)) => {
                                 let total_big_sum: SecureField = big_claimed_sums.iter().sum();
                                 gpu_traces.memory_id_to_big = Some((
-                                    big_traces,
-                                    small_trace,
+                                    big_traces.into_iter().map(|t| Box::new(t) as Box<dyn std::any::Any + Send>).collect(),
+                                    Box::new(small_trace) as Box<dyn std::any::Any + Send>,
                                     BigInteractionClaim {
                                         big_claimed_sums,
                                         claimed_sum: total_big_sum,
@@ -3570,7 +3570,7 @@ mod cairo_prove_main {
 
                     // --- memory_address_to_id interaction trace ---
                     {
-                        match gpu_gen_addr_to_id_interaction_trace(
+                        match gpu_gen_addr_to_id_interaction_trace_metal(
                             &addr_to_id_gen.ids,
                             &addr_to_id_gen.multiplicities,
                             &gpu_lookup,
@@ -3579,7 +3579,7 @@ mod cairo_prove_main {
                         ) {
                             Ok((trace, claimed_sum)) => {
                                 gpu_traces.memory_address_to_id = Some((
-                                    trace,
+                                    Box::new(trace) as Box<dyn std::any::Any + Send>,
                                     AddrToIdInteractionClaim { claimed_sum },
                                 ));
                             }
