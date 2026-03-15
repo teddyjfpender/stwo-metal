@@ -88,6 +88,13 @@ fn batch_eval_coeff_cache() -> &'static BatchEvalCoeffCache {
     CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
+type TwiddleTailCache = Mutex<BTreeMap<(usize, usize), Arc<U32Buffer>>>;
+
+fn twiddle_tail_cache() -> &'static TwiddleTailCache {
+    static CACHE: OnceLock<TwiddleTailCache> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
 fn coeff_buffer_key(poly: &CircleCoefficients<MetalBackend>) -> usize {
     // Coefficients are immutable throughout the proving hot path, so the shared-buffer address is
     // a stable cache key for reusing flattened staging across repeated point queries.
@@ -173,40 +180,6 @@ fn batch_eval_same_size_native(
     )
 }
 
-
-/// GPU-resident twiddle buffers from `precompute_twiddles_native`, keyed by
-/// `root_coset` identity (initial, step, log_size).
-///
-/// Storing these alongside the CPU `Vec<BaseField>` in `TwiddleTree` avoids
-/// the O(n) CPU-to-GPU re-upload that `tail_twiddle_buffer` previously did on
-/// every call. For a log-23 domain this saves two 32 MB uploads.
-type GpuTwiddleCache = Mutex<BTreeMap<(usize, usize, u32), Arc<GpuTwiddleBuffers>>>;
-
-struct GpuTwiddleBuffers {
-    #[allow(dead_code)]
-    twiddles: U32Buffer,
-    #[allow(dead_code)]
-    itwiddles: U32Buffer,
-}
-
-fn gpu_twiddle_cache() -> &'static GpuTwiddleCache {
-    static CACHE: OnceLock<GpuTwiddleCache> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
-}
-
-/// Cache for GPU-resident twiddle tail sub-buffers, keyed by
-/// (twiddle_vec_data_ptr, values_len).
-///
-/// The twiddle `Vec<BaseField>` inside `TwiddleTree` does not move after
-/// construction, so the data pointer is a stable identity key. Caching
-/// avoids the O(n) CPU-to-GPU re-upload on every RFFT/IFFT call.
-type TwiddleTailCache = Mutex<BTreeMap<(usize, usize), Arc<U32Buffer>>>;
-
-fn twiddle_tail_cache() -> &'static TwiddleTailCache {
-    static CACHE: OnceLock<TwiddleTailCache> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
-}
-
 fn precompute_twiddles_native(coset: Coset) -> Result<TwiddleTree<MetalBackend>, MetalError> {
     let mut twiddles = U32Buffer::uninitialized(coset.size())?;
     let mut current_initial = coset.initial;
@@ -233,19 +206,6 @@ fn precompute_twiddles_native(coset: Coset) -> Result<TwiddleTree<MetalBackend>,
     let mut itwiddles = twiddles.clone();
     itwiddles.invert_m31_in_place()?;
 
-    // Cache the GPU-resident buffers before downloading to CPU.
-    // This allows tail_twiddle_buffer to serve from the cache on subsequent
-    // calls, avoiding the O(n) CPU-to-GPU re-upload.
-    let gpu_buffers = Arc::new(GpuTwiddleBuffers {
-        twiddles: twiddles.clone(),
-        itwiddles: itwiddles.clone(),
-    });
-    let cache_key = (coset.initial_index.0, coset.step_size.0, coset.log_size());
-    gpu_twiddle_cache()
-        .lock()
-        .expect("GPU twiddle cache mutex should not be poisoned")
-        .insert(cache_key, gpu_buffers);
-
     Ok(TwiddleTree {
         root_coset: coset,
         twiddles: twiddles
@@ -261,13 +221,7 @@ fn precompute_twiddles_native(coset: Coset) -> Result<TwiddleTree<MetalBackend>,
     })
 }
 
-/// Look up a cached GPU twiddle tail buffer, or fall back to CPU upload.
-///
-/// When a previous call for the same twiddle slice and domain size produced
-/// a GPU buffer, this returns a clone (cheap GPU-side reference copy) instead
-/// of re-uploading from CPU. For a log-23 domain this saves ~16 MB of
-/// CPU-to-GPU transfer per RFFT/IFFT call.
-fn tail_twiddle_buffer(values_len: usize, twiddles: &[BaseField]) -> Result<U32Buffer, MetalError> {
+fn tail_twiddle_buffer(values_len: usize, twiddles: &[BaseField]) -> Result<Arc<U32Buffer>, MetalError> {
     let eval_domain_size = values_len / 2;
     assert!(
         eval_domain_size <= twiddles.len(),
@@ -276,32 +230,29 @@ fn tail_twiddle_buffer(values_len: usize, twiddles: &[BaseField]) -> Result<U32B
         twiddles.len()
     );
 
-    // Use the twiddle slice data pointer as a stable identity key.
-    // The Vec<BaseField> inside TwiddleTree does not move after construction.
-    let cache_key = (twiddles.as_ptr() as usize, values_len);
+    let twiddle_data_ptr = twiddles.as_ptr() as usize;
+    let key = (twiddle_data_ptr, values_len);
 
     if let Some(cached) = twiddle_tail_cache()
         .lock()
-        .expect("twiddle tail cache mutex should not be poisoned")
-        .get(&cache_key)
+        .expect("Metal twiddle tail cache mutex should not be poisoned")
+        .get(&key)
         .cloned()
     {
-        return Ok((*cached).clone());
+        return Ok(cached);
     }
 
     let slice = &twiddles[twiddles.len() - eval_domain_size..];
     let raw: Vec<u32> = slice.iter().map(|value| value.0).collect();
-    let buffer = U32Buffer::from_slice(&raw)?;
+    let buffer = Arc::new(U32Buffer::from_slice(&raw)?);
 
-    let arc = Arc::new(buffer.clone());
     let mut cache = twiddle_tail_cache()
         .lock()
-        .expect("twiddle tail cache mutex should not be poisoned");
-    // Evict if the cache grows too large (unlikely -- usually 2-3 entries).
+        .expect("Metal twiddle tail cache mutex should not be poisoned");
     if cache.len() >= 64 {
         cache.clear();
     }
-    cache.insert(cache_key, arc);
+    cache.insert(key, buffer.clone());
     Ok(buffer)
 }
 
@@ -478,59 +429,62 @@ impl PolyOps for MetalBackend {
             }
         }
 
-        // Fuse ALL GPU-eligible groups into a single Metal command buffer
-        // using indirect GPU virtual addresses to avoid CPU coefficient
-        // concatenation.
+        // Fuse ALL GPU-eligible groups into a single Metal command buffer.
         if !gpu_groups.is_empty() {
-            // Collect per-polynomial coefficient buffer references and folding
-            // factors for each size-group.
-            let mut coeff_buf_refs: Vec<Vec<&U32Buffer>> =
+            // Prepare flat coefficient buffers and factor buffers for each group.
+            // `flat_coeffs_owned` keeps owned buffers alive; for single-poly
+            // groups we reference the polynomial's buffer directly.
+            let mut flat_coeffs_owned: Vec<Option<Arc<U32Buffer>>> =
                 Vec::with_capacity(gpu_groups.len());
             let mut factors_owned: Vec<U32Buffer> = Vec::with_capacity(gpu_groups.len());
+            let mut meta: Vec<(u32, usize)> = Vec::with_capacity(gpu_groups.len()); // (coeffs_log_len, n_polys)
 
             for (coeffs_len, ref group) in &gpu_groups {
                 let coeffs_log_len = coeffs_len.ilog2();
+                let group_polys: Vec<&CircleCoefficients<Self>> =
+                    group.iter().map(|(_, poly)| *poly).collect();
 
                 let factor_limbs = folding_mappings(point, coeffs_log_len)
                     .into_iter()
                     .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
                     .collect_vec();
                 let factors_buffer = U32Buffer::from_slice(&factor_limbs)
-                    .expect("Metal indirect eval factor upload should succeed");
+                    .expect("Metal multi-group eval factor upload should succeed");
 
-                // Collect references to each polynomial's existing GPU
-                // coefficient buffer -- no concatenation copy needed.
-                let buf_refs: Vec<&U32Buffer> = group
-                    .iter()
-                    .map(|(_, poly)| &poly.coeffs.buffer)
-                    .collect();
-
-                coeff_buf_refs.push(buf_refs);
+                if group_polys.len() == 1 {
+                    // Single polynomial -- reference its buffer directly, no copy.
+                    flat_coeffs_owned.push(None);
+                } else {
+                    flat_coeffs_owned.push(Some(
+                        cached_flat_coeffs_buffer(&group_polys, *coeffs_len, coeffs_log_len)
+                            .expect("Metal multi-group eval coefficient staging should succeed"),
+                    ));
+                }
                 factors_owned.push(factors_buffer);
+                meta.push((coeffs_log_len, group_polys.len()));
             }
 
-            // Build the indirect multi-group call arguments.
-            let group_args: Vec<(&[&U32Buffer], &U32Buffer, u32)> = gpu_groups
+            // Build the multi-group call arguments, resolving references.
+            let group_args: Vec<(&U32Buffer, &U32Buffer, u32, usize)> = gpu_groups
                 .iter()
                 .enumerate()
-                .map(|(i, (coeffs_len, _))| {
-                    let coeffs_log_len = coeffs_len.ilog2();
-                    (
-                        coeff_buf_refs[i].as_slice(),
-                        &factors_owned[i],
-                        coeffs_log_len,
-                    )
+                .map(|(i, (_, group))| {
+                    let coeffs_ref = match &flat_coeffs_owned[i] {
+                        Some(arc) => arc.as_ref(),
+                        None => &group[0].1.coeffs.buffer,
+                    };
+                    (coeffs_ref, &factors_owned[i], meta[i].0, meta[i].1)
                 })
                 .collect();
 
-            let result_buffers = U32Buffer::batch_eval_at_point_indirect(&group_args)
-                .expect("Metal indirect batch eval should succeed");
+            let result_buffers = U32Buffer::batch_eval_at_point_multi_group(&group_args)
+                .expect("Metal multi-group batch eval should succeed");
 
             // Scatter results back to the output vector.
             for ((_, group), result_buffer) in gpu_groups.iter().zip(result_buffers.iter()) {
                 let raw_results = result_buffer
                     .to_vec()
-                    .expect("Metal indirect eval readback should succeed");
+                    .expect("Metal multi-group eval readback should succeed");
                 for (group_idx, (original_index, _)) in group.iter().enumerate() {
                     let base = group_idx * 4;
                     results[*original_index] = SecureField::from_u32_unchecked(
@@ -621,16 +575,13 @@ impl PolyOps for MetalBackend {
         let first_inner_layer_domain = LineDomain::new(Coset::half_odds(log_size - 1));
         let mut layer_evaluation = LineEvaluation::new_zero(first_inner_layer_domain);
 
-        // Build a SecureColumnByCoords directly from the GPU-resident buffer,
-        // avoiding the O(n) GPU->CPU download + CPU->GPU re-upload round-trip
-        // that the previous `evals.values.to_vec()` + `from_vec()` path did.
-        // The base values live in coordinate 0; coordinates 1-3 are zero.
+        let values_len = evals.values.len();
         let secure_field_values = SecureColumnByCoords {
             columns: std::array::from_fn(|coord| {
                 if coord == 0 {
                     evals.values.clone()
                 } else {
-                    BaseFieldVec::new_zeroes(evals.values.len())
+                    BaseFieldVec::new_zeroes(values_len)
                 }
             }),
         };
@@ -702,7 +653,7 @@ impl PolyOps for MetalBackend {
         use stwo::prover::Poly;
 
         // Pre-compute ONE twiddle tail buffer per distinct domain size.
-        let mut twiddle_cache: BTreeMap<u32, U32Buffer> = BTreeMap::new();
+        let mut twiddle_cache: BTreeMap<u32, Arc<U32Buffer>> = BTreeMap::new();
         for poly_coeffs in &polynomials {
             let log_eval_size = poly_coeffs.log_size() + log_blowup_factor;
             if log_eval_size > 3 {
@@ -790,7 +741,7 @@ impl PolyOps for MetalBackend {
                 // Submit RFFT without blocking — GPU work starts immediately.
                 let handle = buffer
                     .buffer
-                    .rfft_evaluate_in_place_async(twiddle_tail)
+                    .rfft_evaluate_in_place_async(twiddle_tail.as_ref())
                     .expect("Metal RFFT async submit should succeed");
                 (poly_coeffs, buffer, domain, Some(handle))
             }

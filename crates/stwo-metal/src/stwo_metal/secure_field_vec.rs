@@ -274,10 +274,20 @@ impl SecureFieldVec {
     pub fn fold_line_step(&self, inverse_x_factors: &[u32], alpha: SecureField) -> Self {
         let factors = U32Buffer::from_slice(inverse_x_factors)
             .expect("Metal inverse-x factor upload should initialize");
+        self.fold_line_step_with_factor_buffer(&factors, alpha)
+    }
+
+    /// Like [`fold_line_step`] but takes a pre-uploaded GPU-resident factor
+    /// buffer, avoiding the O(n/2) CPU-to-GPU upload on every call.
+    pub fn fold_line_step_with_factor_buffer(
+        &self,
+        inverse_x_factors: &U32Buffer,
+        alpha: SecureField,
+    ) -> Self {
         let alpha_limbs = alpha.to_m31_array().map(|limb| limb.0);
         let buffer = self
             .buffer
-            .fri_fold_line_step_u32x4(&factors, alpha_limbs)
+            .fri_fold_line_step_u32x4(inverse_x_factors, alpha_limbs)
             .expect("Metal FRI line-fold step should succeed");
         Self {
             buffer,

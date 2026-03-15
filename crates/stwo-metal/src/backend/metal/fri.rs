@@ -236,15 +236,11 @@ pub fn fold_line(
     let mut current = src.clone();
     let mut current_alpha = alpha;
     for _ in 0..fold_step {
-        let inverse_x_factors = (0..(current.len() >> 1))
-            .map(|i| {
-                domain
-                    .at(bit_reverse_index(i << 1, domain.log_size()))
-                    .inverse()
-                    .0
-            })
-            .collect::<Vec<_>>();
-        current = current.fold_line_step(&inverse_x_factors, current_alpha);
+        // Use the cached GPU-resident inverse-x factor buffer instead of
+        // recomputing on CPU and uploading each fold step. This eliminates
+        // an O(n/2) CPU-to-GPU upload per fold layer.
+        let cached_factors = cached_line_inverse_x_factors(domain);
+        current = current.fold_line_step_with_factor_buffer(cached_factors.as_ref(), current_alpha);
         domain = domain.double();
         current_alpha = current_alpha * current_alpha;
     }
