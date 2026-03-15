@@ -1769,6 +1769,65 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    /// Indirect-packed quotient combination: reads per-accumulation packed
+    /// partial buffers via GPU virtual addresses, avoiding a contiguous staging
+    /// copy.  `partial_buffers` supplies one buffer per accumulation;
+    /// `partial_offsets` supplies the element offset within each buffer.
+    pub fn compute_quotients_and_combine_indirect_packed(
+        partial_buffers: &[&Self],
+        sample_points: &Self,
+        first_linear_terms: &Self,
+        partial_log_sizes: &Self,
+        partial_offsets: &Self,
+        domain_x: &Self,
+        domain_y: &Self,
+        lifting_log_size: u32,
+    ) -> Result<Self, MetalError> {
+        let row_count = 1usize << lifting_log_size;
+        let n_accumulations = partial_buffers.len();
+        assert!(
+            n_accumulations > 0,
+            "indirect packed quotient combination requires at least one accumulation"
+        );
+        assert_eq!(
+            sample_points.len,
+            n_accumulations * 8,
+            "indirect packed quotient combination expects eight sample-point limbs per accumulation"
+        );
+        assert_eq!(
+            first_linear_terms.len,
+            n_accumulations * 4,
+            "indirect packed quotient combination expects one qm31 first-linear term per accumulation"
+        );
+        assert_eq!(partial_log_sizes.len, n_accumulations);
+        assert_eq!(partial_offsets.len, n_accumulations);
+        assert_eq!(domain_x.len, row_count);
+        assert_eq!(domain_y.len, row_count);
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(row_count * 4)?;
+        let buffer_ptrs: Vec<*mut std::ffi::c_void> =
+            partial_buffers.iter().map(|b| b.raw.as_ptr()).collect();
+        unsafe {
+            ffi::compute_quotients_and_combine_indirect_packed_u32x4(
+                runtime.raw.as_ptr(),
+                buffer_ptrs.as_ptr(),
+                sample_points.raw.as_ptr(),
+                first_linear_terms.raw.as_ptr(),
+                partial_log_sizes.raw.as_ptr(),
+                partial_offsets.raw.as_ptr(),
+                domain_x.raw.as_ptr(),
+                domain_y.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                lifting_log_size,
+                n_accumulations
+                    .try_into()
+                    .expect("indirect packed quotient combination accumulation count should fit in u32"),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
     pub fn blake2s_build_leaves_lifted(
         flat_columns: &Self,
         column_offsets: &Self,
@@ -3367,6 +3426,21 @@ mod ffi {
         fn stwo_metal_compute_quotients_and_combine_packed_u32x4(
             runtime: *mut c_void,
             partials: *mut c_void,
+            sample_points: *mut c_void,
+            first_linear_terms: *mut c_void,
+            partial_log_sizes: *mut c_void,
+            partial_offsets: *mut c_void,
+            domain_x: *mut c_void,
+            domain_y: *mut c_void,
+            dst: *mut c_void,
+            lifting_log_size: u32,
+            n_accumulations: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_compute_quotients_and_combine_indirect_packed_u32x4(
+            runtime: *mut c_void,
+            partial_buffer_ptrs: *const *mut c_void,
             sample_points: *mut c_void,
             first_linear_terms: *mut c_void,
             partial_log_sizes: *mut c_void,
@@ -5157,6 +5231,42 @@ mod ffi {
         }
     }
 
+    pub unsafe fn compute_quotients_and_combine_indirect_packed_u32x4(
+        runtime: *mut c_void,
+        partial_buffer_ptrs: *const *mut c_void,
+        sample_points: *mut c_void,
+        first_linear_terms: *mut c_void,
+        partial_log_sizes: *mut c_void,
+        partial_offsets: *mut c_void,
+        domain_x: *mut c_void,
+        domain_y: *mut c_void,
+        dst: *mut c_void,
+        lifting_log_size: u32,
+        n_accumulations: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_compute_quotients_and_combine_indirect_packed_u32x4(
+            runtime,
+            partial_buffer_ptrs,
+            sample_points,
+            first_linear_terms,
+            partial_log_sizes,
+            partial_offsets,
+            domain_x,
+            domain_y,
+            dst,
+            lifting_log_size,
+            n_accumulations,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn blake2s_build_leaves_lifted_u32(
         runtime: *mut c_void,
         flat_columns: *mut c_void,
@@ -6858,6 +6968,25 @@ mod ffi {
     pub unsafe fn compute_quotients_and_combine_packed_u32x4(
         _runtime: *mut c_void,
         _partials: *mut c_void,
+        _sample_points: *mut c_void,
+        _first_linear_terms: *mut c_void,
+        _partial_log_sizes: *mut c_void,
+        _partial_offsets: *mut c_void,
+        _domain_x: *mut c_void,
+        _domain_y: *mut c_void,
+        _dst: *mut c_void,
+        _lifting_log_size: u32,
+        _n_accumulations: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn compute_quotients_and_combine_indirect_packed_u32x4(
+        _runtime: *mut c_void,
+        _partial_buffer_ptrs: *const *mut c_void,
         _sample_points: *mut c_void,
         _first_linear_terms: *mut c_void,
         _partial_log_sizes: *mut c_void,

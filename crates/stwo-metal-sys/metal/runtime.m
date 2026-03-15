@@ -5018,6 +5018,113 @@ bool stwo_metal_compute_quotients_and_combine_packed_u32x4(
     }
 }
 
+bool stwo_metal_compute_quotients_and_combine_indirect_packed_u32x4(
+    void *runtime_ptr,
+    void *const *partial_buffer_ptrs,
+    void *sample_points_ptr,
+    void *first_linear_terms_ptr,
+    void *partial_log_sizes_ptr,
+    void *partial_offsets_ptr,
+    void *domain_x_ptr,
+    void *domain_y_ptr,
+    void *dst_ptr,
+    uint32_t lifting_log_size,
+    uint32_t n_accumulations,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *sample_points = stwo_metal_buffer_box(sample_points_ptr);
+        StwoMetalBufferBox *first_linear_terms = stwo_metal_buffer_box(first_linear_terms_ptr);
+        StwoMetalBufferBox *partial_log_sizes = stwo_metal_buffer_box(partial_log_sizes_ptr);
+        StwoMetalBufferBox *partial_offsets = stwo_metal_buffer_box(partial_offsets_ptr);
+        StwoMetalBufferBox *domain_x = stwo_metal_buffer_box(domain_x_ptr);
+        StwoMetalBufferBox *domain_y = stwo_metal_buffer_box(domain_y_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+        NSUInteger row_count = ((NSUInteger)1) << lifting_log_size;
+        if (
+            n_accumulations == 0 ||
+            partial_buffer_ptrs == NULL ||
+            sample_points.len != ((NSUInteger)n_accumulations) * 8u ||
+            first_linear_terms.len != ((NSUInteger)n_accumulations) * 4u ||
+            partial_log_sizes.len != n_accumulations ||
+            partial_offsets.len != n_accumulations ||
+            domain_x.len != row_count ||
+            domain_y.len != row_count ||
+            dst.len != row_count * 4u
+        ) {
+            stwo_metal_write_error(error_message, error_message_len, @"Indirect packed quotient combination expects one packed partial-numerator buffer pointer per accumulation, eight sample-point limbs per accumulation, one qm31 first-linear term per accumulation, one log-size and offset per accumulation, domain x/y buffers for the lifting domain, and a packed qm31 destination.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, @"compute_quotients_and_combine_indirect_packed_u32x4", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        // Build GPU address buffer: one uint64_t per accumulation.
+        NSUInteger addr_buf_len = n_accumulations * sizeof(uint64_t);
+        id<MTLBuffer> addr_buffer = [runtime.device
+            newBufferWithLength:addr_buf_len
+            options:MTLResourceStorageModeShared];
+        if (addr_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate GPU address buffer for indirect packed quotient combination.");
+            return false;
+        }
+        uint64_t *addrs = (uint64_t *)addr_buffer.contents;
+        for (uint32_t i = 0; i < n_accumulations; i++) {
+            StwoMetalBufferBox *partial = stwo_metal_buffer_box(partial_buffer_ptrs[i]);
+            addrs[i] = partial.buffer.gpuAddress;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:addr_buffer offset:0 atIndex:0];
+        [encoder setBuffer:sample_points.buffer offset:0 atIndex:1];
+        [encoder setBuffer:first_linear_terms.buffer offset:0 atIndex:2];
+        [encoder setBuffer:partial_log_sizes.buffer offset:0 atIndex:3];
+        [encoder setBuffer:partial_offsets.buffer offset:0 atIndex:4];
+        [encoder setBuffer:domain_x.buffer offset:0 atIndex:5];
+        [encoder setBuffer:domain_y.buffer offset:0 atIndex:6];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:7];
+        [encoder setBytes:&lifting_log_size length:sizeof(lifting_log_size) atIndex:8];
+        [encoder setBytes:&n_accumulations length:sizeof(n_accumulations) atIndex:9];
+
+        // Mark all partial buffers as GPU-readable for hazard tracking.
+        for (uint32_t i = 0; i < n_accumulations; i++) {
+            StwoMetalBufferBox *partial = stwo_metal_buffer_box(partial_buffer_ptrs[i]);
+            [encoder useResource:partial.buffer usage:MTLResourceUsageRead];
+        }
+
+        MTLSize grid_size = MTLSizeMake(row_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_blake2s_build_leaves_lifted_u32(
     void *runtime_ptr,
     void *flat_columns_ptr,
