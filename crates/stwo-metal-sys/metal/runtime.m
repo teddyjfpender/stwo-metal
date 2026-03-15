@@ -24,6 +24,107 @@
 @implementation StwoMetalBufferBox
 @end
 
+// ---------------------------------------------------------------------------
+// GPU Buffer Pool
+//
+// Size-bucketed pool that caches freed MTLBuffer objects for reuse.  Sizes are
+// rounded up to the next power of two (minimum 256 bytes = 64 u32s) so that
+// similarly-sized allocations share a bucket.  Each bucket keeps at most
+// STWO_BUFFER_POOL_MAX_PER_BUCKET buffers.  The pool is process-global and
+// protected by an os_unfair_lock.
+// ---------------------------------------------------------------------------
+
+#include <os/lock.h>
+
+#define STWO_BUFFER_POOL_MAX_PER_BUCKET 16
+#define STWO_BUFFER_POOL_MIN_BYTES 256
+
+static NSUInteger stwo_next_power_of_two(NSUInteger v) {
+    if (v == 0) return 1;
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v |= v >> 32;
+    v++;
+    return v;
+}
+
+@interface StwoMetalBufferPool : NSObject {
+    NSMutableDictionary<NSNumber *, NSMutableArray *> *_buckets;
+    os_unfair_lock _lock;
+}
++ (instancetype)shared;
+- (id<MTLBuffer>)acquireWithDevice:(id<MTLDevice>)device byteSize:(NSUInteger)byteSize;
+- (void)returnBuffer:(id<MTLBuffer>)buffer;
+@end
+
+@implementation StwoMetalBufferPool
+
++ (instancetype)shared {
+    static StwoMetalBufferPool *pool = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        pool = [[StwoMetalBufferPool alloc] init];
+    });
+    return pool;
+}
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _buckets = [NSMutableDictionary dictionary];
+        _lock = OS_UNFAIR_LOCK_INIT;
+    }
+    return self;
+}
+
+- (id<MTLBuffer>)acquireWithDevice:(id<MTLDevice>)device byteSize:(NSUInteger)byteSize {
+    if (byteSize < STWO_BUFFER_POOL_MIN_BYTES) {
+        return [device newBufferWithLength:byteSize options:MTLResourceStorageModeShared];
+    }
+    NSUInteger bucket = stwo_next_power_of_two(byteSize);
+    NSNumber *key = @(bucket);
+
+    os_unfair_lock_lock(&_lock);
+    NSMutableArray *arr = _buckets[key];
+    id<MTLBuffer> buffer = nil;
+    if (arr.count > 0) {
+        buffer = arr.lastObject;
+        [arr removeLastObject];
+    }
+    os_unfair_lock_unlock(&_lock);
+
+    if (buffer != nil) {
+        return buffer;
+    }
+    return [device newBufferWithLength:bucket options:MTLResourceStorageModeShared];
+}
+
+- (void)returnBuffer:(id<MTLBuffer>)buffer {
+    NSUInteger byteSize = buffer.length;
+    if (byteSize < STWO_BUFFER_POOL_MIN_BYTES) {
+        return;
+    }
+    NSNumber *key = @(byteSize);
+
+    os_unfair_lock_lock(&_lock);
+    NSMutableArray *arr = _buckets[key];
+    if (arr == nil) {
+        arr = [NSMutableArray array];
+        _buckets[key] = arr;
+    }
+    if (arr.count < STWO_BUFFER_POOL_MAX_PER_BUCKET) {
+        [arr addObject:buffer];
+    }
+    os_unfair_lock_unlock(&_lock);
+}
+
+@end
+
+
 typedef struct {
     uint32_t initial_x;
     uint32_t initial_y;
@@ -273,7 +374,7 @@ void *stwo_metal_u32_buffer_from_host(
     @autoreleasepool {
         StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
         NSUInteger bytes = len * sizeof(uint32_t);
-        id<MTLBuffer> buffer = [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> buffer = [[StwoMetalBufferPool shared] acquireWithDevice:runtime.device byteSize:bytes];
         if (buffer == nil) {
             stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal buffer.");
             return NULL;
@@ -299,7 +400,7 @@ void *stwo_metal_u32_buffer_alloc_zeroed(
     @autoreleasepool {
         StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
         NSUInteger bytes = len * sizeof(uint32_t);
-        id<MTLBuffer> buffer = [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> buffer = [[StwoMetalBufferPool shared] acquireWithDevice:runtime.device byteSize:bytes];
         if (buffer == nil) {
             stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal buffer.");
             return NULL;
@@ -325,7 +426,7 @@ void *stwo_metal_u32_buffer_alloc_uninitialized(
     @autoreleasepool {
         StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
         NSUInteger bytes = len * sizeof(uint32_t);
-        id<MTLBuffer> buffer = [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> buffer = [[StwoMetalBufferPool shared] acquireWithDevice:runtime.device byteSize:bytes];
         if (buffer == nil) {
             stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal buffer.");
             return NULL;
@@ -343,9 +444,16 @@ void stwo_metal_u32_buffer_destroy(void *buffer) {
         return;
     }
     @autoreleasepool {
-        __unused id released = (__bridge_transfer id)buffer;
+        StwoMetalBufferBox *box = (__bridge_transfer StwoMetalBufferBox *)buffer;
+        [[StwoMetalBufferPool shared] returnBuffer:box.buffer];
     }
 }
+
+void stwo_metal_drain_buffer_pool(void) {
+    // No-op: pool draining is currently automatic via bucket caps.
+    // Kept as a future extension point.
+}
+
 
 bool stwo_metal_u32_buffer_read(
     void *runtime_ptr,
