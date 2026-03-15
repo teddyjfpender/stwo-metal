@@ -7530,6 +7530,362 @@ bool stwo_metal_witness_assert_eq_double_deref_trace(
 }
 
 // ---------------------------------------------------------------------------
+// Witness generation: jnz_opcode_taken trace (47 columns)
+// ---------------------------------------------------------------------------
+
+bool stwo_metal_witness_jnz_opcode_taken_trace(
+    void *runtime_ptr,
+    void *inputs_ptr,
+    void *address_to_id_ptr,
+    void *big_values_ptr,
+    void *small_values_ptr,
+    void *trace_ptr,
+    uint32_t n_rows,
+    uint32_t column_length,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *inputs = stwo_metal_buffer_box(inputs_ptr);
+        StwoMetalBufferBox *address_to_id = stwo_metal_buffer_box(address_to_id_ptr);
+        StwoMetalBufferBox *big_values = stwo_metal_buffer_box(big_values_ptr);
+        StwoMetalBufferBox *small_values = stwo_metal_buffer_box(small_values_ptr);
+        StwoMetalBufferBox *trace = stwo_metal_buffer_box(trace_ptr);
+
+        if (inputs.len < (NSUInteger)n_rows * 3u) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"witness_jnz_opcode_taken: inputs buffer length mismatch.");
+            return false;
+        }
+        NSUInteger expected_trace_len = (NSUInteger)47u * (NSUInteger)column_length;
+        if (trace.len != expected_trace_len) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"witness_jnz_opcode_taken: trace output buffer length mismatch.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(
+            runtime,
+            @"witness_jnz_opcode_taken_trace",
+            error_message,
+            error_message_len
+        );
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:inputs.buffer offset:0 atIndex:0];
+        [encoder setBuffer:address_to_id.buffer offset:0 atIndex:1];
+        [encoder setBuffer:big_values.buffer offset:0 atIndex:2];
+        [encoder setBuffer:small_values.buffer offset:0 atIndex:3];
+        [encoder setBuffer:trace.buffer offset:0 atIndex:4];
+        [encoder setBytes:&n_rows length:sizeof(n_rows) atIndex:5];
+        [encoder setBytes:&column_length length:sizeof(column_length) atIndex:6];
+
+        MTLSize grid_size = MTLSizeMake((NSUInteger)column_length, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(
+            stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                command_buffer.error.localizedDescription
+                    ?: @"witness_jnz_opcode_taken_trace kernel failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Witness generation: jump_opcode_rel_imm trace (13 columns)
+// ---------------------------------------------------------------------------
+
+bool stwo_metal_witness_jump_opcode_rel_imm_trace(
+    void *runtime_ptr,
+    void *inputs_ptr,
+    void *address_to_id_ptr,
+    void *big_values_ptr,
+    void *small_values_ptr,
+    void *trace_ptr,
+    uint32_t n_rows,
+    uint32_t column_length,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *inputs = stwo_metal_buffer_box(inputs_ptr);
+        StwoMetalBufferBox *address_to_id = stwo_metal_buffer_box(address_to_id_ptr);
+        StwoMetalBufferBox *big_values = stwo_metal_buffer_box(big_values_ptr);
+        StwoMetalBufferBox *small_values = stwo_metal_buffer_box(small_values_ptr);
+        StwoMetalBufferBox *trace = stwo_metal_buffer_box(trace_ptr);
+
+        if (inputs.len < (NSUInteger)n_rows * 3u) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"witness_jump_opcode_rel_imm: inputs buffer length mismatch.");
+            return false;
+        }
+        NSUInteger expected_trace_len = (NSUInteger)13u * (NSUInteger)column_length;
+        if (trace.len != expected_trace_len) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"witness_jump_opcode_rel_imm: trace output buffer length mismatch.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(
+            runtime,
+            @"witness_jump_opcode_rel_imm_trace",
+            error_message,
+            error_message_len
+        );
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:inputs.buffer offset:0 atIndex:0];
+        [encoder setBuffer:address_to_id.buffer offset:0 atIndex:1];
+        [encoder setBuffer:big_values.buffer offset:0 atIndex:2];
+        [encoder setBuffer:small_values.buffer offset:0 atIndex:3];
+        [encoder setBuffer:trace.buffer offset:0 atIndex:4];
+        [encoder setBytes:&n_rows length:sizeof(n_rows) atIndex:5];
+        [encoder setBytes:&column_length length:sizeof(column_length) atIndex:6];
+
+        MTLSize grid_size = MTLSizeMake((NSUInteger)column_length, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(
+            stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                command_buffer.error.localizedDescription
+                    ?: @"witness_jump_opcode_rel_imm_trace kernel failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Witness generation: call_opcode_rel_imm trace (24 columns)
+// ---------------------------------------------------------------------------
+
+bool stwo_metal_witness_call_opcode_rel_imm_trace(
+    void *runtime_ptr,
+    void *inputs_ptr,
+    void *address_to_id_ptr,
+    void *big_values_ptr,
+    void *small_values_ptr,
+    void *trace_ptr,
+    uint32_t n_rows,
+    uint32_t column_length,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *inputs = stwo_metal_buffer_box(inputs_ptr);
+        StwoMetalBufferBox *address_to_id = stwo_metal_buffer_box(address_to_id_ptr);
+        StwoMetalBufferBox *big_values = stwo_metal_buffer_box(big_values_ptr);
+        StwoMetalBufferBox *small_values = stwo_metal_buffer_box(small_values_ptr);
+        StwoMetalBufferBox *trace = stwo_metal_buffer_box(trace_ptr);
+
+        if (inputs.len < (NSUInteger)n_rows * 3u) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"witness_call_opcode_rel_imm: inputs buffer length mismatch.");
+            return false;
+        }
+        NSUInteger expected_trace_len = (NSUInteger)24u * (NSUInteger)column_length;
+        if (trace.len != expected_trace_len) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"witness_call_opcode_rel_imm: trace output buffer length mismatch.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(
+            runtime,
+            @"witness_call_opcode_rel_imm_trace",
+            error_message,
+            error_message_len
+        );
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:inputs.buffer offset:0 atIndex:0];
+        [encoder setBuffer:address_to_id.buffer offset:0 atIndex:1];
+        [encoder setBuffer:big_values.buffer offset:0 atIndex:2];
+        [encoder setBuffer:small_values.buffer offset:0 atIndex:3];
+        [encoder setBuffer:trace.buffer offset:0 atIndex:4];
+        [encoder setBytes:&n_rows length:sizeof(n_rows) atIndex:5];
+        [encoder setBytes:&column_length length:sizeof(column_length) atIndex:6];
+
+        MTLSize grid_size = MTLSizeMake((NSUInteger)column_length, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(
+            stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                command_buffer.error.localizedDescription
+                    ?: @"witness_call_opcode_rel_imm_trace kernel failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Witness generation: ret_opcode trace (16 columns)
+// ---------------------------------------------------------------------------
+
+bool stwo_metal_witness_ret_opcode_trace(
+    void *runtime_ptr,
+    void *inputs_ptr,
+    void *address_to_id_ptr,
+    void *big_values_ptr,
+    void *small_values_ptr,
+    void *trace_ptr,
+    uint32_t n_rows,
+    uint32_t column_length,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *inputs = stwo_metal_buffer_box(inputs_ptr);
+        StwoMetalBufferBox *address_to_id = stwo_metal_buffer_box(address_to_id_ptr);
+        StwoMetalBufferBox *big_values = stwo_metal_buffer_box(big_values_ptr);
+        StwoMetalBufferBox *small_values = stwo_metal_buffer_box(small_values_ptr);
+        StwoMetalBufferBox *trace = stwo_metal_buffer_box(trace_ptr);
+
+        if (inputs.len < (NSUInteger)n_rows * 3u) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"witness_ret_opcode: inputs buffer length mismatch.");
+            return false;
+        }
+        NSUInteger expected_trace_len = (NSUInteger)16u * (NSUInteger)column_length;
+        if (trace.len != expected_trace_len) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"witness_ret_opcode: trace output buffer length mismatch.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(
+            runtime,
+            @"witness_ret_opcode_trace",
+            error_message,
+            error_message_len
+        );
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:inputs.buffer offset:0 atIndex:0];
+        [encoder setBuffer:address_to_id.buffer offset:0 atIndex:1];
+        [encoder setBuffer:big_values.buffer offset:0 atIndex:2];
+        [encoder setBuffer:small_values.buffer offset:0 atIndex:3];
+        [encoder setBuffer:trace.buffer offset:0 atIndex:4];
+        [encoder setBytes:&n_rows length:sizeof(n_rows) atIndex:5];
+        [encoder setBytes:&column_length length:sizeof(column_length) atIndex:6];
+
+        MTLSize grid_size = MTLSizeMake((NSUInteger)column_length, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(
+            stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                command_buffer.error.localizedDescription
+                    ?: @"witness_ret_opcode_trace kernel failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Interaction trace: memory_id_to_big (big values)
 // ---------------------------------------------------------------------------
 

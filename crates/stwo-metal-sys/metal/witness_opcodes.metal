@@ -3,6 +3,10 @@
 // Metal compute kernels for opcode trace generation:
 //   - add_opcode_small (39 trace columns)
 //   - assert_eq_opcode_double_deref (19 trace columns)
+//   - jnz_opcode_taken (47 trace columns)
+//   - jump_opcode_rel_imm (13 trace columns)
+//   - call_opcode_rel_imm (24 trace columns)
+//   - ret_opcode (16 trace columns)
 //
 // These kernels mirror the CPU write_trace_simd() logic from stwo-cairo.
 // Each thread processes one row, performing:
@@ -482,4 +486,416 @@ kernel void witness_assert_eq_double_deref_trace(
 
     // --- Enabler column (col18) ---
     trace_out[18u * column_length + row] = (row < n_rows) ? 1u : 0u;
+}
+
+
+// ===========================================================================
+// KERNEL: jnz_opcode_taken trace generation
+//
+// 47 trace columns.
+// Decodes offset0, dst_base_fp, ap_update_add_1 from instruction.
+// Reads dst via "Read Positive Num Bits 252" (all 28 limbs).
+// Computes dst_sum_inv and dst_sum_squares_inv (inverse witnesses).
+// Reads next_pc via "Read Small" from [pc+1].
+// ===========================================================================
+
+kernel void witness_jnz_opcode_taken_trace(
+    device const uint  *inputs          [[buffer(0)]],  // [n_rows][3]: pc,ap,fp
+    device const uint  *address_to_id   [[buffer(1)]],  // address -> id table
+    device const uint  *big_values      [[buffer(2)]],  // [n_big][8] u32
+    device const uint  *small_values    [[buffer(3)]],  // [n_small][4] u32
+    device       uint  *trace_out       [[buffer(4)]],  // column-major output
+    constant     uint  &n_rows          [[buffer(5)]],
+    constant     uint  &column_length   [[buffer(6)]],
+    uint               row              [[thread_position_in_grid]]
+) {
+    if (row >= column_length) return;
+
+    uint src_row = (row < n_rows) ? row : 0u;
+    uint input_pc = inputs[src_row * 3u + 0u];
+    uint input_ap = inputs[src_row * 3u + 1u];
+    uint input_fp = inputs[src_row * 3u + 2u];
+
+    // col0..col2: pc, ap, fp
+    trace_out[0u * column_length + row] = input_pc;
+    trace_out[1u * column_length + row] = input_ap;
+    trace_out[2u * column_length + row] = input_fp;
+
+    // --- Decode Instruction ---
+    uint instr_id = lookup_addr_to_id(address_to_id, input_pc);
+    uint instr_limbs[28];
+    lookup_id_to_big(big_values, small_values, instr_id, instr_limbs);
+
+    DecodedInstruction di = decode_instruction(instr_limbs);
+
+    uint offset0 = di.offset0;
+    uint dst_base_fp = di.dst_base_fp;
+    uint ap_update_add_1 = di.ap_update_add_1;
+
+    // col3: offset0, col4: dst_base_fp, col5: ap_update_add_1
+    trace_out[3u * column_length + row] = offset0;
+    trace_out[4u * column_length + row] = dst_base_fp;
+    trace_out[5u * column_length + row] = ap_update_add_1;
+
+    // mem_dst_base = dst_base_fp*fp + (1-dst_base_fp)*ap
+    uint mem_dst_base = m31_add(
+        m31_mul(dst_base_fp, input_fp),
+        m31_mul(m31_sub(1u, dst_base_fp), input_ap)
+    );
+    trace_out[6u * column_length + row] = mem_dst_base; // col6
+
+    // --- Read Positive Num Bits 252: dst ---
+    uint off0_signed = m31_sub(offset0, 32768u);
+    uint dst_addr = m31_add(mem_dst_base, off0_signed);
+    uint dst_id = lookup_addr_to_id(address_to_id, dst_addr);
+    trace_out[7u * column_length + row] = dst_id; // col7
+
+    uint dst_limbs[28];
+    lookup_id_to_big(big_values, small_values, dst_id, dst_limbs);
+
+    // col8..col35: all 28 limbs of dst
+    for (uint i = 0u; i < 28u; ++i) {
+        trace_out[(8u + i) * column_length + row] = dst_limbs[i];
+    }
+
+    // --- dst_sum_inv and dst_sum_squares_inv ---
+    // dst_sum_p_zero = sum of limbs 1..20,22..26 (excluding 0,21,27)
+    uint dst_sum_p_zero = 0u;
+    for (uint i = 1u; i <= 20u; ++i) {
+        dst_sum_p_zero = m31_add(dst_sum_p_zero, dst_limbs[i]);
+    }
+    for (uint i = 22u; i <= 26u; ++i) {
+        dst_sum_p_zero = m31_add(dst_sum_p_zero, dst_limbs[i]);
+    }
+
+    // dst_sum_inv = inverse of (dst_sum_p_zero + limb0 + limb21 + limb27)
+    uint dst_total = m31_add(dst_sum_p_zero,
+        m31_add(dst_limbs[0], m31_add(dst_limbs[21], dst_limbs[27])));
+
+    // Compute modular inverse via Fermat's little theorem: a^(P-2) mod P
+    // For M31, P-2 = 2^31 - 3. We use a simple square-and-multiply.
+    // However, for witness generation the "inverse" column just needs to hold
+    // the value such that dst_total * dst_sum_inv = 1 mod P.
+    // We compute it via extended binary GCD / Fermat.
+    // Use Fermat: a^(2^31-3) mod P
+    // For GPU simplicity, use iterative exponentiation.
+    uint dst_sum_inv_val = 0u;
+    if (dst_total != 0u) {
+        // Fermat's little theorem: a^(P-2) = a^(-1) mod P
+        // P-2 = 0x7FFFFFFD
+        ulong base_val = (ulong)dst_total;
+        ulong result_val = 1ull;
+        ulong exp = 0x7FFFFFFDull;
+        ulong mod_val = (ulong)M31_P;
+        while (exp > 0ull) {
+            if (exp & 1ull) {
+                result_val = (result_val * base_val) % mod_val;
+            }
+            base_val = (base_val * base_val) % mod_val;
+            exp >>= 1ull;
+        }
+        dst_sum_inv_val = (uint)result_val;
+    }
+    trace_out[36u * column_length + row] = dst_sum_inv_val; // col36
+
+    // dst_sum_squares_inv: inverse of (dst_sum_p_zero + (l0-1)^2 + (l21-136)^2 + (l27-256)^2)
+    uint diff0 = m31_sub(dst_limbs[0], 1u);
+    uint diff21 = m31_sub(dst_limbs[21], 136u);
+    uint diff27 = m31_sub(dst_limbs[27], 256u);
+    uint sq_sum = m31_add(m31_mul(diff0, diff0),
+        m31_add(m31_mul(diff21, diff21), m31_mul(diff27, diff27)));
+    uint dst_sq_total = m31_add(dst_sum_p_zero, sq_sum);
+
+    uint dst_sq_inv_val = 0u;
+    if (dst_sq_total != 0u) {
+        ulong base_v2 = (ulong)dst_sq_total;
+        ulong result_v2 = 1ull;
+        ulong exp2 = 0x7FFFFFFDull;
+        ulong mod_v2 = (ulong)M31_P;
+        while (exp2 > 0ull) {
+            if (exp2 & 1ull) {
+                result_v2 = (result_v2 * base_v2) % mod_v2;
+            }
+            base_v2 = (base_v2 * base_v2) % mod_v2;
+            exp2 >>= 1ull;
+        }
+        dst_sq_inv_val = (uint)result_v2;
+    }
+    trace_out[37u * column_length + row] = dst_sq_inv_val; // col37
+
+    // --- Read Small: next_pc from [pc+1] ---
+    uint next_pc_addr = m31_add(input_pc, 1u);
+    uint next_pc_id = lookup_addr_to_id(address_to_id, next_pc_addr);
+    trace_out[38u * column_length + row] = next_pc_id; // col38
+
+    uint next_pc_limbs[28];
+    lookup_id_to_big(big_values, small_values, next_pc_id, next_pc_limbs);
+
+    SmallSign npc_sign = decode_small_sign(next_pc_limbs);
+    trace_out[39u * column_length + row] = npc_sign.msb;           // col39
+    trace_out[40u * column_length + row] = npc_sign.mid_limbs_set; // col40
+
+    uint npc_limb_0 = next_pc_limbs[0];
+    uint npc_limb_1 = next_pc_limbs[1];
+    uint npc_limb_2 = next_pc_limbs[2];
+    uint npc_remainder_bits = next_pc_limbs[3] & 3u;
+    uint npc_partial_limb_msb = (npc_remainder_bits >> 1u) & 1u;
+
+    trace_out[41u * column_length + row] = npc_limb_0;           // col41
+    trace_out[42u * column_length + row] = npc_limb_1;           // col42
+    trace_out[43u * column_length + row] = npc_limb_2;           // col43
+    trace_out[44u * column_length + row] = npc_remainder_bits;   // col44
+    trace_out[45u * column_length + row] = npc_partial_limb_msb; // col45
+
+    // --- Enabler column (col46) ---
+    trace_out[46u * column_length + row] = (row < n_rows) ? 1u : 0u;
+}
+
+
+// ===========================================================================
+// KERNEL: jump_opcode_rel_imm trace generation
+//
+// 13 trace columns.
+// Fixed instruction offsets (32767, 32767, 32769).
+// Only decodes ap_update_add_1 flag.
+// Reads next_pc via "Read Small" from [pc+1].
+// ===========================================================================
+
+kernel void witness_jump_opcode_rel_imm_trace(
+    device const uint  *inputs          [[buffer(0)]],  // [n_rows][3]: pc,ap,fp
+    device const uint  *address_to_id   [[buffer(1)]],  // address -> id table
+    device const uint  *big_values      [[buffer(2)]],  // [n_big][8] u32
+    device const uint  *small_values    [[buffer(3)]],  // [n_small][4] u32
+    device       uint  *trace_out       [[buffer(4)]],  // column-major output
+    constant     uint  &n_rows          [[buffer(5)]],
+    constant     uint  &column_length   [[buffer(6)]],
+    uint               row              [[thread_position_in_grid]]
+) {
+    if (row >= column_length) return;
+
+    uint src_row = (row < n_rows) ? row : 0u;
+    uint input_pc = inputs[src_row * 3u + 0u];
+    uint input_ap = inputs[src_row * 3u + 1u];
+    uint input_fp = inputs[src_row * 3u + 2u];
+
+    // col0..col2: pc, ap, fp
+    trace_out[0u * column_length + row] = input_pc;
+    trace_out[1u * column_length + row] = input_ap;
+    trace_out[2u * column_length + row] = input_fp;
+
+    // --- Decode Instruction ---
+    // Fixed offsets: [32767, 32767, 32769] -> signed [-1, -1, 1]
+    // Only ap_update_add_1 is variable.
+    uint instr_id = lookup_addr_to_id(address_to_id, input_pc);
+    uint instr_limbs[28];
+    lookup_id_to_big(big_values, small_values, instr_id, instr_limbs);
+
+    DecodedInstruction di = decode_instruction(instr_limbs);
+    uint ap_update_add_1 = di.ap_update_add_1;
+
+    // col3: ap_update_add_1
+    trace_out[3u * column_length + row] = ap_update_add_1;
+
+    // --- Read Small: next_pc from [pc+1] ---
+    uint next_pc_addr = m31_add(input_pc, 1u);
+    uint next_pc_id = lookup_addr_to_id(address_to_id, next_pc_addr);
+    trace_out[4u * column_length + row] = next_pc_id; // col4
+
+    uint next_pc_limbs[28];
+    lookup_id_to_big(big_values, small_values, next_pc_id, next_pc_limbs);
+
+    SmallSign npc_sign = decode_small_sign(next_pc_limbs);
+    trace_out[5u * column_length + row] = npc_sign.msb;           // col5
+    trace_out[6u * column_length + row] = npc_sign.mid_limbs_set; // col6
+
+    uint npc_limb_0 = next_pc_limbs[0];
+    uint npc_limb_1 = next_pc_limbs[1];
+    uint npc_limb_2 = next_pc_limbs[2];
+    uint npc_remainder_bits = next_pc_limbs[3] & 3u;
+    uint npc_partial_limb_msb = (npc_remainder_bits >> 1u) & 1u;
+
+    trace_out[7u  * column_length + row] = npc_limb_0;           // col7
+    trace_out[8u  * column_length + row] = npc_limb_1;           // col8
+    trace_out[9u  * column_length + row] = npc_limb_2;           // col9
+    trace_out[10u * column_length + row] = npc_remainder_bits;   // col10
+    trace_out[11u * column_length + row] = npc_partial_limb_msb; // col11
+
+    // --- Enabler column (col12) ---
+    trace_out[12u * column_length + row] = (row < n_rows) ? 1u : 0u;
+}
+
+
+// ===========================================================================
+// KERNEL: call_opcode_rel_imm trace generation
+//
+// 24 trace columns.
+// Fixed instruction offsets (32768, 32769, 32769).
+// Reads stored_fp (Read Positive 29) from [ap].
+// Reads stored_ret_pc (Read Positive 29) from [ap+1].
+// Reads distance_to_next_pc (Read Small) from [pc+1].
+// ===========================================================================
+
+kernel void witness_call_opcode_rel_imm_trace(
+    device const uint  *inputs          [[buffer(0)]],  // [n_rows][3]: pc,ap,fp
+    device const uint  *address_to_id   [[buffer(1)]],  // address -> id table
+    device const uint  *big_values      [[buffer(2)]],  // [n_big][8] u32
+    device const uint  *small_values    [[buffer(3)]],  // [n_small][4] u32
+    device       uint  *trace_out       [[buffer(4)]],  // column-major output
+    constant     uint  &n_rows          [[buffer(5)]],
+    constant     uint  &column_length   [[buffer(6)]],
+    uint               row              [[thread_position_in_grid]]
+) {
+    if (row >= column_length) return;
+
+    uint src_row = (row < n_rows) ? row : 0u;
+    uint input_pc = inputs[src_row * 3u + 0u];
+    uint input_ap = inputs[src_row * 3u + 1u];
+    uint input_fp = inputs[src_row * 3u + 2u];
+
+    // col0..col2: pc, ap, fp
+    trace_out[0u * column_length + row] = input_pc;
+    trace_out[1u * column_length + row] = input_ap;
+    trace_out[2u * column_length + row] = input_fp;
+
+    // --- Read Positive Num Bits 29: stored_fp from [ap] ---
+    uint stored_fp_id = lookup_addr_to_id(address_to_id, input_ap);
+    trace_out[3u * column_length + row] = stored_fp_id; // col3
+
+    uint stored_fp_limbs[28];
+    lookup_id_to_big(big_values, small_values, stored_fp_id, stored_fp_limbs);
+
+    uint sfp_limb_0 = stored_fp_limbs[0];
+    uint sfp_limb_1 = stored_fp_limbs[1];
+    uint sfp_limb_2 = stored_fp_limbs[2];
+    uint sfp_limb_3 = stored_fp_limbs[3];
+    uint sfp_partial_limb_msb = (sfp_limb_3 >> 1u) & 1u;
+
+    trace_out[4u * column_length + row] = sfp_limb_0;             // col4
+    trace_out[5u * column_length + row] = sfp_limb_1;             // col5
+    trace_out[6u * column_length + row] = sfp_limb_2;             // col6
+    trace_out[7u * column_length + row] = sfp_limb_3;             // col7
+    trace_out[8u * column_length + row] = sfp_partial_limb_msb;   // col8
+
+    // --- Read Positive Num Bits 29: stored_ret_pc from [ap+1] ---
+    uint ret_pc_addr = m31_add(input_ap, 1u);
+    uint stored_ret_pc_id = lookup_addr_to_id(address_to_id, ret_pc_addr);
+    trace_out[9u * column_length + row] = stored_ret_pc_id; // col9
+
+    uint ret_pc_limbs[28];
+    lookup_id_to_big(big_values, small_values, stored_ret_pc_id, ret_pc_limbs);
+
+    uint rpc_limb_0 = ret_pc_limbs[0];
+    uint rpc_limb_1 = ret_pc_limbs[1];
+    uint rpc_limb_2 = ret_pc_limbs[2];
+    uint rpc_limb_3 = ret_pc_limbs[3];
+    uint rpc_partial_limb_msb = (rpc_limb_3 >> 1u) & 1u;
+
+    trace_out[10u * column_length + row] = rpc_limb_0;           // col10
+    trace_out[11u * column_length + row] = rpc_limb_1;           // col11
+    trace_out[12u * column_length + row] = rpc_limb_2;           // col12
+    trace_out[13u * column_length + row] = rpc_limb_3;           // col13
+    trace_out[14u * column_length + row] = rpc_partial_limb_msb; // col14
+
+    // --- Read Small: distance_to_next_pc from [pc+1] ---
+    uint dist_addr = m31_add(input_pc, 1u);
+    uint dist_id = lookup_addr_to_id(address_to_id, dist_addr);
+    trace_out[15u * column_length + row] = dist_id; // col15
+
+    uint dist_limbs[28];
+    lookup_id_to_big(big_values, small_values, dist_id, dist_limbs);
+
+    SmallSign dist_sign = decode_small_sign(dist_limbs);
+    trace_out[16u * column_length + row] = dist_sign.msb;           // col16
+    trace_out[17u * column_length + row] = dist_sign.mid_limbs_set; // col17
+
+    uint dist_limb_0 = dist_limbs[0];
+    uint dist_limb_1 = dist_limbs[1];
+    uint dist_limb_2 = dist_limbs[2];
+    uint dist_remainder_bits = dist_limbs[3] & 3u;
+    uint dist_partial_limb_msb = (dist_remainder_bits >> 1u) & 1u;
+
+    trace_out[18u * column_length + row] = dist_limb_0;           // col18
+    trace_out[19u * column_length + row] = dist_limb_1;           // col19
+    trace_out[20u * column_length + row] = dist_limb_2;           // col20
+    trace_out[21u * column_length + row] = dist_remainder_bits;   // col21
+    trace_out[22u * column_length + row] = dist_partial_limb_msb; // col22
+
+    // --- Enabler column (col23) ---
+    trace_out[23u * column_length + row] = (row < n_rows) ? 1u : 0u;
+}
+
+
+// ===========================================================================
+// KERNEL: ret_opcode trace generation
+//
+// 16 trace columns.
+// Fixed instruction offsets (32766, 32767, 32767).
+// Reads next_pc (Read Positive 29) from [fp-1].
+// Reads next_fp (Read Positive 29) from [fp-2].
+// ===========================================================================
+
+kernel void witness_ret_opcode_trace(
+    device const uint  *inputs          [[buffer(0)]],  // [n_rows][3]: pc,ap,fp
+    device const uint  *address_to_id   [[buffer(1)]],  // address -> id table
+    device const uint  *big_values      [[buffer(2)]],  // [n_big][8] u32
+    device const uint  *small_values    [[buffer(3)]],  // [n_small][4] u32
+    device       uint  *trace_out       [[buffer(4)]],  // column-major output
+    constant     uint  &n_rows          [[buffer(5)]],
+    constant     uint  &column_length   [[buffer(6)]],
+    uint               row              [[thread_position_in_grid]]
+) {
+    if (row >= column_length) return;
+
+    uint src_row = (row < n_rows) ? row : 0u;
+    uint input_pc = inputs[src_row * 3u + 0u];
+    uint input_ap = inputs[src_row * 3u + 1u];
+    uint input_fp = inputs[src_row * 3u + 2u];
+
+    // col0..col2: pc, ap, fp
+    trace_out[0u * column_length + row] = input_pc;
+    trace_out[1u * column_length + row] = input_ap;
+    trace_out[2u * column_length + row] = input_fp;
+
+    // --- Read Positive Num Bits 29: next_pc from [fp-1] ---
+    uint next_pc_addr = m31_sub(input_fp, 1u);
+    uint next_pc_id = lookup_addr_to_id(address_to_id, next_pc_addr);
+    trace_out[3u * column_length + row] = next_pc_id; // col3
+
+    uint next_pc_limbs[28];
+    lookup_id_to_big(big_values, small_values, next_pc_id, next_pc_limbs);
+
+    uint npc_limb_0 = next_pc_limbs[0];
+    uint npc_limb_1 = next_pc_limbs[1];
+    uint npc_limb_2 = next_pc_limbs[2];
+    uint npc_limb_3 = next_pc_limbs[3];
+    uint npc_partial_limb_msb = (npc_limb_3 >> 1u) & 1u;
+
+    trace_out[4u * column_length + row] = npc_limb_0;           // col4
+    trace_out[5u * column_length + row] = npc_limb_1;           // col5
+    trace_out[6u * column_length + row] = npc_limb_2;           // col6
+    trace_out[7u * column_length + row] = npc_limb_3;           // col7
+    trace_out[8u * column_length + row] = npc_partial_limb_msb; // col8
+
+    // --- Read Positive Num Bits 29: next_fp from [fp-2] ---
+    uint next_fp_addr = m31_sub(input_fp, 2u);
+    uint next_fp_id = lookup_addr_to_id(address_to_id, next_fp_addr);
+    trace_out[9u * column_length + row] = next_fp_id; // col9
+
+    uint next_fp_limbs[28];
+    lookup_id_to_big(big_values, small_values, next_fp_id, next_fp_limbs);
+
+    uint nfp_limb_0 = next_fp_limbs[0];
+    uint nfp_limb_1 = next_fp_limbs[1];
+    uint nfp_limb_2 = next_fp_limbs[2];
+    uint nfp_limb_3 = next_fp_limbs[3];
+    uint nfp_partial_limb_msb = (nfp_limb_3 >> 1u) & 1u;
+
+    trace_out[10u * column_length + row] = nfp_limb_0;           // col10
+    trace_out[11u * column_length + row] = nfp_limb_1;           // col11
+    trace_out[12u * column_length + row] = nfp_limb_2;           // col12
+    trace_out[13u * column_length + row] = nfp_limb_3;           // col13
+    trace_out[14u * column_length + row] = nfp_partial_limb_msb; // col14
+
+    // --- Enabler column (col15) ---
+    trace_out[15u * column_length + row] = (row < n_rows) ? 1u : 0u;
 }
