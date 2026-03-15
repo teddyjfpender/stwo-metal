@@ -1232,6 +1232,7 @@ mod cairo_prove_main {
             execute_compiled_metal_evaluation_program_v1_async,
             execute_compiled_metal_evaluation_program_v1_tg,
             execute_compiled_async_gpu_trace,
+            execute_compiled_fused_blit_gpu_trace,
             complete_compiled_metal_evaluation_program_v1_async,
             execute_selected_metal_evaluation_program_v1_on_metal,
             interpret_metal_evaluation_program_v1,
@@ -1540,10 +1541,10 @@ mod cairo_prove_main {
                     let cache_entry = shader_cache.get(&comp.program.header().semantic_hash);
                     if let Some((ref source, ref name)) = cache_entry {
                         // GPU buffer pass-through: if we have GPU-resident columns,
-                        // build a flat U32Buffer directly and dispatch without CPU round-trip.
+                        // use fused blit+compute dispatch to avoid CPU memmove.
                         if let Some(ref gpu_interactions) = comp.gpu_interaction_cols {
                             let n_rows = 1usize << comp.eval_domain_log_size;
-                            // Build interaction_offsets and flat GPU trace buffer.
+                            // Build interaction_offsets.
                             let mut interaction_offsets: Vec<u32> = Vec::with_capacity(gpu_interactions.len() + 1);
                             let mut total_cols = 0u32;
                             interaction_offsets.push(0);
@@ -1555,59 +1556,48 @@ mod cairo_prove_main {
                             if total_elements > 0 {
                                 let random_coeff_powers =
                                     &all_random_coeff_powers[comp.coeff_start..comp.coeff_end];
-                                let gpu_trace = stwo_metal_sys::metal::U32Buffer::zeroed(total_elements);
-                                match gpu_trace {
-                                    Ok(mut gpu_trace) => {
-                                        let mut write_offset = 0usize;
-                                        let mut concat_ok = true;
-                                        for interaction in gpu_interactions {
-                                            for col in interaction {
-                                                if let Err(e) = gpu_trace.copy_from_offset(col.gpu_buffer(), write_offset) {
-                                                    eprintln!(
-                                                        "    [GPU CONCAT FAIL] component '{}': {}",
-                                                        comp.name, e.message(),
-                                                    );
-                                                    concat_ok = false;
-                                                    break;
-                                                }
-                                                write_offset += col.len();
-                                            }
-                                            if !concat_ok { break; }
-                                        }
-                                        if concat_ok {
-                                            match execute_compiled_async_gpu_trace(
-                                                gpu_trace,
-                                                &interaction_offsets,
-                                                n_rows,
-                                                random_coeff_powers,
-                                                source,
-                                                name,
-                                            ) {
-                                                Ok((handle, dst)) => {
-                                                    compiled_ct += 1;
-                                                    gpu_trace_ct += 1;
-                                                    pending.push(PendingGpu { handle, dst, comp });
-                                                    continue;
-                                                }
-                                                Err(ref e) => {
-                                                    eprintln!(
-                                                        "    [GPU TRACE JIT FALLBACK] component '{}': {:?}",
-                                                        comp.name, e,
-                                                    );
-                                                }
-                                            }
-                                        }
+
+                                // Collect column buffer references for fused blit dispatch.
+                                let col_buffers: Vec<&stwo_metal_sys::metal::U32Buffer> =
+                                    gpu_interactions
+                                        .iter()
+                                        .flat_map(|interaction| {
+                                            interaction.iter().map(|col| col.gpu_buffer())
+                                        })
+                                        .collect();
+                                let col_lengths: Vec<usize> =
+                                    gpu_interactions
+                                        .iter()
+                                        .flat_map(|interaction| {
+                                            interaction.iter().map(|col| col.len())
+                                        })
+                                        .collect();
+
+                                match execute_compiled_fused_blit_gpu_trace(
+                                    &col_buffers,
+                                    &col_lengths,
+                                    &interaction_offsets,
+                                    n_rows,
+                                    random_coeff_powers,
+                                    source,
+                                    name,
+                                ) {
+                                    Ok((handle, dst)) => {
+                                        compiled_ct += 1;
+                                        gpu_trace_ct += 1;
+                                        pending.push(PendingGpu { handle, dst, comp });
+                                        continue;
                                     }
                                     Err(ref e) => {
                                         eprintln!(
-                                            "    [GPU ALLOC FAIL] component '{}': {}",
-                                            comp.name, e.message(),
+                                            "    [FUSED BLIT FALLBACK] component '{}': {:?}",
+                                            comp.name, e,
                                         );
+                                        // Fall through to CPU path.
+                                        sync_components.push(comp);
+                                        continue;
                                     }
                                 }
-                                // Fall through to CPU path on any GPU error.
-                                sync_components.push(comp);
-                                continue;
                             }
                         }
 

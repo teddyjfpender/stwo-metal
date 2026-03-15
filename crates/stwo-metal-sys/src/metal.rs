@@ -2738,6 +2738,58 @@ impl U32Buffer {
         ))
     }
 
+    /// Fused blit+compute dispatch: uses GPU blit encoder to concatenate
+    /// individual column buffers into a flat trace buffer, then dispatches the
+    /// JIT-compiled compute kernel — all in a single command buffer.
+    ///
+    /// This eliminates the CPU memmove bottleneck in the GPU pass-through path.
+    /// The GPU's DMA engine performs the copies, and the compute kernel starts
+    /// immediately after via implicit command buffer ordering.
+    #[allow(clippy::too_many_arguments)]
+    pub fn eval_compiled_fused_blit_async(
+        shader_source: &str,
+        kernel_name: &str,
+        column_buffers: &[&Self],
+        column_lengths: &[usize],
+        interaction_offsets: &Self,
+        random_coeff_powers: &Self,
+        row_count: usize,
+    ) -> Result<(Self, CommandBufferHandle), MetalError> {
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(row_count * 4)?;
+
+        // Build array of raw buffer pointers for FFI.
+        let raw_ptrs: Vec<*mut std::ffi::c_void> = column_buffers
+            .iter()
+            .map(|b| b.raw.as_ptr())
+            .collect();
+
+        let handle = unsafe {
+            ffi::eval_compiled_fused_blit_async(
+                runtime.raw.as_ptr(),
+                shader_source.as_ptr(),
+                shader_source.len(),
+                kernel_name.as_ptr(),
+                kernel_name.len(),
+                raw_ptrs.as_ptr(),
+                column_lengths.as_ptr(),
+                column_buffers.len(),
+                interaction_offsets.raw.as_ptr(),
+                random_coeff_powers.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                row_count.try_into().expect("row_count should fit in u32"),
+                error_buffer_mut_ptr,
+            )?
+        };
+        Ok((
+            dst,
+            CommandBufferHandle {
+                raw: NonNull::new(handle)
+                    .expect("fused blit+compute returned null handle despite success"),
+            },
+        ))
+    }
+
     pub fn eval_program_v1_wide_fibonacci_u32x4(
         trace_values: &Self,
         interaction_offsets: &Self,
@@ -3826,6 +3878,23 @@ mod ffi {
             preprocessed_values: *mut c_void,
             base_params: *mut c_void,
             ext_params: *mut c_void,
+            random_coeff_powers: *mut c_void,
+            dst: *mut c_void,
+            row_count: u32,
+            out_handle: *mut *mut c_void,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_eval_compiled_fused_blit_async(
+            runtime: *mut c_void,
+            shader_source: *const u8,
+            shader_source_len: usize,
+            kernel_name: *const u8,
+            kernel_name_len: usize,
+            column_buffer_ptrs: *const *mut c_void,
+            column_lengths: *const usize,
+            n_columns: usize,
+            interaction_offsets: *mut c_void,
             random_coeff_powers: *mut c_void,
             dst: *mut c_void,
             row_count: u32,
@@ -6169,6 +6238,47 @@ mod ffi {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn eval_compiled_fused_blit_async(
+        runtime: *mut c_void,
+        shader_source: *const u8,
+        shader_source_len: usize,
+        kernel_name: *const u8,
+        kernel_name_len: usize,
+        column_buffer_ptrs: *const *mut c_void,
+        column_lengths: *const usize,
+        n_columns: usize,
+        interaction_offsets: *mut c_void,
+        random_coeff_powers: *mut c_void,
+        dst: *mut c_void,
+        row_count: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let mut out_handle: *mut c_void = std::ptr::null_mut();
+        if stwo_metal_eval_compiled_fused_blit_async(
+            runtime,
+            shader_source,
+            shader_source_len,
+            kernel_name,
+            kernel_name_len,
+            column_buffer_ptrs,
+            column_lengths,
+            n_columns,
+            interaction_offsets,
+            random_coeff_powers,
+            dst,
+            row_count,
+            &mut out_handle,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(out_handle)
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn sampled_values_v1_wide_fibonacci_u32x4(
         runtime: *mut c_void,
         tree_descs: *mut c_void,
@@ -7380,6 +7490,27 @@ mod ffi {
         _preprocessed_values: *mut c_void,
         _base_params: *mut c_void,
         _ext_params: *mut c_void,
+        _random_coeff_powers: *mut c_void,
+        _dst: *mut c_void,
+        _row_count: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn eval_compiled_fused_blit_async(
+        _runtime: *mut c_void,
+        _shader_source: *const u8,
+        _shader_source_len: usize,
+        _kernel_name: *const u8,
+        _kernel_name_len: usize,
+        _column_buffer_ptrs: *const *mut c_void,
+        _column_lengths: *const usize,
+        _n_columns: usize,
+        _interaction_offsets: *mut c_void,
         _random_coeff_powers: *mut c_void,
         _dst: *mut c_void,
         _row_count: u32,

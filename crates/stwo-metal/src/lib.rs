@@ -76,6 +76,7 @@ pub mod program {
         execute_compiled_metal_evaluation_program_v1_async,
         execute_compiled_metal_evaluation_program_v1_tg,
         execute_compiled_async_gpu_trace,
+        execute_compiled_fused_blit_gpu_trace,
         complete_compiled_metal_evaluation_program_v1_async,
         execute_metal_evaluation_program_v1_on_metal,
         execute_selected_metal_evaluation_program_v1_on_metal,

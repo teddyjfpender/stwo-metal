@@ -2511,6 +2511,59 @@ pub fn execute_compiled_async_gpu_trace(
     Ok((handle, dst))
 }
 
+/// Fused blit+compute variant of JIT execution with GPU-resident column buffers.
+///
+/// Instead of CPU-side memmove to concatenate columns into a flat trace buffer,
+/// this function uses Metal blit commands (GPU DMA engine) to copy columns into
+/// the flat buffer, then dispatches the JIT compute kernel — all in a single
+/// command buffer.  This eliminates the CPU memory bandwidth bottleneck that
+/// causes super-linear scaling at large trace sizes.
+///
+/// `column_buffers`: individual GPU-resident column U32Buffers, ordered by
+///                    interaction then column within interaction.
+/// `column_lengths`: element count for each column buffer (all should be n_rows).
+/// `interaction_offsets_cpu`: pre-computed interaction offset array.
+pub fn execute_compiled_fused_blit_gpu_trace(
+    column_buffers: &[&U32Buffer],
+    column_lengths: &[usize],
+    interaction_offsets_cpu: &[u32],
+    n_rows: usize,
+    random_coeff_powers_cpu: &[SecureField],
+    shader_source: &str,
+    kernel_name: &str,
+) -> Result<(CommandBufferHandle, U32Buffer), MetalEvaluationProgramExecutionError> {
+    let map_metal = |e: MetalError| MetalEvaluationProgramExecutionError::MetalRuntime {
+        message: e.message().to_string(),
+    };
+
+    let support = metal_runtime_support();
+    if support != MetalRuntimeSupport::Available {
+        return Err(MetalEvaluationProgramExecutionError::RuntimeUnavailable(support));
+    }
+
+    let interaction_offsets = U32Buffer::from_slice(interaction_offsets_cpu).map_err(map_metal)?;
+    let random_coeff_powers = U32Buffer::from_slice(
+        &random_coeff_powers_cpu
+            .iter()
+            .flat_map(|v| v.to_m31_array().map(|l| l.0))
+            .collect::<Vec<_>>(),
+    )
+    .map_err(map_metal)?;
+
+    let (dst, handle) = U32Buffer::eval_compiled_fused_blit_async(
+        shader_source,
+        kernel_name,
+        column_buffers,
+        column_lengths,
+        &interaction_offsets,
+        &random_coeff_powers,
+        n_rows,
+    )
+    .map_err(map_metal)?;
+
+    Ok((handle, dst))
+}
+
 fn execute_wide_fibonacci_overlay_v1_on_metal(
     program: &OwnedMetalEvaluationProgramV1,
     runtime: MetalEvaluationProgramRuntimeInputsV1<'_>,
