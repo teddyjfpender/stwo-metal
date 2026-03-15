@@ -3263,7 +3263,7 @@ mod cairo_prove_main {
 
         // Report timing.
         println!(
-            "  GPU witness: zero-copy Metal bypass active ({:.1} ms overlapped GPU pre-compute)",
+            "  GPU witness: overlapped dispatch active ({:.1} ms GPU pre-compute + PackedM31, fully hidden)",
             gpu_witness_ms,
         );
 
