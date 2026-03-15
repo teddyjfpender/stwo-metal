@@ -365,18 +365,160 @@ mod cairo_prove_main {
         }
     }
 
+    /// Pre-computed GPU witness traces for the memory_id_to_big component.
+    ///
+    /// Created by dispatching the GPU F252 splitting kernel before
+    /// `write_trace()` runs, so that GPU results are ready by the time the
+    /// CPU trace generation completes.  The `HybridTreeBuilder` uses these
+    /// to avoid the CPU-to-Metal upload for value columns (28 per big trace,
+    /// 8 for small trace), keeping only the CPU-generated multiplicity column
+    /// and converting it.
+    #[cfg(feature = "metal-runtime")]
+    struct GpuWitnessPrecompute {
+        /// GPU-computed value evaluations for each big trace chunk.
+        /// Each Vec has 28 `CircleEvaluation<MetalBackend>` (value columns only).
+        big_value_evals: Vec<Vec<stwo::prover::poly::circle::CircleEvaluation<
+            stwo_metal::MetalBackend,
+            stwo::core::fields::m31::BaseField,
+            stwo::prover::poly::BitReversedOrder,
+        >>>,
+        /// GPU-computed value evaluations for the small trace.
+        /// Has 8 `CircleEvaluation<MetalBackend>` (value columns only).
+        small_value_evals: Option<Vec<stwo::prover::poly::circle::CircleEvaluation<
+            stwo_metal::MetalBackend,
+            stwo::core::fields::m31::BaseField,
+            stwo::prover::poly::BitReversedOrder,
+        >>>,
+        /// Next big trace chunk index to substitute.
+        big_next: std::cell::Cell<usize>,
+        /// Whether the small trace has been substituted.
+        small_done: std::cell::Cell<bool>,
+        /// Number of big value columns replaced (for timing report).
+        big_cols_replaced: std::cell::Cell<usize>,
+        /// Number of small value columns replaced (for timing report).
+        small_cols_replaced: std::cell::Cell<usize>,
+    }
+
+    #[cfg(feature = "metal-runtime")]
+    impl GpuWitnessPrecompute {
+        /// Number of value columns in a big trace (28 F252 limbs).
+        const BIG_VALUE_COLS: usize = 28;
+        /// Total columns in a big trace (28 limbs + 1 multiplicity).
+        const BIG_TOTAL_COLS: usize = 29;
+        /// Number of value columns in a small trace (8 limbs).
+        const SMALL_VALUE_COLS: usize = 8;
+        /// Total columns in a small trace (8 limbs + 1 multiplicity).
+        const SMALL_TOTAL_COLS: usize = 9;
+
+        /// Try to match a batch of SimdBackend columns as a memory_id_to_big
+        /// big trace and, if so, return MetalBackend evaluations with GPU
+        /// value columns and the CPU-generated multiplicity column.
+        fn try_replace_big(
+            &self,
+            columns: &[stwo::prover::poly::circle::CircleEvaluation<
+                SimdBackend,
+                stwo::core::fields::m31::BaseField,
+                stwo::prover::poly::BitReversedOrder,
+            >],
+        ) -> Option<Vec<stwo::prover::poly::circle::CircleEvaluation<
+            stwo_metal::MetalBackend,
+            stwo::core::fields::m31::BaseField,
+            stwo::prover::poly::BitReversedOrder,
+        >>> {
+            use stwo::prover::backend::Column;
+            let idx = self.big_next.get();
+            if columns.len() != Self::BIG_TOTAL_COLS || idx >= self.big_value_evals.len() {
+                return None;
+            }
+            let gpu_vals = &self.big_value_evals[idx];
+            // Verify domain match between GPU and CPU columns.
+            if gpu_vals[0].domain != columns[0].domain {
+                return None;
+            }
+            self.big_next.set(idx + 1);
+
+            // Use GPU value columns (28) + CPU multiplicity column (1).
+            let mut result: Vec<stwo::prover::poly::circle::CircleEvaluation<
+                stwo_metal::MetalBackend,
+                stwo::core::fields::m31::BaseField,
+                stwo::prover::poly::BitReversedOrder,
+            >> = gpu_vals.clone();
+            // Convert only the multiplicity column (last) from CPU to Metal.
+            let mult_eval = &columns[Self::BIG_VALUE_COLS];
+            let domain = mult_eval.domain;
+            let metal_values = mult_eval.values.to_cpu().into_iter().collect();
+            result.push(stwo::prover::poly::circle::CircleEvaluation::new(
+                domain,
+                metal_values,
+            ));
+            self.big_cols_replaced.set(
+                self.big_cols_replaced.get() + Self::BIG_VALUE_COLS,
+            );
+            Some(result)
+        }
+
+        /// Try to match a batch of SimdBackend columns as a memory_id_to_big
+        /// small trace and, if so, return MetalBackend evaluations with GPU
+        /// value columns and the CPU-generated multiplicity column.
+        fn try_replace_small(
+            &self,
+            columns: &[stwo::prover::poly::circle::CircleEvaluation<
+                SimdBackend,
+                stwo::core::fields::m31::BaseField,
+                stwo::prover::poly::BitReversedOrder,
+            >],
+        ) -> Option<Vec<stwo::prover::poly::circle::CircleEvaluation<
+            stwo_metal::MetalBackend,
+            stwo::core::fields::m31::BaseField,
+            stwo::prover::poly::BitReversedOrder,
+        >>> {
+            use stwo::prover::backend::Column;
+            if self.small_done.get() || columns.len() != Self::SMALL_TOTAL_COLS {
+                return None;
+            }
+            let gpu_vals = match &self.small_value_evals {
+                Some(v) => v,
+                None => return None,
+            };
+            if gpu_vals[0].domain != columns[0].domain {
+                return None;
+            }
+            self.small_done.set(true);
+
+            let mut result: Vec<stwo::prover::poly::circle::CircleEvaluation<
+                stwo_metal::MetalBackend,
+                stwo::core::fields::m31::BaseField,
+                stwo::prover::poly::BitReversedOrder,
+            >> = gpu_vals.clone();
+            let mult_eval = &columns[Self::SMALL_VALUE_COLS];
+            let domain = mult_eval.domain;
+            let metal_values = mult_eval.values.to_cpu().into_iter().collect();
+            result.push(stwo::prover::poly::circle::CircleEvaluation::new(
+                domain,
+                metal_values,
+            ));
+            self.small_cols_replaced.set(Self::SMALL_VALUE_COLS);
+            Some(result)
+        }
+    }
+
     /// Hybrid TreeBuilder that accepts evaluations from both SimdBackend (CPU)
     /// and MetalBackend (GPU). CPU evaluations are converted on the fly (same as
     /// `ConvertingTreeBuilder`); GPU evaluations pass through directly with no
     /// CPU round-trip.
+    ///
+    /// When a `GpuWitnessPrecompute` is attached, memory_id_to_big value
+    /// columns are sourced from the GPU trace instead of being uploaded from
+    /// CPU, eliminating the CPU-to-Metal copy for 28+8 = 36 columns.
     #[cfg(feature = "metal-runtime")]
-    struct HybridTreeBuilder<'a, 'b> {
+    struct HybridTreeBuilder<'a, 'b, 'g> {
         inner: stwo::prover::TreeBuilder<'a, 'b, stwo_metal::MetalBackend, Blake2sMerkleChannel>,
+        gpu_witness: Option<&'g GpuWitnessPrecompute>,
     }
 
     #[cfg(feature = "metal-runtime")]
     impl stwo_cairo_prover::witness::utils::TreeBuilder<SimdBackend>
-        for HybridTreeBuilder<'_, '_>
+        for HybridTreeBuilder<'_, '_, '_>
     {
         fn extend_evals(
             &mut self,
@@ -387,6 +529,18 @@ mod cairo_prove_main {
             >>,
         ) -> stwo::core::pcs::TreeSubspan {
             use stwo::prover::backend::Column;
+
+            // Try GPU replacement for memory_id_to_big columns.
+            if let Some(gpu) = self.gpu_witness {
+                if let Some(metal_cols) = gpu.try_replace_big(&columns) {
+                    return self.inner.extend_evals(metal_cols);
+                }
+                if let Some(metal_cols) = gpu.try_replace_small(&columns) {
+                    return self.inner.extend_evals(metal_cols);
+                }
+            }
+
+            // Default path: convert SimdBackend → MetalBackend via CPU copy.
             let metal_columns: Vec<stwo::prover::poly::circle::CircleEvaluation<
                 stwo_metal::MetalBackend,
                 stwo::core::fields::m31::BaseField,
@@ -404,7 +558,7 @@ mod cairo_prove_main {
     }
 
     #[cfg(feature = "metal-runtime")]
-    impl HybridTreeBuilder<'_, '_> {
+    impl HybridTreeBuilder<'_, '_, '_> {
         /// Accept GPU-resident evaluations directly (no conversion needed).
         #[allow(dead_code)]
         fn extend_gpu_evals(
@@ -2415,11 +2569,72 @@ mod cairo_prove_main {
             None => owned_twiddles.as_ref().unwrap(),
         };
 
+        // Extract memory data for GPU witness pre-computation before `input`
+        // is consumed.  The GPU kernel performs the F252 splitting (28 limb
+        // columns for big values, 8 for small) in parallel with the CPU claim
+        // generator and opcode trace work inside `write_trace()`.
+        let gpu_big_values = input.memory.f252_values.clone();
+        let gpu_small_values = input.memory.small_values.clone();
+
         // Spawn claim generator on background thread (CPU-only, overlaps with
         // commit below).  `input` is not used again after this point.
         let preprocessed_trace_for_claim = preprocessed_trace.clone();
         let claim_gen_handle = std::thread::spawn(move || {
             create_cairo_claim_generator(input, preprocessed_trace_for_claim)
+        });
+
+        // Dispatch GPU witness kernel in parallel: compute F252 splits on Metal
+        // while CPU does claim generation + opcode traces.
+        let t_gpu_witness = Instant::now();
+        let gpu_witness_handle = std::thread::spawn(move || {
+            use stwo_metal::{
+                generate_memory_id_to_big_trace, generate_memory_id_to_big_small_trace,
+            };
+            // Use the same MAX_SEQUENCE_LOG_SIZE = 25 as stwo-cairo for chunking.
+            const LOG_MAX_BIG_SIZE: u32 = 25;
+            let max_big_size = 1usize << LOG_MAX_BIG_SIZE;
+
+            // Pad big_values to SIMD alignment (multiple of 16).
+            let mut big_values = gpu_big_values;
+            let simd_padded_big_size = big_values.len().next_multiple_of(16);
+            big_values.resize(simd_padded_big_size, [0; 8]);
+
+            // Pad small_values to SIMD alignment.
+            let mut small_values = gpu_small_values;
+            let simd_padded_small_size = small_values.len().next_multiple_of(16);
+            small_values.resize(simd_padded_small_size, 0);
+
+            // Generate big traces (chunked, same logic as stwo-cairo).
+            let mut big_value_evals = Vec::new();
+            for chunk in big_values.chunks(max_big_size) {
+                let n = chunk.len();
+                // Zero multiplicities: value columns don't depend on them.
+                let zero_mults = vec![0u32; n];
+                match generate_memory_id_to_big_trace(chunk, &zero_mults) {
+                    Ok(trace) => {
+                        big_value_evals.push(trace.to_metal_value_evaluations());
+                    }
+                    Err(e) => {
+                        eprintln!("  [gpu-witness] big trace error: {e}");
+                    }
+                }
+            }
+
+            // Generate small trace.
+            let small_value_evals = if !small_values.is_empty() {
+                let zero_mults = vec![0u32; small_values.len()];
+                match generate_memory_id_to_big_small_trace(&small_values, &zero_mults) {
+                    Ok(trace) => Some(trace.to_metal_value_evaluations()),
+                    Err(e) => {
+                        eprintln!("  [gpu-witness] small trace error: {e}");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            (big_value_evals, small_value_evals)
         });
 
         // 3. MetalBackend commitment scheme.
@@ -2453,18 +2668,51 @@ mod cairo_prove_main {
             }
         }
 
-        // 4. Write base trace via HybridTreeBuilder.
+        // 4. Write base trace via HybridTreeBuilder with GPU witness acceleration.
         let t_base = Instant::now();
         println!("  Creating claim generator + base trace...");
         let cairo_claim_generator = claim_gen_handle
             .join()
             .expect("claim generator thread should not panic");
+
+        // Join GPU witness pre-computation (should already be done by now).
+        let (gpu_big_value_evals, gpu_small_value_evals) = gpu_witness_handle
+            .join()
+            .expect("GPU witness thread should not panic");
+        let gpu_witness_ms = t_gpu_witness.elapsed().as_secs_f64() * 1000.0;
+        println!(
+            "  GPU witness pre-compute: {} big chunks, small={}  ({:.1} ms, overlapped)",
+            gpu_big_value_evals.len(),
+            gpu_small_value_evals.is_some(),
+            gpu_witness_ms,
+        );
+
+        let gpu_precompute = GpuWitnessPrecompute {
+            big_value_evals: gpu_big_value_evals,
+            small_value_evals: gpu_small_value_evals,
+            big_next: std::cell::Cell::new(0),
+            small_done: std::cell::Cell::new(false),
+            big_cols_replaced: std::cell::Cell::new(0),
+            small_cols_replaced: std::cell::Cell::new(0),
+        };
+
         let mut hybrid_tb = HybridTreeBuilder {
             inner: commitment_scheme.tree_builder(),
+            gpu_witness: Some(&gpu_precompute),
         };
         let (claim, interaction_generator) =
             cairo_claim_generator.write_trace(&mut hybrid_tb);
         let base_gen_ms = t_base.elapsed().as_secs_f64() * 1000.0;
+
+        // Report GPU witness column substitution.
+        let big_replaced = gpu_precompute.big_cols_replaced.get();
+        let small_replaced = gpu_precompute.small_cols_replaced.get();
+        if big_replaced + small_replaced > 0 {
+            println!(
+                "  GPU witness substitution: {} big + {} small value columns replaced (saved CPU->Metal upload)",
+                big_replaced, small_replaced,
+            );
+        }
 
         // Predict lifting_log_size from the claim and start domain coord
         // precomputation on a background thread.  The CPU-only computation
@@ -2512,6 +2760,7 @@ mod cairo_prove_main {
         println!("  Generating interaction trace...");
         let mut hybrid_tb = HybridTreeBuilder {
             inner: commitment_scheme.tree_builder(),
+            gpu_witness: None,
         };
         let interaction_claim = interaction_generator
             .write_interaction_trace(&mut hybrid_tb, &interaction_elements);
@@ -2665,7 +2914,11 @@ mod cairo_prove_main {
             if using_cache { " (cached)" } else { "" });
         println!("  Preprocessed tree (GPU):           {:>8.1} ms{}", preproc_ms,
             if using_cache { " (cached)" } else { "" });
+        println!("  GPU witness pre-compute:           {:>8.1} ms (overlapped)", gpu_witness_ms);
         println!("  Base trace gen + upload:           {:>8.1} ms", base_gen_ms);
+        if big_replaced + small_replaced > 0 {
+            println!("    (GPU witness: {} value cols replaced, skipped CPU->Metal copy)", big_replaced + small_replaced);
+        }
         println!("  Base trace commit (Metal Merkle):  {:>8.1} ms", base_commit_ms);
         println!("  Interaction PoW (Metal GPU):       {:>8.1} ms", pow_ms);
         println!("  Interaction trace gen + upload:    {:>8.1} ms", inter_gen_ms);
