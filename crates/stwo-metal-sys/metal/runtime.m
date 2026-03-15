@@ -4835,6 +4835,141 @@ bool stwo_metal_accumulate_and_unpack_partial_numerators_batched_u32x4(
     }
 }
 
+bool stwo_metal_accumulate_and_unpack_partial_numerators_indirect_batched_u32x4(
+    void *runtime_ptr,
+    // Array of n_unique_cols column buffer pointers.
+    void **column_buffer_ptrs,
+    uint32_t n_unique_cols,
+    void *column_indices_ptr,
+    void *b_coeffs_ptr,
+    void *c_coeffs_ptr,
+    void *term_offsets_ptr,
+    void *term_counts_ptr,
+    uint32_t row_count,
+    uint32_t n_batches,
+    // Pre-allocated output coordinate buffers: n_batches * 4 entries
+    void **output_coord_buffers,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *column_indices = stwo_metal_buffer_box(column_indices_ptr);
+        StwoMetalBufferBox *b_coeffs = stwo_metal_buffer_box(b_coeffs_ptr);
+        StwoMetalBufferBox *c_coeffs = stwo_metal_buffer_box(c_coeffs_ptr);
+        StwoMetalBufferBox *term_offsets = stwo_metal_buffer_box(term_offsets_ptr);
+        StwoMetalBufferBox *term_counts = stwo_metal_buffer_box(term_counts_ptr);
+
+        if (row_count == 0u || n_batches == 0u) {
+            stwo_metal_write_error(error_message, error_message_len, @"Indirect accumulate+unpack requires non-zero row count and batch count.");
+            return false;
+        }
+
+        // Build GPU address buffer: one uint64_t per unique column, containing
+        // the GPU virtual address of each column's MTLBuffer.
+        id<MTLBuffer> addr_buffer = [runtime.device newBufferWithLength:(n_unique_cols * sizeof(uint64_t))
+                                                                options:MTLResourceStorageModeShared];
+        if (addr_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate GPU address buffer for indirect numerators.");
+            return false;
+        }
+        uint64_t *addr_contents = (uint64_t *)addr_buffer.contents;
+        for (uint32_t i = 0; i < n_unique_cols; ++i) {
+            StwoMetalBufferBox *col = stwo_metal_buffer_box(column_buffer_ptrs[i]);
+            addr_contents[i] = col.buffer.gpuAddress;
+        }
+
+        // Allocate intermediate accumulate output buffer (packed QM31).
+        NSUInteger accum_len = (NSUInteger)row_count * (NSUInteger)n_batches * 4u;
+        id<MTLBuffer> accum_buffer = [runtime.device newBufferWithLength:(accum_len * sizeof(uint32_t))
+                                                                options:MTLResourceStorageModeShared];
+        if (accum_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate intermediate accumulate buffer for indirect numerators.");
+            return false;
+        }
+
+        // Get pipeline states.
+        id<MTLComputePipelineState> accum_pipeline =
+            stwo_metal_pipeline(runtime, @"accumulate_partial_numerators_indirect_batched_u32x4", error_message, error_message_len);
+        if (accum_pipeline == nil) return false;
+
+        id<MTLComputePipelineState> unpack_pipeline =
+            stwo_metal_pipeline(runtime, @"unpack_secure_column_coords_u32x4", error_message, error_message_len);
+        if (unpack_pipeline == nil) return false;
+
+        // Single command buffer for all work.
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        // Encoder 1: accumulate partial numerators via indirect column addresses.
+        {
+            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+            if (encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to create indirect accumulate encoder.");
+                return false;
+            }
+            [encoder setComputePipelineState:accum_pipeline];
+            [encoder setBuffer:addr_buffer offset:0 atIndex:0];
+            [encoder setBuffer:column_indices.buffer offset:0 atIndex:1];
+            [encoder setBuffer:b_coeffs.buffer offset:0 atIndex:2];
+            [encoder setBuffer:c_coeffs.buffer offset:0 atIndex:3];
+            [encoder setBuffer:term_offsets.buffer offset:0 atIndex:4];
+            [encoder setBuffer:term_counts.buffer offset:0 atIndex:5];
+            [encoder setBuffer:accum_buffer offset:0 atIndex:6];
+            [encoder setBytes:&row_count length:sizeof(row_count) atIndex:7];
+            [encoder setBytes:&n_batches length:sizeof(n_batches) atIndex:8];
+            // Mark all column buffers as used so Metal doesn't evict them.
+            for (uint32_t i = 0; i < n_unique_cols; ++i) {
+                StwoMetalBufferBox *col = stwo_metal_buffer_box(column_buffer_ptrs[i]);
+                [encoder useResource:col.buffer usage:MTLResourceUsageRead];
+            }
+            NSUInteger total_rows = (NSUInteger)row_count * (NSUInteger)n_batches;
+            MTLSize grid_size = MTLSizeMake(total_rows, 1, 1);
+            MTLSize tg_size = MTLSizeMake(stwo_metal_threads_per_group(accum_pipeline), 1, 1);
+            [encoder dispatchThreads:grid_size threadsPerThreadgroup:tg_size];
+            [encoder endEncoding];
+        }
+
+        // Encoders 2..N+1: unpack each batch's packed QM31 -> 4 coordinate buffers.
+        NSUInteger batch_stride_bytes = (NSUInteger)row_count * 4u * sizeof(uint32_t);
+        for (uint32_t batch_idx = 0; batch_idx < n_batches; ++batch_idx) {
+            StwoMetalBufferBox *c0 = stwo_metal_buffer_box(output_coord_buffers[batch_idx * 4 + 0]);
+            StwoMetalBufferBox *c1 = stwo_metal_buffer_box(output_coord_buffers[batch_idx * 4 + 1]);
+            StwoMetalBufferBox *c2 = stwo_metal_buffer_box(output_coord_buffers[batch_idx * 4 + 2]);
+            StwoMetalBufferBox *c3 = stwo_metal_buffer_box(output_coord_buffers[batch_idx * 4 + 3]);
+
+            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+            if (encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to create unpack encoder.");
+                return false;
+            }
+            [encoder setComputePipelineState:unpack_pipeline];
+            [encoder setBuffer:accum_buffer offset:(batch_idx * batch_stride_bytes) atIndex:0];
+            [encoder setBuffer:c0.buffer offset:0 atIndex:1];
+            [encoder setBuffer:c1.buffer offset:0 atIndex:2];
+            [encoder setBuffer:c2.buffer offset:0 atIndex:3];
+            [encoder setBuffer:c3.buffer offset:0 atIndex:4];
+            MTLSize grid_size = MTLSizeMake(row_count, 1, 1);
+            MTLSize tg_size = MTLSizeMake(stwo_metal_threads_per_group(unpack_pipeline), 1, 1);
+            [encoder dispatchThreads:grid_size threadsPerThreadgroup:tg_size];
+            [encoder endEncoding];
+        }
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Indirect accumulate+unpack kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 bool stwo_metal_compute_quotients_and_combine_u32x4(
     void *runtime_ptr,
     void *partial_coord_0_ptr,

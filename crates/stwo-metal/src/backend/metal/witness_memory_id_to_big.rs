@@ -25,6 +25,9 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 use stwo_metal_sys::metal::{MetalError, U32Buffer};
 
+use super::MetalBackend;
+use crate::stwo_metal::base_field_vec::BaseFieldVec;
+
 /// Number of 9-bit limbs in a Felt252 (matches FELT252_N_WORDS).
 const FELT252_N_WORDS: usize = 28;
 
@@ -134,6 +137,69 @@ impl MetalMemoryIdToBigTrace {
             })
             .collect()
     }
+
+    /// Convert the GPU trace into Metal-backed `CircleEvaluation`s on the canonical
+    /// domain, without copying data through the CPU.
+    ///
+    /// Each of the 29 columns (28 value limbs + 1 multiplicity) is sliced from
+    /// the contiguous GPU buffer and wrapped as a `BaseFieldVec`, producing a
+    /// `CircleEvaluation<MetalBackend>` that the commitment pipeline can consume
+    /// directly.
+    pub fn to_metal_evaluations(
+        &self,
+    ) -> Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>> {
+        let log_size = self.column_length.ilog2();
+        let domain = CanonicCoset::new(log_size).circle_domain();
+        (0..BIG_N_COLUMNS)
+            .map(|col| {
+                let start = col * self.column_length;
+                let col_buf = self
+                    .values
+                    .clone_range(start, self.column_length)
+                    .expect("Metal big-trace column slicing should succeed");
+                CircleEvaluation::<MetalBackend, BaseField, BitReversedOrder>::new(
+                    domain,
+                    BaseFieldVec::from_buffer(col_buf),
+                )
+            })
+            .collect()
+    }
+
+    /// Convert only the value columns (first 28 limb columns) into Metal-backed
+    /// `CircleEvaluation`s, skipping the multiplicity column.
+    ///
+    /// This is used when GPU-computed value columns will be paired with a
+    /// CPU-generated multiplicity column (e.g., when multiplicities are not
+    /// known at GPU dispatch time).
+    pub fn to_metal_value_evaluations(
+        &self,
+    ) -> Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>> {
+        let log_size = self.column_length.ilog2();
+        let domain = CanonicCoset::new(log_size).circle_domain();
+        (0..FELT252_N_WORDS)
+            .map(|col| {
+                let start = col * self.column_length;
+                let col_buf = self
+                    .values
+                    .clone_range(start, self.column_length)
+                    .expect("Metal big-trace value column slicing should succeed");
+                CircleEvaluation::<MetalBackend, BaseField, BitReversedOrder>::new(
+                    domain,
+                    BaseFieldVec::from_buffer(col_buf),
+                )
+            })
+            .collect()
+    }
+
+    /// The number of value columns (28 limbs), excluding multiplicity.
+    pub const fn n_value_columns() -> usize {
+        FELT252_N_WORDS
+    }
+
+    /// The total number of columns (28 limbs + 1 multiplicity).
+    pub const fn n_columns() -> usize {
+        BIG_N_COLUMNS
+    }
 }
 
 /// Result of Metal GPU trace generation for the memory_id_to_big "small" component.
@@ -187,6 +253,60 @@ impl MetalMemoryIdToBigSmallTrace {
                 )
             })
             .collect()
+    }
+
+    /// Convert the GPU trace into Metal-backed `CircleEvaluation`s on the canonical
+    /// domain, without copying data through the CPU.
+    pub fn to_metal_evaluations(
+        &self,
+    ) -> Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>> {
+        let log_size = self.column_length.ilog2();
+        let domain = CanonicCoset::new(log_size).circle_domain();
+        (0..SMALL_N_COLUMNS)
+            .map(|col| {
+                let start = col * self.column_length;
+                let col_buf = self
+                    .values
+                    .clone_range(start, self.column_length)
+                    .expect("Metal small-trace column slicing should succeed");
+                CircleEvaluation::<MetalBackend, BaseField, BitReversedOrder>::new(
+                    domain,
+                    BaseFieldVec::from_buffer(col_buf),
+                )
+            })
+            .collect()
+    }
+
+    /// Convert only the value columns (first 8 limb columns) into Metal-backed
+    /// `CircleEvaluation`s, skipping the multiplicity column.
+    pub fn to_metal_value_evaluations(
+        &self,
+    ) -> Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>> {
+        let log_size = self.column_length.ilog2();
+        let domain = CanonicCoset::new(log_size).circle_domain();
+        (0..N_M31_IN_SMALL_FELT252)
+            .map(|col| {
+                let start = col * self.column_length;
+                let col_buf = self
+                    .values
+                    .clone_range(start, self.column_length)
+                    .expect("Metal small-trace value column slicing should succeed");
+                CircleEvaluation::<MetalBackend, BaseField, BitReversedOrder>::new(
+                    domain,
+                    BaseFieldVec::from_buffer(col_buf),
+                )
+            })
+            .collect()
+    }
+
+    /// The number of value columns (8 limbs), excluding multiplicity.
+    pub const fn n_value_columns() -> usize {
+        N_M31_IN_SMALL_FELT252
+    }
+
+    /// The total number of columns (8 limbs + 1 multiplicity).
+    pub const fn n_columns() -> usize {
+        SMALL_N_COLUMNS
     }
 }
 
@@ -299,6 +419,8 @@ pub fn generate_memory_id_to_big_small_trace(
 
 #[cfg(test)]
 mod tests {
+    use stwo::prover::backend::Column;
+
     use super::*;
 
     /// Reference implementation of the split_f252 algorithm (scalar, for testing).
@@ -441,5 +563,110 @@ mod tests {
         }
 
         assert_eq!(result.value(N_M31_IN_SMALL_FELT252, 0).0, mult);
+    }
+
+    #[test]
+    fn test_big_trace_to_metal_evaluations() {
+        let values: Vec<[u32; 8]> = vec![
+            [0xDEAD_BEEF, 0xCAFE_BABE, 0x1234_5678, 0x9ABC_DEF0,
+             0x1111_2222, 0x3333_4444, 0x5555_6666, 0x0800_0000],
+            [1, 2, 3, 4, 5, 6, 7, 8],
+        ];
+        let mults: Vec<u32> = vec![42, 99];
+
+        let result = generate_memory_id_to_big_trace(&values, &mults).unwrap();
+
+        // to_metal_evaluations should produce BIG_N_COLUMNS evaluations.
+        let metal_evals = result.to_metal_evaluations();
+        assert_eq!(metal_evals.len(), BIG_N_COLUMNS);
+
+        // Verify values match the CPU evaluations.
+        let cpu_evals = result.to_cpu_evaluations();
+        assert_eq!(cpu_evals.len(), metal_evals.len());
+        for (col, (cpu, metal)) in cpu_evals.iter().zip(metal_evals.iter()).enumerate() {
+            assert_eq!(cpu.domain, metal.domain, "domain mismatch at col {col}");
+            let metal_cpu: Vec<BaseField> = metal.values.to_cpu();
+            assert_eq!(
+                cpu.values, metal_cpu,
+                "value mismatch at col {col}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_big_trace_to_metal_value_evaluations() {
+        let values: Vec<[u32; 8]> = vec![
+            [0xFF, 0, 0, 0, 0, 0, 0, 0],
+            [0x01, 0x02, 0, 0, 0, 0, 0, 0],
+        ];
+        let mults: Vec<u32> = vec![10, 20];
+
+        let result = generate_memory_id_to_big_trace(&values, &mults).unwrap();
+        let value_evals = result.to_metal_value_evaluations();
+
+        // Should have exactly FELT252_N_WORDS (28) evaluations, no multiplicity.
+        assert_eq!(value_evals.len(), FELT252_N_WORDS);
+
+        // Values should match the first 28 columns of the full CPU evaluation.
+        let cpu_evals = result.to_cpu_evaluations();
+        for (col, (cpu, metal)) in cpu_evals[..FELT252_N_WORDS]
+            .iter()
+            .zip(value_evals.iter())
+            .enumerate()
+        {
+            let metal_cpu: Vec<BaseField> = metal.values.to_cpu();
+            assert_eq!(
+                cpu.values, metal_cpu,
+                "value-only mismatch at col {col}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_small_trace_to_metal_evaluations() {
+        let values: Vec<u128> = vec![
+            0x1234_5678_9ABC_DEF0_CAFE_BABE_DEAD_BEEFu128,
+            0x0000_0000_0000_0000_0000_0000_0000_0001u128,
+        ];
+        let mults: Vec<u32> = vec![7, 3];
+
+        let result = generate_memory_id_to_big_small_trace(&values, &mults).unwrap();
+
+        let metal_evals = result.to_metal_evaluations();
+        assert_eq!(metal_evals.len(), SMALL_N_COLUMNS);
+
+        let cpu_evals = result.to_cpu_evaluations();
+        for (col, (cpu, metal)) in cpu_evals.iter().zip(metal_evals.iter()).enumerate() {
+            assert_eq!(cpu.domain, metal.domain, "domain mismatch at col {col}");
+            let metal_cpu: Vec<BaseField> = metal.values.to_cpu();
+            assert_eq!(
+                cpu.values, metal_cpu,
+                "value mismatch at col {col}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_small_trace_to_metal_value_evaluations() {
+        let values: Vec<u128> = vec![42, 100];
+        let mults: Vec<u32> = vec![5, 3];
+
+        let result = generate_memory_id_to_big_small_trace(&values, &mults).unwrap();
+        let value_evals = result.to_metal_value_evaluations();
+
+        assert_eq!(value_evals.len(), N_M31_IN_SMALL_FELT252);
+
+        let cpu_evals = result.to_cpu_evaluations();
+        for (col, (cpu, metal)) in cpu_evals[..N_M31_IN_SMALL_FELT252]
+            .iter()
+            .zip(value_evals.iter())
+            .enumerate()
+        {
+            let metal_cpu: Vec<BaseField> = metal.values.to_cpu();
+            assert_eq!(
+                cpu.values, metal_cpu,
+                "value-only mismatch at col {col}"
+            );
+        }
     }
 }

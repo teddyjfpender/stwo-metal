@@ -398,9 +398,7 @@ impl QuotientOps for MetalBackend {
         let quotient_constants = quotient_constants(sample_batches);
         let n_batches = sample_batches.len();
 
-        // Collect ALL unique column indices across ALL batches into one flat
-        // staging buffer.  Single kernel dispatch replaces N per-batch dispatches,
-        // eliminating N-1 waitUntilCompleted round-trips.
+        // Collect ALL unique column indices across ALL batches.
         let mut global_col_indices: Vec<usize> = sample_batches
             .iter()
             .flat_map(|batch| batch.cols_vals_randpows.iter().map(|d| d.column_index))
@@ -415,14 +413,6 @@ impl QuotientOps for MetalBackend {
             global_remap.insert(orig_idx, compact_idx as u32);
         }
 
-        let flat_size = n_unique_cols * size;
-        let mut flat_columns = U32Buffer::uninitialized(flat_size)
-            .expect("Metal quotient batched column staging should allocate");
-        for (compact_idx, &orig_idx) in global_col_indices.iter().enumerate() {
-            flat_columns
-                .copy_from_offset(&columns[orig_idx].values.buffer, compact_idx * size)
-                .expect("Metal quotient batched column staging should copy");
-        }
         // Build concatenated kernel inputs for ALL batches.
         let mut all_indices: Vec<u32> = Vec::new();
         let mut all_b_coeffs: Vec<u32> = Vec::new();
@@ -452,9 +442,6 @@ impl QuotientOps for MetalBackend {
             first_linear_term_accs.push(coeffs.iter().map(|(a, ..)| a).sum());
         }
 
-        // Fused kernel dispatch: accumulate + unpack in one command buffer.
-        // Eliminates N GPU round-trips (clone_range + per-batch unpack) that
-        // previously cost ~20ms for large groups.
         let column_indices_buf = U32Buffer::from_slice(&all_indices)
             .expect("Metal quotient batched index upload should initialize");
         let b_coeffs_buf = U32Buffer::from_slice(&all_b_coeffs)
@@ -466,9 +453,16 @@ impl QuotientOps for MetalBackend {
         let term_counts_buf = U32Buffer::from_slice(&term_counts)
             .expect("Metal quotient batched term-count upload should initialize");
 
+        // Use indirect dispatch (GPU virtual addresses) to avoid copying all
+        // columns into a contiguous staging buffer.  This eliminates O(n_cols *
+        // row_count) bytes of CPU-side memmove that dominated large groups.
+        let column_bufs: Vec<&U32Buffer> = global_col_indices
+            .iter()
+            .map(|&orig_idx| &columns[orig_idx].values.buffer)
+            .collect();
         let per_batch_coords =
-            U32Buffer::accumulate_and_unpack_partial_numerators_batched(
-                &flat_columns,
+            U32Buffer::accumulate_and_unpack_partial_numerators_indirect_batched(
+                &column_bufs,
                 &column_indices_buf,
                 &b_coeffs_buf,
                 &c_coeffs_buf,
@@ -476,7 +470,7 @@ impl QuotientOps for MetalBackend {
                 &term_counts_buf,
                 size,
             )
-            .expect("Metal fused accumulate+unpack should succeed");
+            .expect("Metal indirect accumulate+unpack should succeed");
 
         // Build AccumulatedNumerators from coordinate buffers.
         for (batch_idx, batch) in sample_batches.iter().enumerate() {
