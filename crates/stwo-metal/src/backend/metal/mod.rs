@@ -131,7 +131,8 @@ pub use sampled_values_v1::{
 pub use sequence::MetalFriInnerLayerSequence;
 pub use subpath::MetalFriBlake2sSubpath;
 pub use witness::{
-    generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
+    generate_metal_wide_fibonacci_trace, gpu_trace_column_to_evaluation,
+    gpu_trace_columns_to_evaluations, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
     MetalWideFibonacciTraceRequest,
 };
 pub use witness_memory_id_to_big::{

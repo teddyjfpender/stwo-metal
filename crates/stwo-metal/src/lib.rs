@@ -164,7 +164,8 @@ pub mod witness {
         WideFibonacciTraceRequest,
     };
     pub use crate::backend::metal::{
-        generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
+        generate_metal_wide_fibonacci_trace, gpu_trace_column_to_evaluation,
+        gpu_trace_columns_to_evaluations, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
         MetalWideFibonacciTraceRequest,
     };
 }
@@ -248,7 +249,8 @@ pub use quotient::{
 #[cfg(feature = "prover")]
 pub use witness::{
     generate_metal_wide_fibonacci_trace, generate_poseidon_interaction_traces,
-    generate_poseidon_traces, generate_wide_fibonacci_trace, MetalWideFibonacciTrace,
+    generate_poseidon_traces, generate_wide_fibonacci_trace, gpu_trace_column_to_evaluation,
+    gpu_trace_columns_to_evaluations, MetalWideFibonacciTrace,
     MetalWideFibonacciTraceError, MetalWideFibonacciTraceRequest, PoseidonInteractionTraceRequest,
     PoseidonTraceRequest, WideFibonacciTraceRequest,
 };

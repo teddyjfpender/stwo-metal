@@ -331,6 +331,7 @@ mod cairo_prove_main {
     /// implements the stwo-cairo `TreeBuilder<SimdBackend>` trait by converting
     /// SimdBackend evaluations to MetalBackend (CPU→GPU upload) on the fly.
     #[cfg(feature = "metal-runtime")]
+    #[allow(dead_code)]
     struct ConvertingTreeBuilder<'a, 'b> {
         inner: stwo::prover::TreeBuilder<'a, 'b, stwo_metal::MetalBackend, Blake2sMerkleChannel>,
     }
@@ -361,6 +362,65 @@ mod cairo_prove_main {
                 })
                 .collect();
             self.inner.extend_evals(metal_columns)
+        }
+    }
+
+    /// Hybrid TreeBuilder that accepts evaluations from both SimdBackend (CPU)
+    /// and MetalBackend (GPU). CPU evaluations are converted on the fly (same as
+    /// `ConvertingTreeBuilder`); GPU evaluations pass through directly with no
+    /// CPU round-trip.
+    #[cfg(feature = "metal-runtime")]
+    struct HybridTreeBuilder<'a, 'b> {
+        inner: stwo::prover::TreeBuilder<'a, 'b, stwo_metal::MetalBackend, Blake2sMerkleChannel>,
+    }
+
+    #[cfg(feature = "metal-runtime")]
+    impl stwo_cairo_prover::witness::utils::TreeBuilder<SimdBackend>
+        for HybridTreeBuilder<'_, '_>
+    {
+        fn extend_evals(
+            &mut self,
+            columns: Vec<stwo::prover::poly::circle::CircleEvaluation<
+                SimdBackend,
+                stwo::core::fields::m31::BaseField,
+                stwo::prover::poly::BitReversedOrder,
+            >>,
+        ) -> stwo::core::pcs::TreeSubspan {
+            use stwo::prover::backend::Column;
+            let metal_columns: Vec<stwo::prover::poly::circle::CircleEvaluation<
+                stwo_metal::MetalBackend,
+                stwo::core::fields::m31::BaseField,
+                stwo::prover::poly::BitReversedOrder,
+            >> = columns
+                .into_iter()
+                .map(|eval| {
+                    let domain = eval.domain;
+                    let metal_values = eval.values.to_cpu().into_iter().collect();
+                    stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
+                })
+                .collect();
+            self.inner.extend_evals(metal_columns)
+        }
+    }
+
+    #[cfg(feature = "metal-runtime")]
+    impl HybridTreeBuilder<'_, '_> {
+        /// Accept GPU-resident evaluations directly (no conversion needed).
+        #[allow(dead_code)]
+        fn extend_gpu_evals(
+            &mut self,
+            columns: Vec<stwo::prover::poly::circle::CircleEvaluation<
+                stwo_metal::MetalBackend,
+                stwo::core::fields::m31::BaseField,
+                stwo::prover::poly::BitReversedOrder,
+            >>,
+        ) -> stwo::core::pcs::TreeSubspan {
+            self.inner.extend_evals(columns)
+        }
+
+        /// Commit the accumulated evaluations to the Merkle tree.
+        fn commit(self, channel: &mut Blake2sChannel) {
+            self.inner.commit(channel);
         }
     }
 
@@ -2403,17 +2463,17 @@ mod cairo_prove_main {
             }
         }
 
-        // 4. Write base trace via ConvertingTreeBuilder.
+        // 4. Write base trace via HybridTreeBuilder.
         let t_base = Instant::now();
         println!("  Creating claim generator + base trace...");
         let cairo_claim_generator = claim_gen_handle
             .join()
             .expect("claim generator thread should not panic");
-        let mut converting_tb = ConvertingTreeBuilder {
+        let mut hybrid_tb = HybridTreeBuilder {
             inner: commitment_scheme.tree_builder(),
         };
         let (claim, interaction_generator) =
-            cairo_claim_generator.write_trace(&mut converting_tb);
+            cairo_claim_generator.write_trace(&mut hybrid_tb);
         let base_gen_ms = t_base.elapsed().as_secs_f64() * 1000.0;
 
         // Predict lifting_log_size from the claim and start domain coord
@@ -2446,7 +2506,7 @@ mod cairo_prove_main {
 
         let t_base_commit = Instant::now();
         claim.mix_into::<Blake2sMerkleChannel>(channel);
-        converting_tb.inner.commit(channel);
+        hybrid_tb.commit(channel);
         let base_commit_ms = t_base_commit.elapsed().as_secs_f64() * 1000.0;
 
         // 5. Interaction PoW (Metal GPU).
@@ -2457,19 +2517,19 @@ mod cairo_prove_main {
         let interaction_elements = CommonLookupElements::draw(channel);
         let pow_ms = t_pow.elapsed().as_secs_f64() * 1000.0;
 
-        // 6. Write interaction trace via ConvertingTreeBuilder.
+        // 6. Write interaction trace via HybridTreeBuilder.
         let t_inter = Instant::now();
         println!("  Generating interaction trace...");
-        let mut converting_tb = ConvertingTreeBuilder {
+        let mut hybrid_tb = HybridTreeBuilder {
             inner: commitment_scheme.tree_builder(),
         };
         let interaction_claim = interaction_generator
-            .write_interaction_trace(&mut converting_tb, &interaction_elements);
+            .write_interaction_trace(&mut hybrid_tb, &interaction_elements);
         let inter_gen_ms = t_inter.elapsed().as_secs_f64() * 1000.0;
 
         let t_inter_commit = Instant::now();
         interaction_claim.mix_into(channel);
-        converting_tb.inner.commit(channel);
+        hybrid_tb.commit(channel);
         let inter_commit_ms = t_inter_commit.elapsed().as_secs_f64() * 1000.0;
 
         // 7. Build CairoComponents and lower.

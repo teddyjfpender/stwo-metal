@@ -160,6 +160,49 @@ impl MetalWideFibonacciTrace {
     }
 }
 
+/// Create a `CircleEvaluation<MetalBackend>` directly from a GPU buffer,
+/// without copying data through CPU.
+///
+/// This is the primary entry point for GPU witness generation: a Metal compute
+/// kernel writes trace column values into a `U32Buffer`, and this function wraps
+/// that buffer as a stwo `CircleEvaluation` on the canonical domain of the given
+/// `log_size`, ready for direct consumption by the commitment pipeline.
+///
+/// # Panics
+///
+/// Panics if `buffer.len() != 1 << log_size`.
+pub fn gpu_trace_column_to_evaluation(
+    buffer: U32Buffer,
+    log_size: u32,
+) -> CircleEvaluation<MetalBackend, BaseField, BitReversedOrder> {
+    let expected_len = 1usize << log_size;
+    assert_eq!(
+        buffer.len(),
+        expected_len,
+        "GPU buffer length {} does not match expected domain size {} for log_size {}",
+        buffer.len(),
+        expected_len,
+        log_size,
+    );
+    let domain = CanonicCoset::new(log_size).circle_domain();
+    let values = BaseFieldVec::from_buffer(buffer);
+    CircleEvaluation::new(domain, values)
+}
+
+/// Create multiple `CircleEvaluation<MetalBackend>` from a batch of GPU buffers.
+///
+/// Convenience wrapper over [`gpu_trace_column_to_evaluation`] for the common
+/// case where a GPU kernel produces many trace columns of the same domain size.
+pub fn gpu_trace_columns_to_evaluations(
+    buffers: Vec<U32Buffer>,
+    log_size: u32,
+) -> Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>> {
+    buffers
+        .into_iter()
+        .map(|buffer| gpu_trace_column_to_evaluation(buffer, log_size))
+        .collect()
+}
+
 pub fn generate_metal_wide_fibonacci_trace(
     request: MetalWideFibonacciTraceRequest<'_>,
 ) -> Result<MetalWideFibonacciTrace, MetalWideFibonacciTraceError> {
