@@ -731,6 +731,26 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
         let _span = span!(Level::INFO, "Commitment").entered();
         self.commitment_scheme.commit(self.polys, channel);
     }
+
+    /// Builds the commitment tree (GPU RFFT + Merkle hash) without mixing the
+    /// root into the channel.  Consumes the builder, releasing the mutable
+    /// borrow on the `CommitmentSchemeProver` so the caller can perform
+    /// independent work (e.g. component lowering on the CPU) while the GPU
+    /// tree build runs on a background thread.
+    ///
+    /// The returned `CommitmentTreeProver` must later be committed via
+    /// [`CommitmentSchemeProver::commit_tree`] to finalize the channel state.
+    pub fn build_tree(self) -> CommitmentTreeProver<B, MC> {
+        let _span = span!(Level::INFO, "Commitment (build_tree)").entered();
+        CommitmentTreeProver::new(
+            self.polys,
+            self.commitment_scheme.config.fri_config.log_blowup_factor,
+            self.commitment_scheme.twiddles,
+            self.commitment_scheme.store_polynomials_coefficients,
+            self.commitment_scheme.config.lifting_log_size,
+            &self.commitment_scheme.base_column_pool,
+        )
+    }
 }
 
 /// Prover data for a single commitment tree in a commitment scheme. The commitment scheme allows to
