@@ -1522,6 +1522,97 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    /// Generate the interaction trace for memory_id_to_big (big values).
+    ///
+    /// Computes logup fractions on GPU: for each row, compute 7 range-check
+    /// column fractions and 1 yield column fraction, accumulate running sums.
+    /// The last column still needs prefix-sum finalization on CPU.
+    ///
+    /// # Arguments
+    /// * `limbs`         - Column-major [28][n_rows] limb values
+    /// * `mults`         - [n_rows] multiplicities
+    /// * `alpha_powers`  - [30] QM31 values = [120] u32 (lookup element powers)
+    /// * `z`             - QM31 = [4] u32 (lookup element z)
+    /// * `relation_ids`  - [9] u32 (RC_9_9, _B, _C, _D, _E, _F, _G, _H, MEM_ID_TO_BIG)
+    /// * `n_rows`        - number of rows
+    /// * `id_offset`     - offset added to row index for the yield column id
+    /// * `large_id_base` - OR'd into id value for large memory values
+    ///
+    /// # Returns
+    /// Column-major [32][n_rows] u32 output (8 QM31 columns = 32 M31 columns).
+    pub fn interaction_trace_id_to_big(
+        limbs: &Self,
+        mults: &Self,
+        alpha_powers: &Self,
+        z: &Self,
+        relation_ids: &Self,
+        n_rows: u32,
+        id_offset: u32,
+        large_id_base: u32,
+    ) -> Result<Self, MetalError> {
+        assert_eq!(limbs.len, 28 * n_rows as usize, "limbs length mismatch");
+        assert_eq!(mults.len, n_rows as usize, "mults length mismatch");
+        assert_eq!(alpha_powers.len, 120, "alpha_powers must have 30 QM31 = 120 u32");
+        assert_eq!(z.len, 4, "z must have 4 u32");
+        assert_eq!(relation_ids.len, 9, "relation_ids must have 9 u32");
+
+        let output_len = 32 * n_rows as usize;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            ffi::interaction_trace_id_to_big(
+                runtime.raw.as_ptr(),
+                limbs.raw.as_ptr(),
+                mults.raw.as_ptr(),
+                alpha_powers.raw.as_ptr(),
+                z.raw.as_ptr(),
+                relation_ids.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_rows,
+                id_offset,
+                large_id_base,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    /// Generate the interaction trace for memory_id_to_big (small values).
+    ///
+    /// Same as the big variant but with 8 limbs, 2 range-check columns + 1 yield column
+    /// = 3 QM31 columns = 12 M31 columns.
+    pub fn interaction_trace_id_to_big_small(
+        limbs: &Self,
+        mults: &Self,
+        alpha_powers: &Self,
+        z: &Self,
+        relation_ids: &Self,
+        n_rows: u32,
+    ) -> Result<Self, MetalError> {
+        assert_eq!(limbs.len, 8 * n_rows as usize, "limbs length mismatch");
+        assert_eq!(mults.len, n_rows as usize, "mults length mismatch");
+        assert_eq!(z.len, 4, "z must have 4 u32");
+        assert_eq!(relation_ids.len, 5, "relation_ids must have 5 u32");
+
+        let output_len = 12 * n_rows as usize;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            ffi::interaction_trace_id_to_big_small(
+                runtime.raw.as_ptr(),
+                limbs.raw.as_ptr(),
+                mults.raw.as_ptr(),
+                alpha_powers.raw.as_ptr(),
+                z.raw.as_ptr(),
+                relation_ids.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_rows,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
     pub fn accumulate_wide_fibonacci_quotients(
         trace_evaluations: &Self,
         random_coeff_powers: &Self,
@@ -3713,6 +3804,32 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_interaction_trace_id_to_big(
+            runtime: *mut c_void,
+            limbs: *mut c_void,
+            mults: *mut c_void,
+            alpha_powers: *mut c_void,
+            z: *mut c_void,
+            relation_ids: *mut c_void,
+            trace: *mut c_void,
+            n_rows: u32,
+            id_offset: u32,
+            large_id_base: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_interaction_trace_id_to_big_small(
+            runtime: *mut c_void,
+            limbs: *mut c_void,
+            mults: *mut c_void,
+            alpha_powers: *mut c_void,
+            z: *mut c_void,
+            relation_ids: *mut c_void,
+            trace: *mut c_void,
+            n_rows: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_accumulate_wide_fibonacci_quotients_u32x4(
             runtime: *mut c_void,
             trace_evaluations: *mut c_void,
@@ -5495,6 +5612,70 @@ mod ffi {
             n_ids,
             column_length,
             split,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn interaction_trace_id_to_big(
+        runtime: *mut c_void,
+        limbs: *mut c_void,
+        mults: *mut c_void,
+        alpha_powers: *mut c_void,
+        z: *mut c_void,
+        relation_ids: *mut c_void,
+        trace: *mut c_void,
+        n_rows: u32,
+        id_offset: u32,
+        large_id_base: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_interaction_trace_id_to_big(
+            runtime,
+            limbs,
+            mults,
+            alpha_powers,
+            z,
+            relation_ids,
+            trace,
+            n_rows,
+            id_offset,
+            large_id_base,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn interaction_trace_id_to_big_small(
+        runtime: *mut c_void,
+        limbs: *mut c_void,
+        mults: *mut c_void,
+        alpha_powers: *mut c_void,
+        z: *mut c_void,
+        relation_ids: *mut c_void,
+        trace: *mut c_void,
+        n_rows: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_interaction_trace_id_to_big_small(
+            runtime,
+            limbs,
+            mults,
+            alpha_powers,
+            z,
+            relation_ids,
+            trace,
+            n_rows,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -7616,6 +7797,40 @@ mod ffi {
         _n_ids: u32,
         _column_length: u32,
         _split: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn interaction_trace_id_to_big(
+        _runtime: *mut c_void,
+        _limbs: *mut c_void,
+        _mults: *mut c_void,
+        _alpha_powers: *mut c_void,
+        _z: *mut c_void,
+        _relation_ids: *mut c_void,
+        _trace: *mut c_void,
+        _n_rows: u32,
+        _id_offset: u32,
+        _large_id_base: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn interaction_trace_id_to_big_small(
+        _runtime: *mut c_void,
+        _limbs: *mut c_void,
+        _mults: *mut c_void,
+        _alpha_powers: *mut c_void,
+        _z: *mut c_void,
+        _relation_ids: *mut c_void,
+        _trace: *mut c_void,
+        _n_rows: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

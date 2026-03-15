@@ -132,6 +132,36 @@ static inline StwoMetalQm31 stwo_metal_qm31_mul(StwoMetalQm31 lhs, StwoMetalQm31
     };
 }
 
+static inline StwoMetalQm31 stwo_metal_qm31_neg(StwoMetalQm31 value) {
+    return StwoMetalQm31 {
+        stwo_metal_m31_neg(value.a),
+        stwo_metal_m31_neg(value.b),
+        stwo_metal_m31_neg(value.c),
+        stwo_metal_m31_neg(value.d),
+    };
+}
+
+/// QM31 inverse: q = (a, b) in CM31 x CM31, where QM31 = CM31[u] / (u^2 - (2+i)).
+/// inv(q) = conj(q) / norm(q), where conj(a,b) = (a,-b) and
+/// norm(q) = a^2 - (2+i)*b^2  (in CM31).
+static inline StwoMetalQm31 stwo_metal_qm31_inverse(StwoMetalQm31 value) {
+    StwoMetalCm31 a = { value.a, value.b };
+    StwoMetalCm31 b = { value.c, value.d };
+    // (2+i) in CM31 = { 2, 1 }
+    StwoMetalCm31 two_plus_i = { 2u, 1u };
+    // norm = a*a - (2+i)*b*b
+    StwoMetalCm31 a_sq = stwo_metal_cm31_mul(a, a);
+    StwoMetalCm31 b_sq = stwo_metal_cm31_mul(b, b);
+    StwoMetalCm31 norm = stwo_metal_cm31_sub(a_sq, stwo_metal_cm31_mul(two_plus_i, b_sq));
+    StwoMetalCm31 norm_inv = stwo_metal_cm31_inverse(norm);
+    // conj(q) = (a, -b)
+    StwoMetalCm31 neg_b = stwo_metal_cm31_neg(b);
+    // result = conj * norm_inv
+    StwoMetalCm31 r_a = stwo_metal_cm31_mul(a, norm_inv);
+    StwoMetalCm31 r_b = stwo_metal_cm31_mul(neg_b, norm_inv);
+    return StwoMetalQm31 { r_a.a, r_a.b, r_b.a, r_b.b };
+}
+
 static inline StwoMetalQm31 stwo_metal_qm31_mul_cm31(StwoMetalQm31 lhs, StwoMetalCm31 rhs) {
     StwoMetalCm31 lo = stwo_metal_cm31_mul(StwoMetalCm31 { lhs.a, lhs.b }, rhs);
     StwoMetalCm31 hi = stwo_metal_cm31_mul(StwoMetalCm31 { lhs.c, lhs.d }, rhs);

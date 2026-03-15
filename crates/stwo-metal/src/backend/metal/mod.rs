@@ -30,10 +30,12 @@ mod sampled_values_v1;
 mod sequence;
 mod subpath;
 mod witness;
+pub mod interaction_trace_id_to_big;
 pub mod witness_memory_addr_to_id;
 pub mod witness_memory_id_to_big;
 mod workload;
 mod workload_contract;
+pub mod zero_copy_bridge;
 
 pub use backend::MetalBackend;
 pub use benchmark::{
@@ -168,6 +170,10 @@ pub use prove_runtime_v1::{
     MetalProveValuesResult, MetalProveValuesStaging, TraceCommitBreakdown,
 };
 pub use workload_contract::{MetalWorkloadOwnership, MetalWorkloadStage};
+pub use zero_copy_bridge::{
+    metal_eval_to_simd_eval, metal_evals_to_simd_evals, metal_eval_to_packed_m31_vec,
+    simd_eval_to_metal_eval, simd_evals_to_metal_evals,
+};
 
 pub use crate::stwo_metal::{
     BaseFieldColumnBatch as MetalBaseFieldColumnBatch, BaseFieldVec as MetalBaseFieldVec,

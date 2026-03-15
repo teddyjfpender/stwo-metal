@@ -259,6 +259,11 @@ pub use witness::{
     PoseidonTraceRequest, WideFibonacciTraceRequest,
 };
 #[cfg(feature = "prover")]
+pub use crate::backend::metal::zero_copy_bridge::{
+    metal_eval_to_simd_eval, metal_evals_to_simd_evals, metal_eval_to_packed_m31_vec,
+    simd_eval_to_metal_eval, simd_evals_to_metal_evals,
+};
+#[cfg(feature = "prover")]
 pub use crate::backend::metal::witness_memory_addr_to_id::{
     generate_memory_addr_to_id_trace, MemoryAddrToIdTraceError, MetalMemoryAddrToIdTrace,
 };
