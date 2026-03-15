@@ -2221,8 +2221,14 @@ pub fn execute_fused_composition_v1_with_gpu_trace(
         let (source, name) = {
             let mut guard = cache.lock().unwrap();
             guard.entry(hash).or_insert_with(|| {
+                let jit_start = std::time::Instant::now();
                 let s = super::shader_compiler_v1::compile_v1_to_metal_source_with_fused(program);
                 let n = super::shader_compiler_v1::compiled_fused_kernel_name(hash);
+                let jit_ms = jit_start.elapsed().as_secs_f64() * 1000.0;
+                eprintln!(
+                    "[FUSED] Generated fused shader source ({} bytes, {:.1}ms) for hash {:016x}",
+                    s.len(), jit_ms, hash,
+                );
                 (s, n)
             }).clone()
         };
@@ -2243,6 +2249,7 @@ pub fn execute_fused_composition_v1_with_gpu_trace(
             &denominator_inverses_cpu.iter().map(|v| v.0).collect::<Vec<_>>(),
         ).map_err(map_metal)?;
 
+        let dispatch_start = std::time::Instant::now();
         match U32Buffer::eval_compiled_fused_composition_v1(
             &source,
             &name,
@@ -2257,15 +2264,29 @@ pub fn execute_fused_composition_v1_with_gpu_trace(
             log_n_rows,
         ) {
             Ok(coords) => {
+                let dispatch_ms = dispatch_start.elapsed().as_secs_f64() * 1000.0;
+                eprintln!(
+                    "[FUSED] Using fused composition path ({} rows, {:.1}ms)",
+                    n_rows, dispatch_ms,
+                );
                 return Ok((coords, MetalEvaluationProgramDispatchKindV1::JitCompiled));
             }
-            Err(_) => {
-                // JIT fused failed — fall through to standard path.
+            Err(e) => {
+                eprintln!(
+                    "[FUSED] Falling back to non-fused path: {}",
+                    e.message(),
+                );
             }
         }
+    } else {
+        eprintln!(
+            "[FUSED] Falling back to non-fused path: n_rows={} < JIT_MIN_EVAL_ROWS={}",
+            n_rows, JIT_MIN_EVAL_ROWS,
+        );
     }
 
     // Fallback: use the standard path and apply denom_inv on CPU.
+    let fallback_start = std::time::Instant::now();
     let (mut row_res, dispatch) = execute_eval_program_v1_with_gpu_trace(
         program,
         gpu_trace_values,
@@ -2298,6 +2319,12 @@ pub fn execute_fused_composition_v1_with_gpu_trace(
         U32Buffer::from_slice(&coord_vecs[2]).map_err(map_metal)?,
         U32Buffer::from_slice(&coord_vecs[3]).map_err(map_metal)?,
     ];
+
+    let fallback_ms = fallback_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!(
+        "[FUSED] Non-fused fallback completed ({} rows, {:.1}ms)",
+        n_rows, fallback_ms,
+    );
 
     Ok((coords, dispatch))
 }
