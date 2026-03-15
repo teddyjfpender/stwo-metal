@@ -18,18 +18,6 @@ pub struct BatchEvalGroupDescriptor {
     pub n_polys: u32,
 }
 
-/// FFI-compatible descriptor for one size-group in an indirect multi-group batch
-/// point evaluation.  Must match `StwoMetalBatchEvalIndirectGroup` in `runtime.m`.
-#[repr(C)]
-pub struct BatchEvalIndirectGroupDescriptor {
-    pub coeff_buffer_ptrs: *const *mut c_void,
-    pub factors_ptr: *mut c_void,
-    pub dst_ptr: *mut c_void,
-    pub coeffs_log_len: u32,
-    pub n_polys: u32,
-}
-
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetalRuntimeSupport {
     Available,
@@ -656,72 +644,6 @@ impl U32Buffer {
 
         Ok(dst_buffers)
     }
-
-    /// Evaluate multiple groups of same-size polynomials in a single Metal
-    /// command buffer using indirect GPU virtual addresses, avoiding the CPU-side
-    /// memcpy needed to concatenate coefficients into a flat staging buffer.
-    ///
-    /// Each entry in `groups` is `(coeff_buffers, factors, coeffs_log_len)` where
-    /// `coeff_buffers` is a slice of references to per-polynomial coefficient buffers.
-    /// Returns one `U32Buffer` per group containing `n_polys * 4` u32 results
-    /// (packed qm31 values).
-    pub fn batch_eval_at_point_indirect(
-        groups: &[(&[&Self], &Self, u32)],
-    ) -> Result<Vec<Self>, MetalError> {
-        if groups.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let runtime = shared_runtime()?;
-
-        // Allocate destination buffers up front.
-        let dst_buffers: Vec<Self> = groups
-            .iter()
-            .map(|(coeff_bufs, _, _)| Self::uninitialized(coeff_bufs.len() * 4))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        // Build arrays of raw pointers for each group's coefficient buffers.
-        let coeff_ptr_arrays: Vec<Vec<*mut c_void>> = groups
-            .iter()
-            .map(|(coeff_bufs, _, _)| {
-                coeff_bufs.iter().map(|buf| buf.raw.as_ptr()).collect()
-            })
-            .collect();
-
-        // Build FFI descriptors.
-        let descriptors: Vec<BatchEvalIndirectGroupDescriptor> = groups
-            .iter()
-            .enumerate()
-            .zip(dst_buffers.iter())
-            .map(|((i, (coeff_bufs, factors, coeffs_log_len)), dst)| {
-                BatchEvalIndirectGroupDescriptor {
-                    coeff_buffer_ptrs: coeff_ptr_arrays[i].as_ptr(),
-                    factors_ptr: factors.raw.as_ptr(),
-                    dst_ptr: dst.raw.as_ptr(),
-                    coeffs_log_len: *coeffs_log_len,
-                    n_polys: coeff_bufs
-                        .len()
-                        .try_into()
-                        .expect("indirect batch eval polynomial count should fit in u32"),
-                }
-            })
-            .collect();
-
-        unsafe {
-            ffi::batch_eval_at_point_indirect_u32(
-                runtime.raw.as_ptr(),
-                descriptors.as_ptr(),
-                descriptors
-                    .len()
-                    .try_into()
-                    .expect("indirect batch eval group count should fit in u32"),
-                error_buffer_mut_ptr,
-            )?;
-        }
-
-        Ok(dst_buffers)
-    }
-
 
     pub fn fix_first_variable_base_field(
         &self,
@@ -3126,6 +3048,128 @@ impl Drop for CommandBufferHandle {
     }
 }
 
+/// Handle to an uncommitted Metal command buffer used for batching multiple
+/// compute dispatches.  Call [`Self::encode_compiled_program_v1`] to add
+/// dispatches, then [`Self::commit`] to submit them all at once.
+#[derive(Debug)]
+pub struct BatchCommandBuffer {
+    raw: NonNull<c_void>,
+}
+
+// Safety: Metal command buffer objects are internally thread-safe.
+unsafe impl Send for BatchCommandBuffer {}
+
+impl BatchCommandBuffer {
+    /// Create a new uncommitted command buffer from the shared Metal runtime.
+    pub fn create() -> Result<Self, MetalError> {
+        let runtime = shared_runtime()?;
+        let ptr = unsafe {
+            ffi::command_buffer_create(runtime.raw.as_ptr(), error_buffer_mut_ptr)
+        }?;
+        Ok(Self {
+            raw: NonNull::new(ptr)
+                .expect("command_buffer_create returned null despite success"),
+        })
+    }
+
+    /// Encode a JIT-compiled V1 evaluation kernel dispatch into this command
+    /// buffer.  The command buffer is NOT committed yet.
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_compiled_program_v1(
+        &self,
+        shader_source: &str,
+        kernel_name: &str,
+        trace_values: &U32Buffer,
+        interaction_offsets: &U32Buffer,
+        preprocessed_values: &U32Buffer,
+        base_params: &U32Buffer,
+        ext_params: &U32Buffer,
+        random_coeff_powers: &U32Buffer,
+        dst: &U32Buffer,
+        row_count: usize,
+    ) -> Result<(), MetalError> {
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::encode_compiled_program_v1(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                shader_source.as_ptr(),
+                shader_source.len(),
+                kernel_name.as_ptr(),
+                kernel_name.len(),
+                trace_values.raw.as_ptr(),
+                interaction_offsets.raw.as_ptr(),
+                preprocessed_values.raw.as_ptr(),
+                base_params.raw.as_ptr(),
+                ext_params.raw.as_ptr(),
+                random_coeff_powers.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                row_count.try_into().expect("row_count should fit in u32"),
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
+    /// Encode a fused blit+compute dispatch into this command buffer.
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_compiled_fused_blit_v1(
+        &self,
+        shader_source: &str,
+        kernel_name: &str,
+        column_buffers: &[&U32Buffer],
+        column_lengths: &[usize],
+        interaction_offsets: &U32Buffer,
+        random_coeff_powers: &U32Buffer,
+        dst: &U32Buffer,
+        row_count: usize,
+    ) -> Result<(), MetalError> {
+        let runtime = shared_runtime()?;
+        let raw_ptrs: Vec<*mut std::ffi::c_void> = column_buffers
+            .iter()
+            .map(|b| b.raw.as_ptr())
+            .collect();
+        unsafe {
+            ffi::encode_compiled_fused_blit_v1(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                shader_source.as_ptr(),
+                shader_source.len(),
+                kernel_name.as_ptr(),
+                kernel_name.len(),
+                raw_ptrs.as_ptr(),
+                column_lengths.as_ptr(),
+                column_buffers.len(),
+                interaction_offsets.raw.as_ptr(),
+                random_coeff_powers.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                row_count.try_into().expect("row_count should fit in u32"),
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
+    /// Commit the command buffer (non-blocking) and convert to a
+    /// [`CommandBufferHandle`] for deferred waiting.
+    pub fn commit(self) -> CommandBufferHandle {
+        let ptr = self.raw.as_ptr();
+        // Prevent Drop from releasing — we transfer ownership to CommandBufferHandle.
+        std::mem::forget(self);
+        unsafe { ffi::command_buffer_commit(ptr) };
+        CommandBufferHandle {
+            raw: NonNull::new(ptr)
+                .expect("commit should preserve non-null pointer"),
+        }
+    }
+}
+
+impl Drop for BatchCommandBuffer {
+    fn drop(&mut self) {
+        // If the batch is dropped without being committed, release the
+        // command buffer to avoid leaking the ObjC object.
+        unsafe { ffi::command_buffer_release(self.raw.as_ptr()) };
+    }
+}
+
 impl Drop for U32Buffer {
     fn drop(&mut self) {
         unsafe { ffi::buffer_destroy(self.raw.as_ptr()) };
@@ -3198,7 +3242,7 @@ fn decode_error_buffer(buffer: &[i8; ERROR_BUFFER_LEN]) -> String {
 #[cfg(stwo_metal_link)]
 mod ffi {
     use super::{
-        c_void, decode_error_buffer, BatchEvalGroupDescriptor, BatchEvalIndirectGroupDescriptor, MetalError, NonNull,
+        c_void, decode_error_buffer, BatchEvalGroupDescriptor, MetalError, NonNull,
         ERROR_BUFFER_LEN,
     };
 
@@ -3362,13 +3406,6 @@ mod ffi {
         fn stwo_metal_batch_eval_at_point_multi_group_u32(
             runtime: *mut c_void,
             groups: *const BatchEvalGroupDescriptor,
-            n_groups: u32,
-            error_message: *mut i8,
-            error_message_len: usize,
-        ) -> bool;
-        fn stwo_metal_batch_eval_at_point_indirect_u32(
-            runtime: *mut c_void,
-            groups: *const BatchEvalIndirectGroupDescriptor,
             n_groups: u32,
             error_message: *mut i8,
             error_message_len: usize,
@@ -4188,6 +4225,48 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        // Batched command buffer lifecycle
+        fn stwo_metal_command_buffer_create(
+            runtime: *mut c_void,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> *mut c_void;
+        fn stwo_metal_encode_compiled_program_v1(
+            runtime: *mut c_void,
+            command_buffer: *mut c_void,
+            shader_source: *const u8,
+            shader_source_len: usize,
+            kernel_name: *const u8,
+            kernel_name_len: usize,
+            trace_values: *mut c_void,
+            interaction_offsets: *mut c_void,
+            preprocessed_values: *mut c_void,
+            base_params: *mut c_void,
+            ext_params: *mut c_void,
+            random_coeff_powers: *mut c_void,
+            dst: *mut c_void,
+            row_count: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_encode_compiled_fused_blit_v1(
+            runtime: *mut c_void,
+            command_buffer: *mut c_void,
+            shader_source: *const u8,
+            shader_source_len: usize,
+            kernel_name: *const u8,
+            kernel_name_len: usize,
+            column_buffer_ptrs: *const *mut c_void,
+            column_lengths: *const usize,
+            n_columns: usize,
+            interaction_offsets: *mut c_void,
+            random_coeff_powers: *mut c_void,
+            dst: *mut c_void,
+            row_count: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_command_buffer_commit(command_buffer: *mut c_void);
         fn stwo_metal_sampled_values_v1_wide_fibonacci_u32x4(
             runtime: *mut c_void,
             tree_descs: *mut c_void,
@@ -4654,27 +4733,6 @@ mod ffi {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
     }
-
-    pub unsafe fn batch_eval_at_point_indirect_u32(
-        runtime: *mut c_void,
-        groups: *const super::BatchEvalIndirectGroupDescriptor,
-        n_groups: u32,
-        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
-    ) -> Result<(), MetalError> {
-        let mut error = [0i8; ERROR_BUFFER_LEN];
-        if stwo_metal_batch_eval_at_point_indirect_u32(
-            runtime,
-            groups,
-            n_groups,
-            error_ptr(&mut error),
-            error.len(),
-        ) {
-            Ok(())
-        } else {
-            Err(MetalError::new(decode_error_buffer(&error)))
-        }
-    }
-
 
     pub unsafe fn batch_eval_first_pass_base_field_u32(
         runtime: *mut c_void,
@@ -6671,6 +6729,115 @@ mod ffi {
         }
     }
 
+    /// Create an uncommitted Metal command buffer for batching multiple dispatches.
+    pub unsafe fn command_buffer_create(
+        runtime: *mut c_void,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let ptr = stwo_metal_command_buffer_create(
+            runtime,
+            error_ptr(&mut error),
+            error.len(),
+        );
+        if ptr.is_null() {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        } else {
+            Ok(ptr)
+        }
+    }
+
+    /// Encode a JIT-compiled V1 evaluation kernel into an existing command buffer.
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn encode_compiled_program_v1(
+        runtime: *mut c_void,
+        command_buffer: *mut c_void,
+        shader_source: *const u8,
+        shader_source_len: usize,
+        kernel_name: *const u8,
+        kernel_name_len: usize,
+        trace_values: *mut c_void,
+        interaction_offsets: *mut c_void,
+        preprocessed_values: *mut c_void,
+        base_params: *mut c_void,
+        ext_params: *mut c_void,
+        random_coeff_powers: *mut c_void,
+        dst: *mut c_void,
+        row_count: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_encode_compiled_program_v1(
+            runtime,
+            command_buffer,
+            shader_source,
+            shader_source_len,
+            kernel_name,
+            kernel_name_len,
+            trace_values,
+            interaction_offsets,
+            preprocessed_values,
+            base_params,
+            ext_params,
+            random_coeff_powers,
+            dst,
+            row_count,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    /// Encode a fused blit+compute dispatch into an existing command buffer.
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn encode_compiled_fused_blit_v1(
+        runtime: *mut c_void,
+        command_buffer: *mut c_void,
+        shader_source: *const u8,
+        shader_source_len: usize,
+        kernel_name: *const u8,
+        kernel_name_len: usize,
+        column_buffer_ptrs: *const *mut c_void,
+        column_lengths: *const usize,
+        n_columns: usize,
+        interaction_offsets: *mut c_void,
+        random_coeff_powers: *mut c_void,
+        dst: *mut c_void,
+        row_count: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_encode_compiled_fused_blit_v1(
+            runtime,
+            command_buffer,
+            shader_source,
+            shader_source_len,
+            kernel_name,
+            kernel_name_len,
+            column_buffer_ptrs,
+            column_lengths,
+            n_columns,
+            interaction_offsets,
+            random_coeff_powers,
+            dst,
+            row_count,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    /// Commit a batch command buffer (non-blocking).
+    pub unsafe fn command_buffer_commit(handle: *mut c_void) {
+        stwo_metal_command_buffer_commit(handle);
+    }
+
     pub unsafe fn sampled_values_v1_wide_fibonacci_u32x4(
         runtime: *mut c_void,
         tree_descs: *mut c_void,
@@ -6755,7 +6922,7 @@ mod ffi {
 
 #[cfg(not(stwo_metal_link))]
 mod ffi {
-    use super::{c_void, BatchEvalGroupDescriptor, BatchEvalIndirectGroupDescriptor, MetalError, NonNull};
+    use super::{c_void, BatchEvalGroupDescriptor, MetalError, NonNull};
 
     pub unsafe fn runtime_create(
         _metallib_bytes: *const u8,
@@ -6946,6 +7113,62 @@ mod ffi {
 
     pub unsafe fn command_buffer_release(_handle: *mut c_void) {}
 
+    pub unsafe fn command_buffer_create(
+        _runtime: *mut c_void,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn encode_compiled_program_v1(
+        _runtime: *mut c_void,
+        _command_buffer: *mut c_void,
+        _shader_source: *const u8,
+        _shader_source_len: usize,
+        _kernel_name: *const u8,
+        _kernel_name_len: usize,
+        _trace_values: *mut c_void,
+        _interaction_offsets: *mut c_void,
+        _preprocessed_values: *mut c_void,
+        _base_params: *mut c_void,
+        _ext_params: *mut c_void,
+        _random_coeff_powers: *mut c_void,
+        _dst: *mut c_void,
+        _row_count: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn encode_compiled_fused_blit_v1(
+        _runtime: *mut c_void,
+        _command_buffer: *mut c_void,
+        _shader_source: *const u8,
+        _shader_source_len: usize,
+        _kernel_name: *const u8,
+        _kernel_name_len: usize,
+        _column_buffer_ptrs: *const *mut c_void,
+        _column_lengths: *const usize,
+        _n_columns: usize,
+        _interaction_offsets: *mut c_void,
+        _random_coeff_powers: *mut c_void,
+        _dst: *mut c_void,
+        _row_count: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn command_buffer_commit(_handle: *mut c_void) {}
+
     pub unsafe fn ifft_interpolate_u32(
         _runtime: *mut c_void,
         _values: *mut c_void,
@@ -6996,18 +7219,6 @@ mod ffi {
             "Metal support was not linked into stwo-metal-sys.",
         ))
     }
-
-    pub unsafe fn batch_eval_at_point_indirect_u32(
-        _runtime: *mut c_void,
-        _groups: *const super::BatchEvalIndirectGroupDescriptor,
-        _n_groups: u32,
-        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
-    ) -> Result<(), MetalError> {
-        Err(MetalError::new(
-            "Metal support was not linked into stwo-metal-sys.",
-        ))
-    }
-
 
     pub unsafe fn batch_eval_first_pass_base_field_u32(
         _runtime: *mut c_void,

@@ -8,7 +8,7 @@ use stwo::core::fields::qm31::SecureField;
 use stwo::core::fields::FieldExpOps;
 use stwo_constraint_framework::{EvalAtRow, FrameworkEval};
 use stwo_metal_sys::metal::{
-    metal_runtime_support, CommandBufferHandle, MetalError, MetalRuntimeSupport, U32Buffer,
+    metal_runtime_support, BatchCommandBuffer, CommandBufferHandle, MetalError, MetalRuntimeSupport, U32Buffer,
 };
 
 use super::recording_eval_v1::RecordingEvaluator;
@@ -2562,6 +2562,161 @@ pub fn execute_compiled_fused_blit_gpu_trace(
     .map_err(map_metal)?;
 
     Ok((handle, dst))
+}
+
+/// Create a new batch command buffer for encoding multiple component dispatches.
+pub fn create_batch_command_buffer(
+) -> Result<BatchCommandBuffer, MetalEvaluationProgramExecutionError> {
+    let map_metal = |e: MetalError| MetalEvaluationProgramExecutionError::MetalRuntime {
+        message: e.message().to_string(),
+    };
+    BatchCommandBuffer::create().map_err(map_metal)
+}
+
+/// Encode a JIT-compiled V1 evaluation kernel into a batch command buffer.
+///
+/// Like [`execute_compiled_metal_evaluation_program_v1_async`] but encodes into
+/// an existing [`BatchCommandBuffer`] instead of creating and committing its own.
+/// Returns the destination `U32Buffer` (whose contents are not valid until the
+/// batch is committed and waited on).
+pub fn encode_compiled_program_v1_into_batch(
+    batch: &BatchCommandBuffer,
+    runtime: MetalEvaluationProgramRuntimeInputsV1<'_>,
+    shader_source: &str,
+    kernel_name: &str,
+) -> Result<U32Buffer, MetalEvaluationProgramExecutionError> {
+    let map_metal = |e: MetalError| MetalEvaluationProgramExecutionError::MetalRuntime {
+        message: e.message().to_string(),
+    };
+
+    let n_rows = runtime
+        .trace
+        .trace_interactions
+        .first()
+        .and_then(|interaction| interaction.first().map(|column| column.len()))
+        .or_else(|| {
+            runtime
+                .trace
+                .trace_interactions
+                .iter()
+                .find_map(|interaction| interaction.first().map(|column| column.len()))
+        })
+        .ok_or(MetalEvaluationProgramExecutionError::EmptyTrace)?;
+
+    let (flat_trace, interaction_offsets) =
+        flatten_trace_interactions(runtime.trace.trace_interactions, n_rows);
+    let flat_preprocessed = runtime
+        .trace
+        .preprocessed_columns
+        .iter()
+        .flat_map(|column| column.iter().map(|value| value.0))
+        .collect::<Vec<_>>();
+    let base_params = runtime
+        .base_params
+        .iter()
+        .map(|value| value.0)
+        .collect::<Vec<_>>();
+    let ext_params = runtime
+        .ext_params
+        .iter()
+        .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+        .collect::<Vec<_>>();
+    let random_coeff_powers = runtime
+        .random_coeff_powers
+        .iter()
+        .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
+        .collect::<Vec<_>>();
+
+    let trace_values = U32Buffer::from_slice(&flat_trace).map_err(map_metal)?;
+    let interaction_offsets = U32Buffer::from_slice(&interaction_offsets).map_err(map_metal)?;
+    let preprocessed_values = optional_u32_buffer(&flat_preprocessed).map_err(map_metal)?;
+    let base_params = optional_u32_buffer(&base_params).map_err(map_metal)?;
+    let ext_params = optional_u32_buffer(&ext_params).map_err(map_metal)?;
+    let random_coeff_powers = U32Buffer::from_slice(&random_coeff_powers).map_err(map_metal)?;
+
+    let dst = U32Buffer::uninitialized(n_rows * 4).map_err(map_metal)?;
+
+    batch.encode_compiled_program_v1(
+        shader_source,
+        kernel_name,
+        &trace_values,
+        &interaction_offsets,
+        &preprocessed_values,
+        &base_params,
+        &ext_params,
+        &random_coeff_powers,
+        &dst,
+        n_rows,
+    )
+    .map_err(map_metal)?;
+
+    Ok(dst)
+}
+
+/// Encode a fused blit+compute dispatch into a batch command buffer.
+///
+/// Like [`execute_compiled_fused_blit_gpu_trace`] but encodes into an existing
+/// [`BatchCommandBuffer`] instead of creating and committing its own.
+pub fn encode_compiled_fused_blit_into_batch(
+    batch: &BatchCommandBuffer,
+    column_buffers: &[&U32Buffer],
+    column_lengths: &[usize],
+    interaction_offsets_cpu: &[u32],
+    n_rows: usize,
+    random_coeff_powers_cpu: &[SecureField],
+    shader_source: &str,
+    kernel_name: &str,
+) -> Result<U32Buffer, MetalEvaluationProgramExecutionError> {
+    let map_metal = |e: MetalError| MetalEvaluationProgramExecutionError::MetalRuntime {
+        message: e.message().to_string(),
+    };
+
+    let interaction_offsets = U32Buffer::from_slice(interaction_offsets_cpu).map_err(map_metal)?;
+    let random_coeff_powers = U32Buffer::from_slice(
+        &random_coeff_powers_cpu
+            .iter()
+            .flat_map(|v| v.to_m31_array().map(|l| l.0))
+            .collect::<Vec<_>>(),
+    )
+    .map_err(map_metal)?;
+
+    let dst = U32Buffer::uninitialized(n_rows * 4).map_err(map_metal)?;
+
+    batch.encode_compiled_fused_blit_v1(
+        shader_source,
+        kernel_name,
+        column_buffers,
+        column_lengths,
+        &interaction_offsets,
+        &random_coeff_powers,
+        &dst,
+        n_rows,
+    )
+    .map_err(map_metal)?;
+
+    Ok(dst)
+}
+
+/// Commit a batch command buffer and return a [`CommandBufferHandle`] for
+/// deferred waiting.
+pub fn commit_batch_command_buffer(
+    batch: BatchCommandBuffer,
+) -> CommandBufferHandle {
+    batch.commit()
+}
+
+/// Wait for a batch command buffer to complete and convert a destination
+/// buffer into `Vec<SecureField>`.
+///
+/// This is the same as [`complete_compiled_metal_evaluation_program_v1_async`]
+/// — they share the same waiting logic since both produce a
+/// `CommandBufferHandle` + `U32Buffer` pair.
+pub fn complete_batch_command_buffer(
+    handle: CommandBufferHandle,
+    dst: U32Buffer,
+) -> Result<Vec<SecureField>, MetalEvaluationProgramExecutionError> {
+    // Re-use the existing async completion logic.
+    complete_compiled_metal_evaluation_program_v1_async(handle, dst)
 }
 
 fn execute_wide_fibonacci_overlay_v1_on_metal(

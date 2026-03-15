@@ -1636,177 +1636,6 @@ bool stwo_metal_batch_eval_at_point_multi_group_u32(
     }
 }
 
-/// Descriptor for one size-group in an indirect multi-group batch point evaluation.
-/// Instead of a flat coefficient buffer, this uses an array of per-polynomial
-/// MTLBuffer pointers whose GPU addresses are resolved at dispatch time.
-typedef struct {
-    const void * const *coeff_buffer_ptrs;  // array of n_polys StwoMetalBufferBox* pointers
-    void *factors_ptr;                      // StwoMetalBufferBox* for folding factors
-    void *dst_ptr;                          // StwoMetalBufferBox* for results
-    uint32_t coeffs_log_len;
-    uint32_t n_polys;
-} StwoMetalBatchEvalIndirectGroup;
-
-/// Evaluate multiple groups of same-size polynomials at their respective points
-/// in a single Metal command buffer, reading polynomial coefficients indirectly
-/// via GPU virtual addresses.  This eliminates the CPU-side memcpy needed to
-/// concatenate polynomial coefficients into a flat staging buffer.
-bool stwo_metal_batch_eval_at_point_indirect_u32(
-    void *runtime_ptr,
-    const StwoMetalBatchEvalIndirectGroup *groups,
-    uint32_t n_groups,
-    char *error_message,
-    size_t error_message_len
-) {
-    @autoreleasepool {
-        if (n_groups == 0u) {
-            return true;
-        }
-
-        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
-
-        id<MTLComputePipelineState> indirect_first_pass_pipeline =
-            stwo_metal_pipeline(runtime, @"batch_eval_at_point_first_pass_indirect_u32", error_message, error_message_len);
-        if (indirect_first_pass_pipeline == nil) {
-            return false;
-        }
-        id<MTLComputePipelineState> reduce_pipeline =
-            stwo_metal_pipeline(runtime, @"batch_eval_at_point_reduce_u32", error_message, error_message_len);
-        if (reduce_pipeline == nil) {
-            return false;
-        }
-        id<MTLComputePipelineState> finalize_pipeline =
-            stwo_metal_pipeline(runtime, @"batch_eval_at_point_finalize_u32", error_message, error_message_len);
-        if (finalize_pipeline == nil) {
-            return false;
-        }
-
-        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
-        if (command_buffer == nil) {
-            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
-            return false;
-        }
-
-        for (uint32_t g = 0; g < n_groups; g++) {
-            uint32_t coeffs_log_len = groups[g].coeffs_log_len;
-            uint32_t n_polys = groups[g].n_polys;
-            StwoMetalBufferBox *factors = stwo_metal_buffer_box(groups[g].factors_ptr);
-            StwoMetalBufferBox *dst = stwo_metal_buffer_box(groups[g].dst_ptr);
-            uint32_t coeffs_size = 1u << coeffs_log_len;
-            uint32_t blocks_per_poly = coeffs_log_len > 9u ? (coeffs_size >> 9u) : 1u;
-
-            // Build GPU address buffer from per-polynomial MTLBuffer pointers.
-            id<MTLBuffer> addr_buffer = [runtime.device newBufferWithLength:(n_polys * sizeof(uint64_t))
-                                                                    options:MTLResourceStorageModeShared];
-            if (addr_buffer == nil) {
-                stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate GPU address buffer for indirect batch eval.");
-                return false;
-            }
-            uint64_t *addr_contents = (uint64_t *)addr_buffer.contents;
-            for (uint32_t i = 0; i < n_polys; ++i) {
-                StwoMetalBufferBox *coeff_buf = stwo_metal_buffer_box((void *)groups[g].coeff_buffer_ptrs[i]);
-                addr_contents[i] = coeff_buf.buffer.gpuAddress;
-            }
-
-            // Allocate per-group temporaries for the reduction tree.
-            NSUInteger temp_len = (NSUInteger)(blocks_per_poly * n_polys * 4u);
-            id<MTLBuffer> temp_a = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
-                                                               options:MTLResourceStorageModeShared];
-            id<MTLBuffer> temp_b = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
-                                                               options:MTLResourceStorageModeShared];
-            if (temp_a == nil || temp_b == nil) {
-                stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal indirect eval temporary buffers.");
-                return false;
-            }
-
-            // First pass: indirect read from per-polynomial GPU buffers.
-            {
-                id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-                if (encoder == nil) {
-                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
-                    return false;
-                }
-                [encoder setComputePipelineState:indirect_first_pass_pipeline];
-                [encoder setBuffer:addr_buffer offset:0 atIndex:0];
-                [encoder setBuffer:factors.buffer offset:0 atIndex:1];
-                [encoder setBuffer:temp_a offset:0 atIndex:2];
-                [encoder setBytes:&coeffs_log_len length:sizeof(coeffs_log_len) atIndex:3];
-                [encoder setBytes:&blocks_per_poly length:sizeof(blocks_per_poly) atIndex:4];
-                // Mark all coefficient buffers as readable so Metal can page them in.
-                for (uint32_t i = 0; i < n_polys; ++i) {
-                    StwoMetalBufferBox *coeff_buf = stwo_metal_buffer_box((void *)groups[g].coeff_buffer_ptrs[i]);
-                    [encoder useResource:coeff_buf.buffer usage:MTLResourceUsageRead];
-                }
-                [encoder dispatchThreadgroups:MTLSizeMake(blocks_per_poly, n_polys, 1)
-                         threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
-                [encoder endEncoding];
-            }
-
-            // Reduce passes: same as the flat-buffer variant.
-            uint32_t current_stride = blocks_per_poly;
-            uint32_t remaining_log_len = coeffs_log_len > 9u ? coeffs_log_len - 9u : 0u;
-            id<MTLBuffer> current = temp_a;
-            id<MTLBuffer> next = temp_b;
-
-            while (current_stride > 1u) {
-                uint32_t output_stride = remaining_log_len > 9u ? (current_stride >> 9u) : 1u;
-                uint32_t factor_offset = remaining_log_len - 1u;
-
-                id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-                if (encoder == nil) {
-                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
-                    return false;
-                }
-
-                [encoder setComputePipelineState:reduce_pipeline];
-                [encoder setBuffer:current offset:0 atIndex:0];
-                [encoder setBuffer:factors.buffer offset:0 atIndex:1];
-                [encoder setBuffer:next offset:0 atIndex:2];
-                [encoder setBytes:&current_stride length:sizeof(current_stride) atIndex:3];
-                [encoder setBytes:&output_stride length:sizeof(output_stride) atIndex:4];
-                [encoder setBytes:&factor_offset length:sizeof(factor_offset) atIndex:5];
-                [encoder dispatchThreadgroups:MTLSizeMake(output_stride, n_polys, 1)
-                              threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
-                [encoder endEncoding];
-
-                current_stride = output_stride;
-                remaining_log_len = remaining_log_len > 9u ? remaining_log_len - 9u : 0u;
-                id<MTLBuffer> swap = current;
-                current = next;
-                next = swap;
-            }
-
-            // Finalize: copy the single qm31 result per polynomial to the destination.
-            {
-                id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-                if (encoder == nil) {
-                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
-                    return false;
-                }
-                [encoder setComputePipelineState:finalize_pipeline];
-                [encoder setBuffer:current offset:0 atIndex:0];
-                [encoder setBuffer:dst.buffer offset:0 atIndex:1];
-                [encoder setBytes:&current_stride length:sizeof(current_stride) atIndex:2];
-                [encoder setBytes:&n_polys length:sizeof(n_polys) atIndex:3];
-                [encoder dispatchThreads:MTLSizeMake(n_polys, 1, 1)
-                           threadsPerThreadgroup:MTLSizeMake(stwo_metal_threads_per_group(finalize_pipeline), 1, 1)];
-                [encoder endEncoding];
-            }
-        }
-
-        [command_buffer commit];
-        [command_buffer waitUntilCompleted];
-
-        if (command_buffer.status == MTLCommandBufferStatusError) {
-            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal indirect multi-group point evaluation failed.");
-            return false;
-        }
-
-        return true;
-    }
-}
-
-
 bool stwo_metal_fix_first_variable_base_field_u32(
     void *runtime_ptr,
     void *src_ptr,
@@ -6870,6 +6699,305 @@ bool stwo_metal_eval_compiled_fused_blit_async(
         // Do NOT waitUntilCompleted — return the handle for deferred waiting.
         *out_handle = (__bridge_retained void *)command_buffer;
         return true;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Batched command buffer: create + encode + commit
+// ---------------------------------------------------------------------------
+//
+// These three functions allow the Rust side to batch multiple JIT-compiled
+// component dispatches into a single Metal command buffer.  Instead of N
+// separate command buffers (one per component), the caller:
+//   1. Creates one command buffer via stwo_metal_command_buffer_create.
+//   2. Encodes N compute dispatches via stwo_metal_encode_compiled_program_v1.
+//   3. Commits the buffer via stwo_metal_command_buffer_commit (non-blocking).
+//   4. Waits once via the existing stwo_metal_command_buffer_wait.
+//
+// Within a single command buffer Metal guarantees sequential execution of
+// encoders, but can pipeline resource preparation, reducing per-dispatch
+// scheduling overhead.
+
+/// Create an uncommitted MTLCommandBuffer.  Returns a retained handle.
+void *stwo_metal_command_buffer_create(
+    void *runtime_ptr,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        id<MTLCommandBuffer> cb = [runtime.queue commandBuffer];
+        if (cb == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer for batched dispatch.");
+            return NULL;
+        }
+        return (__bridge_retained void *)cb;
+    }
+}
+
+/// Encode one JIT-compiled V1 evaluation kernel dispatch into an existing
+/// (uncommitted) command buffer.  Does NOT commit.
+bool stwo_metal_encode_compiled_program_v1(
+    void *runtime_ptr,
+    void *command_buffer_ptr,
+    const char *shader_source,
+    size_t shader_source_len,
+    const char *kernel_name,
+    size_t kernel_name_len,
+    void *trace_values_ptr,
+    void *interaction_offsets_ptr,
+    void *preprocessed_values_ptr,
+    void *base_params_ptr,
+    void *ext_params_ptr,
+    void *random_coeff_powers_ptr,
+    void *dst_ptr,
+    uint32_t row_count,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        id<MTLCommandBuffer> command_buffer = (__bridge id<MTLCommandBuffer>)command_buffer_ptr;
+        StwoMetalBufferBox *trace_values = stwo_metal_buffer_box(trace_values_ptr);
+        StwoMetalBufferBox *interaction_offsets = stwo_metal_buffer_box(interaction_offsets_ptr);
+        StwoMetalBufferBox *preprocessed_values = stwo_metal_buffer_box(preprocessed_values_ptr);
+        StwoMetalBufferBox *base_params = stwo_metal_buffer_box(base_params_ptr);
+        StwoMetalBufferBox *ext_params = stwo_metal_buffer_box(ext_params_ptr);
+        StwoMetalBufferBox *random_coeff_powers = stwo_metal_buffer_box(random_coeff_powers_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+
+        NSString *nameStr = [[NSString alloc] initWithBytes:kernel_name
+                                                     length:kernel_name_len
+                                                   encoding:NSUTF8StringEncoding];
+
+        // Look up or JIT-compile the pipeline.
+        id<MTLComputePipelineState> pipeline = nil;
+        @synchronized(runtime) {
+            pipeline = runtime.pipelines[nameStr];
+        }
+
+        if (pipeline == nil) {
+            NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
+                                                          length:shader_source_len
+                                                        encoding:NSUTF8StringEncoding];
+            MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
+            if (@available(macOS 15.0, *)) {
+                options.mathMode = MTLMathModeFast;
+            } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                options.fastMathEnabled = YES;
+#pragma clang diagnostic pop
+            }
+
+            NSError *compileError = nil;
+            id<MTLLibrary> library = [runtime.device newLibraryWithSource:sourceStr
+                                                                 options:options
+                                                                   error:&compileError];
+            if (library == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    compileError.localizedDescription ?: @"Failed to JIT-compile Metal shader (batch).");
+                return false;
+            }
+
+            id<MTLFunction> function = [library newFunctionWithName:nameStr];
+            if (function == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    [NSString stringWithFormat:@"Batch JIT-compiled library missing kernel '%@'.", nameStr]);
+                return false;
+            }
+
+            NSError *pipelineError = nil;
+            pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&pipelineError];
+            if (pipeline == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    pipelineError.localizedDescription ?: @"Failed to create pipeline from JIT-compiled shader (batch).");
+                return false;
+            }
+
+            @synchronized(runtime) {
+                runtime.pipelines[nameStr] = pipeline;
+            }
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal compute encoder for batched dispatch.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:trace_values.buffer offset:0 atIndex:0];
+        [encoder setBuffer:interaction_offsets.buffer offset:0 atIndex:1];
+        [encoder setBuffer:preprocessed_values.buffer offset:0 atIndex:2];
+        [encoder setBuffer:base_params.buffer offset:0 atIndex:3];
+        [encoder setBuffer:ext_params.buffer offset:0 atIndex:4];
+        [encoder setBuffer:random_coeff_powers.buffer offset:0 atIndex:5];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:9];
+        [encoder setBytes:&row_count length:sizeof(row_count) atIndex:10];
+
+        MTLSize grid_size = MTLSizeMake(row_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        return true;
+    }
+}
+
+/// Encode one fused blit+compute dispatch into an existing (uncommitted)
+/// command buffer.  Does NOT commit.
+bool stwo_metal_encode_compiled_fused_blit_v1(
+    void *runtime_ptr,
+    void *command_buffer_ptr,
+    const char *shader_source,
+    size_t shader_source_len,
+    const char *kernel_name,
+    size_t kernel_name_len,
+    void **column_buffer_ptrs,
+    const size_t *column_lengths,
+    size_t n_columns,
+    void *interaction_offsets_ptr,
+    void *random_coeff_powers_ptr,
+    void *dst_ptr,
+    uint32_t row_count,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        id<MTLCommandBuffer> command_buffer = (__bridge id<MTLCommandBuffer>)command_buffer_ptr;
+        StwoMetalBufferBox *interaction_offsets = stwo_metal_buffer_box(interaction_offsets_ptr);
+        StwoMetalBufferBox *random_coeff_powers = stwo_metal_buffer_box(random_coeff_powers_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+
+        NSString *nameStr = [[NSString alloc] initWithBytes:kernel_name
+                                                     length:kernel_name_len
+                                                   encoding:NSUTF8StringEncoding];
+
+        // Look up or JIT-compile the pipeline.
+        id<MTLComputePipelineState> pipeline = nil;
+        @synchronized(runtime) {
+            pipeline = runtime.pipelines[nameStr];
+        }
+
+        if (pipeline == nil) {
+            NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
+                                                          length:shader_source_len
+                                                        encoding:NSUTF8StringEncoding];
+            MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
+            if (@available(macOS 15.0, *)) {
+                options.mathMode = MTLMathModeFast;
+            } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                options.fastMathEnabled = YES;
+#pragma clang diagnostic pop
+            }
+
+            NSError *compileError = nil;
+            id<MTLLibrary> library = [runtime.device newLibraryWithSource:sourceStr
+                                                                 options:options
+                                                                   error:&compileError];
+            if (library == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    compileError.localizedDescription ?: @"Failed to JIT-compile Metal shader (batch fused).");
+                return false;
+            }
+
+            id<MTLFunction> function = [library newFunctionWithName:nameStr];
+            if (function == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    [NSString stringWithFormat:@"Batch JIT-compiled library missing kernel '%@'.", nameStr]);
+                return false;
+            }
+
+            NSError *pipelineError = nil;
+            pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&pipelineError];
+            if (pipeline == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    pipelineError.localizedDescription ?: @"Failed to create pipeline from JIT-compiled shader (batch fused).");
+                return false;
+            }
+
+            @synchronized(runtime) {
+                runtime.pipelines[nameStr] = pipeline;
+            }
+        }
+
+        // Allocate flat trace buffer on GPU.
+        size_t total_elements = (size_t)n_columns * (size_t)row_count;
+        id<MTLBuffer> trace_buffer = [runtime.device newBufferWithLength:total_elements * sizeof(uint32_t)
+                                                                options:MTLResourceStorageModeShared];
+        if (trace_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to allocate flat trace buffer for batch fused blit+compute.");
+            return false;
+        }
+
+        // Phase 1: Blit encoder — copy columns into flat trace buffer.
+        id<MTLBlitCommandEncoder> blit = [command_buffer blitCommandEncoder];
+        if (blit == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal blit encoder (batch fused).");
+            return false;
+        }
+
+        size_t dst_byte_offset = 0;
+        for (size_t i = 0; i < n_columns; ++i) {
+            StwoMetalBufferBox *col = stwo_metal_buffer_box(column_buffer_ptrs[i]);
+            size_t col_bytes = column_lengths[i] * sizeof(uint32_t);
+            [blit copyFromBuffer:col.buffer
+                    sourceOffset:0
+                        toBuffer:trace_buffer
+               destinationOffset:dst_byte_offset
+                            size:col_bytes];
+            dst_byte_offset += col_bytes;
+        }
+        [blit endEncoding];
+
+        // Phase 2: Compute encoder.
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal compute encoder for batch fused dispatch.");
+            return false;
+        }
+
+        id<MTLBuffer> empty_buf = [runtime.device newBufferWithLength:sizeof(uint32_t)
+                                                              options:MTLResourceStorageModeShared];
+        memset(empty_buf.contents, 0, sizeof(uint32_t));
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:trace_buffer offset:0 atIndex:0];
+        [encoder setBuffer:interaction_offsets.buffer offset:0 atIndex:1];
+        [encoder setBuffer:empty_buf offset:0 atIndex:2]; // preprocessed_values
+        [encoder setBuffer:empty_buf offset:0 atIndex:3]; // base_params
+        [encoder setBuffer:empty_buf offset:0 atIndex:4]; // ext_params
+        [encoder setBuffer:random_coeff_powers.buffer offset:0 atIndex:5];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:9];
+        [encoder setBytes:&row_count length:sizeof(row_count) atIndex:10];
+
+        MTLSize grid_size = MTLSizeMake(row_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        return true;
+    }
+}
+
+/// Commit a command buffer (non-blocking).  The caller must wait on the
+/// original retained handle via stwo_metal_command_buffer_wait.
+void stwo_metal_command_buffer_commit(void *command_buffer_ptr) {
+    if (command_buffer_ptr == NULL) {
+        return;
+    }
+    @autoreleasepool {
+        id<MTLCommandBuffer> cb = (__bridge id<MTLCommandBuffer>)command_buffer_ptr;
+        [cb commit];
     }
 }
 

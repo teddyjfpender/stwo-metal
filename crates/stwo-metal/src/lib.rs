@@ -70,7 +70,7 @@ pub mod prove_runtime {
 
 #[cfg(feature = "prover")]
 pub mod program {
-    pub use stwo_metal_sys::metal::CommandBufferHandle;
+    pub use stwo_metal_sys::metal::{CommandBufferHandle, BatchCommandBuffer};
     pub use crate::backend::metal::{
         execute_compiled_metal_evaluation_program_v1,
         execute_compiled_metal_evaluation_program_v1_async,
@@ -78,6 +78,9 @@ pub mod program {
         execute_compiled_async_gpu_trace,
         execute_compiled_fused_blit_gpu_trace,
         complete_compiled_metal_evaluation_program_v1_async,
+        create_batch_command_buffer, encode_compiled_program_v1_into_batch,
+        encode_compiled_fused_blit_into_batch, commit_batch_command_buffer,
+        complete_batch_command_buffer,
         execute_metal_evaluation_program_v1_on_metal,
         execute_selected_metal_evaluation_program_v1_on_metal,
         interpret_metal_evaluation_program_v1, lookup_metal_evaluation_program_overlay_v1,

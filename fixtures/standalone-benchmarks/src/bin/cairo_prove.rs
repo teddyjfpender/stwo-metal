@@ -1465,6 +1465,8 @@ mod cairo_prove_main {
             execute_compiled_metal_evaluation_program_v1_tg,
             execute_compiled_fused_blit_gpu_trace,
             complete_compiled_metal_evaluation_program_v1_async,
+            create_batch_command_buffer, encode_compiled_program_v1_into_batch,
+            encode_compiled_fused_blit_into_batch, commit_batch_command_buffer,
             execute_selected_metal_evaluation_program_v1_on_metal,
             interpret_metal_evaluation_program_v1,
             CommandBufferHandle,
@@ -1758,17 +1760,37 @@ mod cairo_prove_main {
                 let mut wait_ms = 0.0f64;
                 let mut denom_ms = 0.0f64;
 
-                // Phase 3a: Submit all JIT-compilable components async.
+                // Phase 3a: Batch all JIT-compilable components into a single
+                // Metal command buffer.  This eliminates per-component command
+                // buffer creation/commit overhead.
+                struct PendingBatchEntry<'a> {
+                    dst: stwo_metal_sys::metal::U32Buffer,
+                    comp: &'a ComponentWork<'a>,
+                }
+                let mut batch_entries: Vec<PendingBatchEntry<'_>> = Vec::new();
+                let mut sync_components: Vec<&ComponentWork<'_>> = Vec::new();
+                let mut gpu_trace_ct = 0usize;
+
+                // Also support per-component fallback for anything that fails
+                // batch encoding (uses the old async path).
                 struct PendingGpu<'a> {
                     handle: CommandBufferHandle,
                     dst: stwo_metal_sys::metal::U32Buffer,
                     comp: &'a ComponentWork<'a>,
                 }
-                let mut pending: Vec<PendingGpu<'_>> = Vec::new();
-                let mut sync_components: Vec<&ComponentWork<'_>> = Vec::new();
-                let mut gpu_trace_ct = 0usize; // Components using GPU buffer pass-through
+                let mut fallback_pending: Vec<PendingGpu<'_>> = Vec::new();
 
                 let submit_start = Instant::now();
+
+                // Create one shared command buffer for all JIT components.
+                let batch = match create_batch_command_buffer() {
+                    Ok(b) => Some(b),
+                    Err(ref e) => {
+                        eprintln!("    [BATCH CREATE FAIL] falling back to per-component dispatch: {:?}", e);
+                        None
+                    }
+                };
+
                 for comp in &gpu_components {
                     let cache_entry = shader_cache.get(&comp.program.header().semantic_hash);
                     if let Some((ref source, ref name)) = cache_entry {
@@ -1776,7 +1798,6 @@ mod cairo_prove_main {
                         // use fused blit+compute dispatch to avoid CPU memmove.
                         if let Some(ref gpu_interactions) = comp.gpu_interaction_cols {
                             let n_rows = 1usize << comp.eval_domain_log_size;
-                            // Build interaction_offsets.
                             let mut interaction_offsets: Vec<u32> = Vec::with_capacity(gpu_interactions.len() + 1);
                             let mut total_cols = 0u32;
                             interaction_offsets.push(0);
@@ -1789,7 +1810,6 @@ mod cairo_prove_main {
                                 let random_coeff_powers =
                                     &all_random_coeff_powers[comp.coeff_start..comp.coeff_end];
 
-                                // Collect column buffer references for fused blit dispatch.
                                 let col_buffers: Vec<&stwo_metal_sys::metal::U32Buffer> =
                                     gpu_interactions
                                         .iter()
@@ -1805,6 +1825,33 @@ mod cairo_prove_main {
                                         })
                                         .collect();
 
+                                if let Some(ref batch_cb) = batch {
+                                    // Batched path: encode into shared command buffer.
+                                    match encode_compiled_fused_blit_into_batch(
+                                        batch_cb,
+                                        &col_buffers,
+                                        &col_lengths,
+                                        &interaction_offsets,
+                                        n_rows,
+                                        random_coeff_powers,
+                                        source,
+                                        name,
+                                    ) {
+                                        Ok(dst) => {
+                                            compiled_ct += 1;
+                                            gpu_trace_ct += 1;
+                                            batch_entries.push(PendingBatchEntry { dst, comp });
+                                            continue;
+                                        }
+                                        Err(ref e) => {
+                                            eprintln!(
+                                                "    [BATCH FUSED FALLBACK] component '{}': {:?}",
+                                                comp.name, e,
+                                            );
+                                        }
+                                    }
+                                }
+                                // Fallback: per-component async dispatch.
                                 match execute_compiled_fused_blit_gpu_trace(
                                     &col_buffers,
                                     &col_lengths,
@@ -1817,7 +1864,7 @@ mod cairo_prove_main {
                                     Ok((handle, dst)) => {
                                         compiled_ct += 1;
                                         gpu_trace_ct += 1;
-                                        pending.push(PendingGpu { handle, dst, comp });
+                                        fallback_pending.push(PendingGpu { handle, dst, comp });
                                         continue;
                                     }
                                     Err(ref e) => {
@@ -1825,7 +1872,6 @@ mod cairo_prove_main {
                                             "    [FUSED BLIT FALLBACK] component '{}': {:?}",
                                             comp.name, e,
                                         );
-                                        // Fall through to CPU path.
                                         sync_components.push(comp);
                                         continue;
                                     }
@@ -1833,7 +1879,7 @@ mod cairo_prove_main {
                             }
                         }
 
-                        // CPU path: build CPU slice refs and dispatch via existing async JIT.
+                        // CPU-data path: build CPU slice refs.
                         let interaction_refs: Vec<Vec<&[BaseField]>> = comp.interaction_cols
                             .iter()
                             .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
@@ -1853,12 +1899,49 @@ mod cairo_prove_main {
                             random_coeff_powers,
                         };
 
+                        if let Some(ref batch_cb) = batch {
+                            // Batched path.
+                            match encode_compiled_program_v1_into_batch(
+                                batch_cb, runtime, source, name,
+                            ) {
+                                Ok(dst) => {
+                                    compiled_ct += 1;
+                                    batch_entries.push(PendingBatchEntry { dst, comp });
+                                    continue;
+                                }
+                                Err(ref e) => {
+                                    eprintln!(
+                                        "    [BATCH JIT FALLBACK] component '{}': {:?}",
+                                        comp.name, e,
+                                    );
+                                }
+                            }
+                        }
+                        // Fallback: per-component async. Need to rebuild runtime
+                        // since the batch attempt consumed it.
+                        let interaction_refs2: Vec<Vec<&[BaseField]>> = comp.interaction_cols
+                            .iter()
+                            .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
+                            .collect();
+                        let interaction_slice_refs2: Vec<&[&[BaseField]]> =
+                            interaction_refs2.iter().map(|cols| cols.as_slice()).collect();
+                        let random_coeff_powers2 =
+                            &all_random_coeff_powers[comp.coeff_start..comp.coeff_end];
+                        let runtime2 = MetalEvaluationProgramRuntimeInputsV1 {
+                            trace: MetalEvaluationProgramTraceViewV1 {
+                                trace_interactions: &interaction_slice_refs2,
+                                preprocessed_columns: &[],
+                            },
+                            base_params: &[],
+                            ext_params: &[],
+                            random_coeff_powers: random_coeff_powers2,
+                        };
                         match execute_compiled_metal_evaluation_program_v1_async(
-                            runtime, source, name,
+                            runtime2, source, name,
                         ) {
                             Ok((handle, dst)) => {
                                 compiled_ct += 1;
-                                pending.push(PendingGpu { handle, dst, comp });
+                                fallback_pending.push(PendingGpu { handle, dst, comp });
                             }
                             Err(ref e) => {
                                 eprintln!(
@@ -1872,6 +1955,11 @@ mod cairo_prove_main {
                         sync_components.push(comp);
                     }
                 }
+
+                // Commit the batch (one GPU submission for all encoded components).
+                let batch_handle = batch.map(|b| commit_batch_command_buffer(b));
+                let n_batched = batch_entries.len();
+
                 let submit_ms = submit_start.elapsed().as_secs_f64() * 1000.0;
 
                 // Phase 3b: Dispatch sync (interpreter) components while GPU is running.
@@ -1960,10 +2048,48 @@ mod cairo_prove_main {
                     quotients.push((comp.eval_domain_log_size, row_res));
                 }
 
-                // Phase 3c: Wait on all async JIT handles in submission order.
-                let n_async = pending.len();
+                // Phase 3c: Wait on the single batched command buffer, then
+                // read back all destination buffers.
                 let wait_start = Instant::now();
-                for p in pending {
+
+                // Wait on the single batch handle (if any components were batched).
+                if let Some(handle) = batch_handle {
+                    match handle.wait() {
+                        Ok(()) => {
+                            // Read all batch destination buffers.
+                            for entry in batch_entries {
+                                let comp = entry.comp;
+                                let raw = match entry.dst.to_vec() {
+                                    Ok(v) => v,
+                                    Err(ref e) => {
+                                        eprintln!(
+                                            "    [BATCH READ FAIL] component '{}': {:?}",
+                                            comp.name, e,
+                                        );
+                                        continue;
+                                    }
+                                };
+                                let mut row_res: Vec<SecureField> = raw
+                                    .chunks_exact(4)
+                                    .map(|limbs| {
+                                        SecureField::from_u32_unchecked(limbs[0], limbs[1], limbs[2], limbs[3])
+                                    })
+                                    .collect();
+                                let denom_start = Instant::now();
+                                apply_denom_inv(&mut row_res, comp.log_size, comp.eval_domain_log_size);
+                                denom_ms += denom_start.elapsed().as_secs_f64() * 1000.0;
+                                quotients.push((comp.eval_domain_log_size, row_res));
+                            }
+                        }
+                        Err(ref e) => {
+                            eprintln!("    [BATCH WAIT FAIL]: {:?}", e);
+                        }
+                    }
+                }
+
+                // Wait on any per-component fallback handles.
+                let n_fallback = fallback_pending.len();
+                for p in fallback_pending {
                     let comp = p.comp;
                     match complete_compiled_metal_evaluation_program_v1_async(p.handle, p.dst) {
                         Ok(mut row_res) => {
@@ -1982,12 +2108,13 @@ mod cairo_prove_main {
                 }
                 wait_ms += wait_start.elapsed().as_secs_f64() * 1000.0;
 
+                let _n_async = n_batched + n_fallback;
                 let kernel_ms = submit_ms + wait_ms;
-                if n_async > 0 {
+                if n_batched > 0 || n_fallback > 0 {
                     println!(
-                        "      async pipeline: submit={:.1}ms wait={:.1}ms ({} async [{} gpu-trace], {} sync)",
+                        "      batched pipeline: submit={:.1}ms wait={:.1}ms ({} batched, {} fallback-async [{} gpu-trace], {} sync)",
                         submit_ms, wait_ms,
-                        n_async, gpu_trace_ct, gpu_ct + cpu_ct
+                        n_batched, n_fallback, gpu_trace_ct, gpu_ct + cpu_ct
                     );
                 }
 
