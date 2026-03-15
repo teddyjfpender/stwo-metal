@@ -30,6 +30,7 @@ mod sampled_values_v1;
 mod sequence;
 mod subpath;
 mod witness;
+pub mod interaction_trace_addr_to_id;
 pub mod interaction_trace_id_to_big;
 pub mod witness_memory_addr_to_id;
 pub mod witness_memory_id_to_big;
@@ -153,6 +154,9 @@ pub use witness_memory_id_to_big::{
 };
 pub use witness_range_check::{
     generate_range_check_trace, MetalRangeCheckTrace, RangeCheckTraceError,
+};
+pub use witness_verify_instruction::{
+    generate_verify_instruction_trace, MetalVerifyInstructionTrace, VerifyInstructionTraceError,
 };
 pub use workload::{
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,

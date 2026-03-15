@@ -1814,6 +1814,55 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    /// Generate the interaction trace for memory_address_to_id on the GPU.
+    ///
+    /// # Arguments
+    /// * `ids`            - Column-major [split][n_rows] id values
+    /// * `mults`          - Column-major [split][n_rows] multiplicities
+    /// * `alpha_powers`   - [3] QM31 values = [12] u32 (lookup element powers)
+    /// * `z`              - QM31 = [4] u32 (lookup element z)
+    /// * `relation_id`    - [1] u32 (MEMORY_ADDRESS_TO_ID_RELATION_ID)
+    /// * `n_rows`         - number of rows per chunk
+    /// * `split`          - MEMORY_ADDRESS_TO_ID_SPLIT (must be even)
+    ///
+    /// # Returns
+    /// Column-major output: [split/2 * 4][n_rows] u32 (split/2 QM31 columns).
+    pub fn interaction_trace_addr_to_id(
+        ids: &Self,
+        mults: &Self,
+        alpha_powers: &Self,
+        z: &Self,
+        relation_id: &Self,
+        n_rows: u32,
+        split: u32,
+    ) -> Result<Self, MetalError> {
+        assert_eq!(ids.len, split as usize * n_rows as usize, "ids length mismatch");
+        assert_eq!(mults.len, split as usize * n_rows as usize, "mults length mismatch");
+        assert_eq!(z.len, 4, "z must have 4 u32");
+        assert_eq!(relation_id.len, 1, "relation_id must have 1 u32");
+        assert!(split % 2 == 0, "split must be even");
+
+        let n_logup_cols = (split / 2) as usize;
+        let output_len = n_logup_cols * 4 * n_rows as usize;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            ffi::interaction_trace_addr_to_id(
+                runtime.raw.as_ptr(),
+                ids.raw.as_ptr(),
+                mults.raw.as_ptr(),
+                alpha_powers.raw.as_ptr(),
+                z.raw.as_ptr(),
+                relation_id.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_rows,
+                split,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
     pub fn accumulate_wide_fibonacci_quotients(
         trace_evaluations: &Self,
         random_coeff_powers: &Self,
@@ -6058,6 +6107,38 @@ mod ffi {
         }
     }
 
+    pub unsafe fn interaction_trace_addr_to_id(
+        runtime: *mut c_void,
+        ids: *mut c_void,
+        mults: *mut c_void,
+        alpha_powers: *mut c_void,
+        z: *mut c_void,
+        relation_id: *mut c_void,
+        trace: *mut c_void,
+        n_rows: u32,
+        split: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_interaction_trace_addr_to_id(
+            runtime,
+            ids,
+            mults,
+            alpha_powers,
+            z,
+            relation_id,
+            trace,
+            n_rows,
+            split,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn accumulate_wide_fibonacci_quotients_u32x4(
         runtime: *mut c_void,
         trace_evaluations: *mut c_void,
@@ -8265,6 +8346,23 @@ mod ffi {
         _relation_ids: *mut c_void,
         _trace: *mut c_void,
         _n_rows: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn interaction_trace_addr_to_id(
+        _runtime: *mut c_void,
+        _ids: *mut c_void,
+        _mults: *mut c_void,
+        _alpha_powers: *mut c_void,
+        _z: *mut c_void,
+        _relation_id: *mut c_void,
+        _trace: *mut c_void,
+        _n_rows: u32,
+        _split: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(
