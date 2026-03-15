@@ -1317,6 +1317,115 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    /// Generate the "big" trace for the memory_id_to_big witness component.
+    ///
+    /// # Arguments
+    ///
+    /// * `big_values` - Flat buffer of `[u32; 8]` per row (row-major, length = n_values * 8).
+    /// * `mults` - Multiplicity buffer (length = n_values).
+    /// * `n_values` - Number of real rows.
+    /// * `column_length` - Power-of-two padded column length (>= n_values).
+    ///
+    /// # Returns
+    ///
+    /// Column-major output buffer with 29 columns * `column_length` entries
+    /// (28 value-limb columns + 1 multiplicity column).
+    pub fn witness_memory_id_to_big_trace(
+        big_values: &Self,
+        mults: &Self,
+        n_values: u32,
+        column_length: u32,
+    ) -> Result<Self, MetalError> {
+        assert!(
+            column_length.is_power_of_two(),
+            "column_length must be a power of two"
+        );
+        assert!(
+            n_values as usize <= column_length as usize,
+            "n_values must be <= column_length"
+        );
+        assert_eq!(
+            big_values.len,
+            n_values as usize * 8,
+            "big_values length must be n_values * 8"
+        );
+        assert_eq!(
+            mults.len, n_values as usize,
+            "mults length must be n_values"
+        );
+        let n_trace_columns: usize = 29;
+        let output_len = n_trace_columns * column_length as usize;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            ffi::witness_memory_id_to_big_trace(
+                runtime.raw.as_ptr(),
+                big_values.raw.as_ptr(),
+                mults.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_values,
+                column_length,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    /// Generate the "small" trace for the memory_id_to_big witness component.
+    ///
+    /// # Arguments
+    ///
+    /// * `small_values` - Flat buffer of `[u32; 4]` per row (u128 as 4 limbs,
+    ///   row-major, length = n_values * 4).
+    /// * `mults` - Multiplicity buffer (length = n_values).
+    /// * `n_values` - Number of real rows.
+    /// * `column_length` - Power-of-two padded column length (>= n_values).
+    ///
+    /// # Returns
+    ///
+    /// Column-major output buffer with 9 columns * `column_length` entries
+    /// (8 value-limb columns + 1 multiplicity column).
+    pub fn witness_memory_id_to_big_small_trace(
+        small_values: &Self,
+        mults: &Self,
+        n_values: u32,
+        column_length: u32,
+    ) -> Result<Self, MetalError> {
+        assert!(
+            column_length.is_power_of_two(),
+            "column_length must be a power of two"
+        );
+        assert!(
+            n_values as usize <= column_length as usize,
+            "n_values must be <= column_length"
+        );
+        assert_eq!(
+            small_values.len,
+            n_values as usize * 4,
+            "small_values length must be n_values * 4"
+        );
+        assert_eq!(
+            mults.len, n_values as usize,
+            "mults length must be n_values"
+        );
+        let n_trace_columns: usize = 9;
+        let output_len = n_trace_columns * column_length as usize;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            ffi::witness_memory_id_to_big_small_trace(
+                runtime.raw.as_ptr(),
+                small_values.raw.as_ptr(),
+                mults.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_values,
+                column_length,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
     pub fn accumulate_wide_fibonacci_quotients(
         trace_evaluations: &Self,
         random_coeff_powers: &Self,
@@ -3165,6 +3274,26 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_witness_memory_id_to_big_trace(
+            runtime: *mut c_void,
+            big_values: *mut c_void,
+            mults: *mut c_void,
+            trace: *mut c_void,
+            n_values: u32,
+            column_length: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_witness_memory_id_to_big_small_trace(
+            runtime: *mut c_void,
+            small_values: *mut c_void,
+            mults: *mut c_void,
+            trace: *mut c_void,
+            n_values: u32,
+            column_length: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_accumulate_wide_fibonacci_quotients_u32x4(
             runtime: *mut c_void,
             trace_evaluations: *mut c_void,
@@ -4758,6 +4887,58 @@ mod ffi {
             trace,
             input_log_len,
             n_columns,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn witness_memory_id_to_big_trace(
+        runtime: *mut c_void,
+        big_values: *mut c_void,
+        mults: *mut c_void,
+        trace: *mut c_void,
+        n_values: u32,
+        column_length: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_witness_memory_id_to_big_trace(
+            runtime,
+            big_values,
+            mults,
+            trace,
+            n_values,
+            column_length,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn witness_memory_id_to_big_small_trace(
+        runtime: *mut c_void,
+        small_values: *mut c_void,
+        mults: *mut c_void,
+        trace: *mut c_void,
+        n_values: u32,
+        column_length: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_witness_memory_id_to_big_small_trace(
+            runtime,
+            small_values,
+            mults,
+            trace,
+            n_values,
+            column_length,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -6546,6 +6727,34 @@ mod ffi {
         _trace: *mut c_void,
         _input_log_len: u32,
         _n_columns: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn witness_memory_id_to_big_trace(
+        _runtime: *mut c_void,
+        _big_values: *mut c_void,
+        _mults: *mut c_void,
+        _trace: *mut c_void,
+        _n_values: u32,
+        _column_length: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn witness_memory_id_to_big_small_trace(
+        _runtime: *mut c_void,
+        _small_values: *mut c_void,
+        _mults: *mut c_void,
+        _trace: *mut c_void,
+        _n_values: u32,
+        _column_length: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

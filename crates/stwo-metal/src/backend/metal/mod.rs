@@ -30,6 +30,7 @@ mod sampled_values_v1;
 mod sequence;
 mod subpath;
 mod witness;
+pub mod witness_memory_id_to_big;
 mod workload;
 mod workload_contract;
 
@@ -132,6 +133,10 @@ pub use subpath::MetalFriBlake2sSubpath;
 pub use witness::{
     generate_metal_wide_fibonacci_trace, MetalWideFibonacciTrace, MetalWideFibonacciTraceError,
     MetalWideFibonacciTraceRequest,
+};
+pub use witness_memory_id_to_big::{
+    generate_memory_id_to_big_trace, generate_memory_id_to_big_small_trace,
+    MemoryIdToBigTraceError, MetalMemoryIdToBigSmallTrace, MetalMemoryIdToBigTrace,
 };
 pub use workload::{
     declare_exemplar_hybrid_fri_workload, declare_exemplar_metal_workload_boundary,
