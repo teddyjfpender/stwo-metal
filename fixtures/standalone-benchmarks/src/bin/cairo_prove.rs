@@ -3301,7 +3301,11 @@ mod cairo_prove_main {
                 traces
             });
 
-            cairo_claim_generator.gpu_opcode_handle = Some(gpu_opcode_handle);
+            // GPU opcode traces disabled: they produce incorrect values causing OodsNotMatching.
+            // Enable with GPU_OPCODE=1 for testing (proofs will NOT verify).
+            if std::env::var("GPU_OPCODE").is_ok() {
+                cairo_claim_generator.gpu_opcode_handle = Some(gpu_opcode_handle);
+            }
         }
 
         {
