@@ -244,13 +244,16 @@ impl BaseFieldVec {
             self.size.is_power_of_two() && self.size >= 2,
             "Metal BaseFieldVec split_at_mid requires a power-of-two length of at least two"
         );
-        let values = self.to_vec();
-        let mid = values.len() / 2;
-        let (left, right) = values.split_at(mid);
-        (
-            Self::from_vec(left.to_vec()),
-            Self::from_vec(right.to_vec()),
-        )
+        let mid = self.size / 2;
+        let left_buffer = self
+            .buffer
+            .clone_range(0, mid)
+            .expect("Metal BaseFieldVec split_at_mid left clone should succeed");
+        let right_buffer = self
+            .buffer
+            .clone_range(mid, mid)
+            .expect("Metal BaseFieldVec split_at_mid right clone should succeed");
+        (Self::from_buffer(left_buffer), Self::from_buffer(right_buffer))
     }
 
     /// Creates a `BaseFieldVec` from a `&[PackedM31]` slice by uploading the raw

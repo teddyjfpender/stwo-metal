@@ -2,6 +2,7 @@ use std::array;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use ark_std::Zero;
 use stwo::core::circle::Coset;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
@@ -248,18 +249,6 @@ pub fn fold_line(
     current
 }
 
-fn metal_secure_column_from_values(values: Vec<SecureField>) -> SecureColumnByCoords<MetalBackend> {
-    let mut columns = array::from_fn(|_| Vec::<BaseField>::with_capacity(values.len()));
-    for value in values {
-        for (column, coord) in columns.iter_mut().zip(value.to_m31_array()) {
-            column.push(coord);
-        }
-    }
-    SecureColumnByCoords {
-        columns: columns.map(BaseFieldVec::from_vec),
-    }
-}
-
 fn metal_line_evaluation_from_base_coords(
     domain: LineDomain,
     columns: [BaseFieldVec; 4],
@@ -357,26 +346,49 @@ impl FriOps for MetalBackend {
         let domain_size = eval.len();
         let half_domain_size = domain_size / 2;
 
-        let a_sum = (0..half_domain_size)
-            .map(|i| eval.values.at(i))
-            .sum::<SecureField>();
-        let b_sum = (half_domain_size..domain_size)
-            .map(|i| eval.values.at(i))
-            .sum::<SecureField>();
+        // Bulk-access the four coordinate columns via host_slice (zero-copy on
+        // Apple Silicon unified memory) instead of per-element at() calls.
+        let c0 = eval.values.columns[0].host_slice();
+        let c1 = eval.values.columns[1].host_slice();
+        let c2 = eval.values.columns[2].host_slice();
+        let c3 = eval.values.columns[3].host_slice();
+
+        // Compute a_sum and b_sum from the coordinate slices directly.
+        let mut a_sum = SecureField::zero();
+        for i in 0..half_domain_size {
+            a_sum = a_sum
+                + SecureField::from_m31_array([c0[i], c1[i], c2[i], c3[i]]);
+        }
+        let mut b_sum = SecureField::zero();
+        for i in half_domain_size..domain_size {
+            b_sum = b_sum
+                + SecureField::from_m31_array([c0[i], c1[i], c2[i], c3[i]]);
+        }
         let lambda = (a_sum - b_sum) / BaseField::from_u32_unchecked(domain_size as u32);
 
-        let values = (0..domain_size)
-            .map(|i| {
-                let value = eval.values.at(i);
-                if i < half_domain_size {
-                    value - lambda
-                } else {
-                    value + lambda
-                }
-            })
-            .collect();
+        // Build corrected coordinate columns directly, avoiding the intermediate
+        // Vec<SecureField> and its per-element scatter into 4 BaseFieldVec uploads.
+        let mut out_cols: [Vec<BaseField>; 4] =
+            array::from_fn(|_| Vec::with_capacity(domain_size));
+        for i in 0..domain_size {
+            let value = SecureField::from_m31_array([c0[i], c1[i], c2[i], c3[i]]);
+            let corrected = if i < half_domain_size {
+                value - lambda
+            } else {
+                value + lambda
+            };
+            let coords = corrected.to_m31_array();
+            for (col, &coord) in out_cols.iter_mut().zip(coords.iter()) {
+                col.push(coord);
+            }
+        }
+
+        let columns = out_cols.map(BaseFieldVec::from_vec);
         (
-            SecureEvaluation::new(eval.domain, metal_secure_column_from_values(values)),
+            SecureEvaluation::new(
+                eval.domain,
+                SecureColumnByCoords { columns },
+            ),
             lambda,
         )
     }
