@@ -15,7 +15,6 @@ const METAL_SOURCES: &[&str] = &[
     "quotients",
     "fold_circle_into_line",
     "fold_line",
-    "fri_decompose",
     "mle",
     "gkr",
     "prefix_sum",
@@ -31,7 +30,7 @@ const METAL_SOURCES: &[&str] = &[
     "witness_range_check",
     "witness_verify_instruction",
     "witness_opcodes",
-    "merkle_decommit",
+    "barycentric",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -132,7 +131,6 @@ fn main() {
     println!("cargo:rerun-if-changed=metal/quotients.metal");
     println!("cargo:rerun-if-changed=metal/fold_circle_into_line.metal");
     println!("cargo:rerun-if-changed=metal/fold_line.metal");
-    println!("cargo:rerun-if-changed=metal/fri_decompose.metal");
     println!("cargo:rerun-if-changed=metal/mle.metal");
     println!("cargo:rerun-if-changed=metal/gkr.metal");
     println!("cargo:rerun-if-changed=metal/prefix_sum.metal");
@@ -148,7 +146,7 @@ fn main() {
     println!("cargo:rerun-if-changed=metal/witness_range_check.metal");
     println!("cargo:rerun-if-changed=metal/witness_verify_instruction.metal");
     println!("cargo:rerun-if-changed=metal/witness_opcodes.metal");
-    println!("cargo:rerun-if-changed=metal/merkle_decommit.metal");
+    println!("cargo:rerun-if-changed=metal/barycentric.metal");
     for var in [
         CUDA_MODE_VAR,
         METAL_MODE_VAR,

@@ -3,6 +3,7 @@ mod artifact;
 mod backend;
 mod benchmark;
 mod blake2s;
+pub(crate) mod decommit;
 mod capability;
 mod column;
 mod commitment_slice;

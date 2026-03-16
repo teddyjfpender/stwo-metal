@@ -645,6 +645,38 @@ impl U32Buffer {
         Ok(dst_buffers)
     }
 
+    /// Computes the barycentric evaluation: sum(eval_values[i] * weights[i])
+    /// where eval_values is M31 and weights is QM31, returning a single QM31.
+    pub fn barycentric_eval_at_point(
+        eval_values: &Self,
+        weights: &Self,
+    ) -> Result<[u32; 4], MetalError> {
+        let n_elements: u32 = eval_values
+            .len
+            .try_into()
+            .expect("barycentric eval element count should fit in u32");
+        assert_eq!(
+            weights.len,
+            eval_values.len * 4,
+            "barycentric eval expects weights buffer with 4 * n_elements u32 values (QM31)"
+        );
+
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(4)?;
+        unsafe {
+            ffi::barycentric_eval_at_point_u32(
+                runtime.raw.as_ptr(),
+                eval_values.raw.as_ptr(),
+                weights.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_elements,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        let result = dst.to_vec()?;
+        Ok([result[0], result[1], result[2], result[3]])
+    }
+
     pub fn fix_first_variable_base_field(
         &self,
         assignment_limbs: [u32; 4],
@@ -1342,44 +1374,6 @@ impl U32Buffer {
             )?;
         }
         Ok(dst)
-    }
-
-    /// GPU-accelerated FRI decompose operating on four separate M31 coordinate
-    /// columns (SecureColumnByCoords layout).
-    ///
-    /// Returns four destination coordinate buffers and the lambda limbs.
-    pub fn fri_decompose_from_coords_u32x4(
-        src_columns: [&Self; 4],
-        domain_log_size: u32,
-    ) -> Result<([Self; 4], [u32; 4]), MetalError> {
-        let [src_0, src_1, src_2, src_3] = src_columns;
-        let domain_size: usize = 1 << domain_log_size;
-        assert_eq!(src_0.len, domain_size);
-        assert_eq!(src_1.len, domain_size);
-        assert_eq!(src_2.len, domain_size);
-        assert_eq!(src_3.len, domain_size);
-
-        let runtime = shared_runtime()?;
-        let dst_0 = Self::uninitialized(domain_size)?;
-        let dst_1 = Self::uninitialized(domain_size)?;
-        let dst_2 = Self::uninitialized(domain_size)?;
-        let dst_3 = Self::uninitialized(domain_size)?;
-        let lambda_limbs = unsafe {
-            ffi::fri_decompose_coords_u32x4(
-                runtime.raw.as_ptr(),
-                src_0.raw.as_ptr(),
-                src_1.raw.as_ptr(),
-                src_2.raw.as_ptr(),
-                src_3.raw.as_ptr(),
-                dst_0.raw.as_ptr(),
-                dst_1.raw.as_ptr(),
-                dst_2.raw.as_ptr(),
-                dst_3.raw.as_ptr(),
-                domain_log_size,
-                error_buffer_mut_ptr,
-            )?
-        };
-        Ok(([dst_0, dst_1, dst_2, dst_3], lambda_limbs))
     }
 
     pub fn generate_wide_fibonacci_trace(
@@ -2851,14 +2845,6 @@ impl U32Buffer {
 
     /// Bulk gather hash nodes from multiple Merkle tree layers in a single
     /// GPU command buffer dispatch.
-    ///
-    /// `layers`: the Merkle tree layer buffers (index 0 = root, last = leaves).
-    ///           Each buffer stores hashes as 8 x u32 words per node.
-    /// `per_layer_indices`: for each layer, the node indices to gather.
-    /// `total_gathers`: sum of all per-layer gather counts.
-    ///
-    /// Returns a flat `Vec<u32>` containing `total_gathers * 8` words
-    /// (the gathered hashes in per-layer order).
     pub fn merkle_decommit_gather(
         layers: &[&Self],
         per_layer_indices: &[&[u32]],
@@ -4102,6 +4088,15 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_barycentric_eval_at_point_u32(
+            runtime: *mut c_void,
+            eval_values: *mut c_void,
+            weights: *mut c_void,
+            dst: *mut c_void,
+            n_elements: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_batch_eval_first_pass_base_field_u32(
             runtime: *mut c_void,
             flat_coeffs: *mut c_void,
@@ -4361,21 +4356,6 @@ mod ffi {
             inverse_x_factors: *mut c_void,
             src_log_len: u32,
             alpha_limbs: *const u32,
-            error_message: *mut i8,
-            error_message_len: usize,
-        ) -> bool;
-        fn stwo_metal_fri_decompose_coords_u32x4(
-            runtime: *mut c_void,
-            src_0: *mut c_void,
-            src_1: *mut c_void,
-            src_2: *mut c_void,
-            src_3: *mut c_void,
-            dst_0: *mut c_void,
-            dst_1: *mut c_void,
-            dst_2: *mut c_void,
-            dst_3: *mut c_void,
-            domain_log_size: u32,
-            lambda_limbs_out: *mut u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -5606,6 +5586,30 @@ mod ffi {
         }
     }
 
+    pub unsafe fn barycentric_eval_at_point_u32(
+        runtime: *mut c_void,
+        eval_values: *mut c_void,
+        weights: *mut c_void,
+        dst: *mut c_void,
+        n_elements: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_barycentric_eval_at_point_u32(
+            runtime,
+            eval_values,
+            weights,
+            dst,
+            n_elements,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn batch_eval_first_pass_base_field_u32(
         runtime: *mut c_void,
         flat_coeffs: *mut c_void,
@@ -6265,42 +6269,6 @@ mod ffi {
             error.len(),
         ) {
             Ok(())
-        } else {
-            Err(MetalError::new(decode_error_buffer(&error)))
-        }
-    }
-
-    pub unsafe fn fri_decompose_coords_u32x4(
-        runtime: *mut c_void,
-        src_0: *mut c_void,
-        src_1: *mut c_void,
-        src_2: *mut c_void,
-        src_3: *mut c_void,
-        dst_0: *mut c_void,
-        dst_1: *mut c_void,
-        dst_2: *mut c_void,
-        dst_3: *mut c_void,
-        domain_log_size: u32,
-        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
-    ) -> Result<[u32; 4], MetalError> {
-        let mut error = [0i8; ERROR_BUFFER_LEN];
-        let mut lambda_limbs = [0u32; 4];
-        if stwo_metal_fri_decompose_coords_u32x4(
-            runtime,
-            src_0,
-            src_1,
-            src_2,
-            src_3,
-            dst_0,
-            dst_1,
-            dst_2,
-            dst_3,
-            domain_log_size,
-            lambda_limbs.as_mut_ptr(),
-            error_ptr(&mut error),
-            error.len(),
-        ) {
-            Ok(lambda_limbs)
         } else {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
@@ -8208,8 +8176,7 @@ mod ffi {
         }
     }
 
-    /// Bulk gather hash nodes from multiple Merkle tree layers in a single
-    /// GPU command buffer dispatch.
+    /// Bulk gather hash nodes from multiple Merkle tree layers.
     pub unsafe fn merkle_decommit_gather(
         runtime: *mut c_void,
         layer_ptrs: &[*mut c_void],
@@ -8534,6 +8501,19 @@ mod ffi {
         _runtime: *mut c_void,
         _groups: *const super::BatchEvalGroupDescriptor,
         _n_groups: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn barycentric_eval_at_point_u32(
+        _runtime: *mut c_void,
+        _eval_values: *mut c_void,
+        _weights: *mut c_void,
+        _dst: *mut c_void,
+        _n_elements: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(
@@ -8882,24 +8862,6 @@ mod ffi {
         _alpha_limbs: [u32; 4],
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
-        Err(MetalError::new(
-            "Metal support was not linked into stwo-metal-sys.",
-        ))
-    }
-
-    pub unsafe fn fri_decompose_coords_u32x4(
-        _runtime: *mut c_void,
-        _src_0: *mut c_void,
-        _src_1: *mut c_void,
-        _src_2: *mut c_void,
-        _src_3: *mut c_void,
-        _dst_0: *mut c_void,
-        _dst_1: *mut c_void,
-        _dst_2: *mut c_void,
-        _dst_3: *mut c_void,
-        _domain_log_size: u32,
-        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
-    ) -> Result<[u32; 4], MetalError> {
         Err(MetalError::new(
             "Metal support was not linked into stwo-metal-sys.",
         ))

@@ -980,6 +980,7 @@ fn prepare_post_composition_tree_decommit_runtime(
 fn execute_post_composition_tree_decommit_runtime(
     mut runtime: PostCompositionTreeDecommitRuntime<'_>,
 ) -> MetalProveValuesResult {
+    let use_gpu_decommit = std::env::var_os("STWO_METAL_NO_GPU_DECOMMIT").is_none();
     let mut queried_values = Vec::with_capacity(runtime.commitment_scheme.trees.len());
     let mut decommitments = Vec::with_capacity(runtime.commitment_scheme.trees.len());
     for (tree, query_positions) in runtime
@@ -990,7 +991,20 @@ fn execute_post_composition_tree_decommit_runtime(
         .into_iter()
         .zip(runtime.tree_query_positions.iter())
     {
-        let (values, decommit_result) = tree.decommit_queries(query_positions);
+        let (values, decommit_result) = if use_gpu_decommit {
+            let eval_vec: Vec<&super::MetalBaseFieldVec> = tree
+                .polynomials
+                .iter()
+                .map(|poly| &poly.evals.values)
+                .collect();
+            super::decommit::gpu_decommit::<Blake2sMerkleHasher>(
+                &tree.commitment.layers,
+                query_positions,
+                eval_vec,
+            )
+        } else {
+            tree.decommit_queries(query_positions)
+        };
         queried_values.push(values);
         decommitments.push(decommit_result.decommitment);
     }

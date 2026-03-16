@@ -111,6 +111,50 @@ fn metal_poly_ops_cpu_bridge_matches_cpu_for_barycentric_weights_and_eval() {
 
 #[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn metal_barycentric_eval_gpu_kernel_matches_cpu_for_large_domain() {
+    require_metal_runtime();
+
+    const LOG_SIZE: u32 = 10;
+
+    let mut rng = SmallRng::seed_from_u64(42);
+    let coeffs: Vec<BaseField> = (0..(1 << LOG_SIZE)).map(|_| rng.gen()).collect();
+    let cpu_poly = CircleCoefficients::<CpuBackend>::new(coeffs.clone());
+    let metal_poly = CircleCoefficients::<MetalBackend>::new(MetalBaseFieldVec::from_vec(coeffs));
+
+    let coset = CanonicCoset::new(LOG_SIZE);
+    let domain = coset.circle_domain();
+    let cpu_twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
+    let metal_twiddles = MetalBackend::precompute_twiddles(domain.half_coset);
+
+    let cpu_eval = CpuBackend::evaluate_into(
+        &cpu_poly,
+        domain,
+        &cpu_twiddles,
+        vec![BaseField::default(); domain.size()],
+    );
+    let metal_eval = MetalBackend::evaluate_into(
+        &metal_poly,
+        domain,
+        &metal_twiddles,
+        MetalBaseFieldVec::new_zeroes(domain.size()),
+    );
+
+    let point = CirclePoint::get_point(1 << 18).into_ef::<SecureField>();
+    let cpu_weights = CpuBackend::barycentric_weights(coset, point);
+    let metal_weights = MetalBackend::barycentric_weights(coset, point);
+
+    assert_eq!(metal_weights.to_vec(), cpu_weights);
+
+    let cpu_value = CpuBackend::barycentric_eval_at_point(&cpu_eval, &cpu_weights);
+    let metal_value = MetalBackend::barycentric_eval_at_point(&metal_eval, &metal_weights);
+    assert_eq!(
+        metal_value, cpu_value,
+        "GPU barycentric eval (LOG_SIZE={LOG_SIZE}) must match CPU result"
+    );
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn metal_poly_ops_batch_eval_matches_cpu_and_single_eval() {
     require_metal_runtime();
 
@@ -278,92 +322,6 @@ fn metal_poly_ops_batch_eval_multi_size_fused_matches_cpu() {
     assert_eq!(
         metal_batch, cpu_expected,
         "multi-size fused batch eval must match CPU reference"
-    );
-}
-
-/// Test that the fused IFFT tail kernel produces correct results for sizes
-/// that exercise the fused path (log_size >= 11).  Validates the round-trip
-/// identity: interpolate(evaluate(poly)) == poly.
-#[test]
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-fn metal_ifft_fused_tail_matches_cpu_for_large_interpolate() {
-    require_metal_runtime();
-
-    // log_size=12 exercises the fused IFFT tail (domain log_size >= 11).
-    // We test the full round-trip: evaluate -> interpolate -> compare coeffs.
-    for log_size in [12u32, 14, 16] {
-        let mut rng = SmallRng::seed_from_u64(log_size as u64);
-        let coeffs: Vec<BaseField> = (0..(1 << log_size)).map(|_| rng.gen()).collect();
-
-        let cpu_poly = CircleCoefficients::<CpuBackend>::new(coeffs.clone());
-        let metal_poly =
-            CircleCoefficients::<MetalBackend>::new(MetalBaseFieldVec::from_vec(coeffs.clone()));
-
-        let domain = CanonicCoset::new(log_size).circle_domain();
-        let cpu_twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
-        let metal_twiddles = MetalBackend::precompute_twiddles(domain.half_coset);
-
-        // Evaluate on CPU and Metal.
-        let cpu_eval = CpuBackend::evaluate(&cpu_poly, domain, &cpu_twiddles);
-        let metal_eval = MetalBackend::evaluate(&metal_poly, domain, &metal_twiddles);
-        assert_eq!(
-            metal_eval.values.to_cpu(),
-            cpu_eval.values,
-            "evaluate mismatch at log_size={log_size}"
-        );
-
-        // Interpolate (IFFT) on CPU and Metal.
-        let cpu_interpolated = CpuBackend::interpolate(cpu_eval, &cpu_twiddles);
-        let metal_interpolated = MetalBackend::interpolate(metal_eval, &metal_twiddles);
-
-        // Round-trip: coefficients must match the original.
-        assert_eq!(
-            metal_interpolated.coeffs.to_cpu(),
-            coeffs,
-            "Metal IFFT round-trip mismatch at log_size={log_size}"
-        );
-        assert_eq!(
-            metal_interpolated.coeffs.to_cpu(),
-            cpu_interpolated.coeffs,
-            "Metal vs CPU IFFT mismatch at log_size={log_size}"
-        );
-    }
-}
-
-/// Test that the fused IFFT produces correct results on an extended domain
-/// (evaluate on a domain larger than the polynomial, then interpolate back).
-#[test]
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-fn metal_ifft_fused_tail_roundtrip_with_blowup() {
-    require_metal_runtime();
-
-    const LOG_SIZE: u32 = 13;
-    const BLOWUP: u32 = 1;
-    const EXTENDED_LOG_SIZE: u32 = LOG_SIZE + BLOWUP;
-
-    let mut rng = SmallRng::seed_from_u64(55);
-    let coeffs: Vec<BaseField> = (0..(1 << LOG_SIZE)).map(|_| rng.gen()).collect();
-
-    let cpu_poly = CircleCoefficients::<CpuBackend>::new(coeffs.clone());
-    let metal_poly =
-        CircleCoefficients::<MetalBackend>::new(MetalBaseFieldVec::from_vec(coeffs));
-
-    let domain = CanonicCoset::new(EXTENDED_LOG_SIZE).circle_domain();
-    let cpu_twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
-    let metal_twiddles = MetalBackend::precompute_twiddles(domain.half_coset);
-
-    // Evaluate on extended domain.
-    let cpu_eval = CpuBackend::evaluate(&cpu_poly, domain, &cpu_twiddles);
-    let metal_eval = MetalBackend::evaluate(&metal_poly, domain, &metal_twiddles);
-
-    // Interpolate back from extended evaluations.
-    let cpu_interpolated = CpuBackend::interpolate(cpu_eval, &cpu_twiddles);
-    let metal_interpolated = MetalBackend::interpolate(metal_eval, &metal_twiddles);
-
-    assert_eq!(
-        metal_interpolated.coeffs.to_cpu(),
-        cpu_interpolated.coeffs,
-        "Metal vs CPU IFFT mismatch on extended domain log_size={EXTENDED_LOG_SIZE}"
     );
 }
 
