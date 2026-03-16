@@ -248,11 +248,11 @@ impl BaseFieldVec {
         let left_buffer = self
             .buffer
             .clone_range(0, mid)
-            .expect("Metal BaseFieldVec split_at_mid left clone should succeed");
+            .expect("Metal BaseFieldVec split_at_mid left half GPU copy should succeed");
         let right_buffer = self
             .buffer
             .clone_range(mid, mid)
-            .expect("Metal BaseFieldVec split_at_mid right clone should succeed");
+            .expect("Metal BaseFieldVec split_at_mid right half GPU copy should succeed");
         (Self::from_buffer(left_buffer), Self::from_buffer(right_buffer))
     }
 
