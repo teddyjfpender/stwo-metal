@@ -3207,9 +3207,13 @@ mod cairo_prove_main {
         {
             use stwo_cairo_prover::witness::cairo_claim_generator::GpuOpcodeTraces;
             use stwo_metal::{
-                generate_add_opcode_small_trace, generate_assert_eq_double_deref_trace,
-                generate_jnz_opcode_taken_trace, generate_jump_opcode_rel_imm_trace,
-                generate_call_opcode_rel_imm_trace, generate_ret_opcode_trace,
+                generate_add_opcode_small_trace,
+                generate_assert_eq_double_deref_trace_with_raw,
+                generate_jnz_opcode_taken_trace_with_raw,
+                generate_jump_opcode_rel_imm_trace_with_raw,
+                generate_call_opcode_rel_imm_trace_with_raw,
+                generate_ret_opcode_trace_with_raw,
+                OpcodeTraceWithRaw,
             };
 
             let t_opcode_gpu = Instant::now();
@@ -3341,60 +3345,75 @@ mod cairo_prove_main {
                 }
 
                 if let Some(inp) = opcode_inputs.assert_eq_opcode_double_deref {
-                    match generate_assert_eq_double_deref_trace(
+                    match generate_assert_eq_double_deref_trace_with_raw(
                         &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
                     ) {
-                        Ok(evals) => {
+                        Ok(trace_with_raw) => {
+                            let OpcodeTraceWithRaw { evals, raw_buffer, n_rows, column_length } = trace_with_raw;
                             traces.assert_eq_opcode_double_deref =
                                 Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                            traces.assert_eq_opcode_double_deref_raw =
+                                Some(Box::new((raw_buffer, n_rows, column_length)) as Box<dyn std::any::Any + Send>);
                         }
                         Err(e) => eprintln!("  [gpu-opcode] assert_eq_double_deref error: {e}"),
                     }
                 }
 
                 if let Some(inp) = opcode_inputs.jnz_opcode_taken {
-                    match generate_jnz_opcode_taken_trace(
+                    match generate_jnz_opcode_taken_trace_with_raw(
                         &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
                     ) {
-                        Ok(evals) => {
+                        Ok(trace_with_raw) => {
+                            let OpcodeTraceWithRaw { evals, raw_buffer, n_rows, column_length } = trace_with_raw;
                             traces.jnz_opcode_taken =
                                 Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                            traces.jnz_opcode_taken_raw =
+                                Some(Box::new((raw_buffer, n_rows, column_length)) as Box<dyn std::any::Any + Send>);
                         }
                         Err(e) => eprintln!("  [gpu-opcode] jnz_opcode_taken error: {e}"),
                     }
                 }
 
                 if let Some(inp) = opcode_inputs.jump_opcode_rel_imm {
-                    match generate_jump_opcode_rel_imm_trace(
+                    match generate_jump_opcode_rel_imm_trace_with_raw(
                         &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
                     ) {
-                        Ok(evals) => {
+                        Ok(trace_with_raw) => {
+                            let OpcodeTraceWithRaw { evals, raw_buffer, n_rows, column_length } = trace_with_raw;
                             traces.jump_opcode_rel_imm =
                                 Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                            traces.jump_opcode_rel_imm_raw =
+                                Some(Box::new((raw_buffer, n_rows, column_length)) as Box<dyn std::any::Any + Send>);
                         }
                         Err(e) => eprintln!("  [gpu-opcode] jump_opcode_rel_imm error: {e}"),
                     }
                 }
 
                 if let Some(inp) = opcode_inputs.call_opcode_rel_imm {
-                    match generate_call_opcode_rel_imm_trace(
+                    match generate_call_opcode_rel_imm_trace_with_raw(
                         &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
                     ) {
-                        Ok(evals) => {
+                        Ok(trace_with_raw) => {
+                            let OpcodeTraceWithRaw { evals, raw_buffer, n_rows, column_length } = trace_with_raw;
                             traces.call_opcode_rel_imm =
                                 Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                            traces.call_opcode_rel_imm_raw =
+                                Some(Box::new((raw_buffer, n_rows, column_length)) as Box<dyn std::any::Any + Send>);
                         }
                         Err(e) => eprintln!("  [gpu-opcode] call_opcode_rel_imm error: {e}"),
                     }
                 }
 
                 if let Some(inp) = opcode_inputs.ret_opcode {
-                    match generate_ret_opcode_trace(
+                    match generate_ret_opcode_trace_with_raw(
                         &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
                     ) {
-                        Ok(evals) => {
+                        Ok(trace_with_raw) => {
+                            let OpcodeTraceWithRaw { evals, raw_buffer, n_rows, column_length } = trace_with_raw;
                             traces.ret_opcode =
                                 Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                            traces.ret_opcode_raw =
+                                Some(Box::new((raw_buffer, n_rows, column_length)) as Box<dyn std::any::Any + Send>);
                         }
                         Err(e) => eprintln!("  [gpu-opcode] ret_opcode error: {e}"),
                     }
@@ -3598,6 +3617,13 @@ mod cairo_prove_main {
         let (claim, mut interaction_generator) =
             cairo_claim_generator.write_trace(&mut hybrid_tb);
         let base_gen_ms = t_base.elapsed().as_secs_f64() * 1000.0;
+
+        if std::env::var("GPU_WITNESS").is_ok() {
+            eprintln!(
+                "  GPU opcode raw buffers for interaction: {}",
+                if interaction_generator.gpu_opcode_raw_buffers.is_some() { "AVAILABLE" } else { "not available" },
+            );
+        }
 
         // Report timing.
         println!(
@@ -3807,6 +3833,117 @@ mod cairo_prove_main {
                     let gpu_inter_ms = t_gpu_inter.elapsed().as_secs_f64() * 1000.0;
                     println!("  GPU interaction trace dispatch: {:.1} ms", gpu_inter_ms);
                     gpu_traces
+                },
+            ));
+        }
+
+        // --- GPU opcode interaction trace dispatch ---
+        // When raw GPU trace column buffers survive from base trace commit,
+        // compute interaction traces on GPU directly from trace columns (no
+        // CPU LookupData flattening).
+        //
+        // Currently gated behind GPU_OPCODE_INTER=1 because the two-phase
+        // dispatch (extract interaction values + generic logup kernel) is
+        // slower than the CPU rayon path for opcode-sized traces (~600ms GPU
+        // vs ~180ms CPU at 524K). A single-pass Metal kernel that reads trace
+        // columns and outputs logup fractions directly would make this faster.
+        // The infrastructure (raw buffer preservation + dispatch plumbing) is
+        // ready for when single-pass kernels are added.
+        if interaction_generator.gpu_opcode_raw_buffers.is_some()
+            && std::env::var("GPU_OPCODE_INTER").is_ok()
+        {
+            use stwo_cairo_prover::witness::cairo_claim_generator::{
+                GpuOpcodeInteractionResult, GpuOpcodeInteractionTraces,
+                GpuOpcodeTraces as GpuOpcodeTracesType,
+                OpcodeInteractionGenerators,
+            };
+            use stwo_metal::backend::metal::interaction_trace_opcodes::{
+                gpu_interaction_trace_ret_opcode,
+                gpu_interaction_trace_jump_opcode_rel_imm,
+                gpu_interaction_trace_assert_eq_double_deref,
+                gpu_interaction_trace_jnz_opcode_taken,
+                gpu_interaction_trace_call_opcode_rel_imm,
+            };
+            use stwo_metal::backend::metal::interaction_trace_id_to_big::extract_lookup_elements_for_gpu;
+            use stwo_metal_sys::metal::U32Buffer as GpuU32Buffer;
+
+            // Take the raw buffers out of the interaction generator.
+            let raw_buffers_box = interaction_generator.gpu_opcode_raw_buffers.take().unwrap();
+            let mut raw_traces = *raw_buffers_box
+                .downcast::<GpuOpcodeTracesType>()
+                .expect("gpu_opcode_raw_buffers downcast to GpuOpcodeTraces failed");
+
+            interaction_generator.gpu_opcode_interaction_dispatch_fn = Some(Box::new(
+                move |mut opcode_gens: OpcodeInteractionGenerators,
+                      lookup_elements: &CommonLookupElements| {
+                    let t_gpu_opcode_inter = Instant::now();
+                    let mut gpu_traces = GpuOpcodeInteractionTraces::default();
+
+                    // Extract GPU lookup elements from CommonLookupElements.
+                    let (z, alpha_powers_arr) = {
+                        use stwo_constraint_framework::logup::LookupElements;
+                        let inner: &LookupElements<128> = unsafe {
+                            &*(lookup_elements as *const CommonLookupElements
+                                as *const LookupElements<128>)
+                        };
+                        (inner.z, inner.alpha_powers)
+                    };
+                    let gpu_lookup = extract_lookup_elements_for_gpu(z, &alpha_powers_arr);
+
+                    /// Dispatch one opcode's GPU interaction trace from raw buffer.
+                    macro_rules! dispatch_opcode_interaction {
+                        ($raw_field:ident, $gpu_field:ident, $gen_field:ident, $gpu_fn:expr, $name:expr) => {
+                            if let Some(raw_box) = raw_traces.$raw_field.take() {
+                                let (raw_buf, n_rows, col_len) =
+                                    *raw_box.downcast::<(GpuU32Buffer, usize, usize)>()
+                                        .expect(concat!("raw buffer downcast failed for ", stringify!($name)));
+                                match $gpu_fn(&raw_buf, n_rows, col_len, &gpu_lookup) {
+                                    Ok((trace_evals, claimed_sum)) => {
+                                        gpu_traces.$gpu_field = Some(GpuOpcodeInteractionResult {
+                                            trace: Box::new(trace_evals) as Box<dyn std::any::Any + Send>,
+                                            claimed_sum,
+                                        });
+                                        // Consume the generator so CPU fallback is skipped.
+                                        opcode_gens.$gen_field.take();
+                                        eprintln!("  [gpu-opcode-inter] {} -> GPU (n_rows={}, col_len={})", $name, n_rows, col_len);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("  [gpu-opcode-inter] {} GPU error: {e}, falling back to CPU", $name);
+                                    }
+                                }
+                            }
+                        };
+                    }
+
+                    dispatch_opcode_interaction!(
+                        ret_opcode_raw, ret_opcode, ret_opcode,
+                        gpu_interaction_trace_ret_opcode, "ret_opcode"
+                    );
+                    dispatch_opcode_interaction!(
+                        jump_opcode_rel_imm_raw, jump_opcode_rel_imm, jump_opcode_rel_imm,
+                        gpu_interaction_trace_jump_opcode_rel_imm, "jump_opcode_rel_imm"
+                    );
+                    dispatch_opcode_interaction!(
+                        assert_eq_opcode_double_deref_raw, assert_eq_opcode_double_deref,
+                        assert_eq_opcode_double_deref,
+                        gpu_interaction_trace_assert_eq_double_deref, "assert_eq_double_deref"
+                    );
+                    dispatch_opcode_interaction!(
+                        jnz_opcode_taken_raw, jnz_opcode_taken, jnz_opcode_taken,
+                        gpu_interaction_trace_jnz_opcode_taken, "jnz_opcode_taken"
+                    );
+                    dispatch_opcode_interaction!(
+                        call_opcode_rel_imm_raw, call_opcode_rel_imm, call_opcode_rel_imm,
+                        gpu_interaction_trace_call_opcode_rel_imm, "call_opcode_rel_imm"
+                    );
+
+                    let gpu_opcode_inter_ms = t_gpu_opcode_inter.elapsed().as_secs_f64() * 1000.0;
+                    eprintln!(
+                        "  GPU opcode interaction trace dispatch: {:.1} ms (5 opcodes)",
+                        gpu_opcode_inter_ms,
+                    );
+
+                    (gpu_traces, opcode_gens)
                 },
             ));
         }

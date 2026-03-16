@@ -85,6 +85,20 @@ impl RawOpcodeTrace {
     }
 }
 
+/// Opcode trace with both CircleEvaluations (for commitment) and the raw GPU
+/// buffer (for subsequent GPU interaction trace generation without CPU
+/// flattening).
+pub struct OpcodeTraceWithRaw {
+    /// Individual column evaluations for tree commitment.
+    pub evals: Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
+    /// Flat column-major GPU buffer (all columns concatenated).
+    pub raw_buffer: U32Buffer,
+    /// Number of actual (non-padded) rows.
+    pub n_rows: usize,
+    /// Column length (padded to power of two, >= 16).
+    pub column_length: usize,
+}
+
 /// Shared logic: upload inputs and memory tables, call a GPU kernel, return raw trace.
 fn dispatch_opcode_kernel(
     inputs: &[u32],
@@ -148,6 +162,28 @@ pub fn generate_add_opcode_small_trace(
     Ok(raw.to_metal_evaluations())
 }
 
+/// Generate the assert_eq_opcode_double_deref trace (19 columns) on GPU,
+/// returning both evaluations and the raw flat GPU buffer for interaction trace.
+pub fn generate_assert_eq_double_deref_trace_with_raw(
+    inputs: &[u32],
+    address_to_id: &[u32],
+    big_values: &[u32],
+    small_values: &[u32],
+    n_rows: usize,
+) -> Result<OpcodeTraceWithRaw, OpcodeTraceError> {
+    let raw = dispatch_opcode_kernel(
+        inputs, address_to_id, big_values, small_values, n_rows, 19,
+        U32Buffer::witness_assert_eq_double_deref_trace,
+    )?;
+    let evals = raw.to_metal_evaluations();
+    Ok(OpcodeTraceWithRaw {
+        evals,
+        raw_buffer: raw.values,
+        n_rows,
+        column_length: raw.column_length,
+    })
+}
+
 /// Generate the assert_eq_opcode_double_deref trace (19 columns) on GPU.
 pub fn generate_assert_eq_double_deref_trace(
     inputs: &[u32],
@@ -166,6 +202,28 @@ pub fn generate_assert_eq_double_deref_trace(
         U32Buffer::witness_assert_eq_double_deref_trace,
     )?;
     Ok(raw.to_metal_evaluations())
+}
+
+/// Generate the jnz_opcode_taken trace (47 columns) on GPU,
+/// returning both evaluations and the raw flat GPU buffer for interaction trace.
+pub fn generate_jnz_opcode_taken_trace_with_raw(
+    inputs: &[u32],
+    address_to_id: &[u32],
+    big_values: &[u32],
+    small_values: &[u32],
+    n_rows: usize,
+) -> Result<OpcodeTraceWithRaw, OpcodeTraceError> {
+    let raw = dispatch_opcode_kernel(
+        inputs, address_to_id, big_values, small_values, n_rows, 47,
+        U32Buffer::witness_jnz_opcode_taken_trace,
+    )?;
+    let evals = raw.to_metal_evaluations();
+    Ok(OpcodeTraceWithRaw {
+        evals,
+        raw_buffer: raw.values,
+        n_rows,
+        column_length: raw.column_length,
+    })
 }
 
 /// Generate the jnz_opcode_taken trace (47 columns) on GPU.
@@ -188,6 +246,28 @@ pub fn generate_jnz_opcode_taken_trace(
     Ok(raw.to_metal_evaluations())
 }
 
+/// Generate the jump_opcode_rel_imm trace (13 columns) on GPU,
+/// returning both evaluations and the raw flat GPU buffer for interaction trace.
+pub fn generate_jump_opcode_rel_imm_trace_with_raw(
+    inputs: &[u32],
+    address_to_id: &[u32],
+    big_values: &[u32],
+    small_values: &[u32],
+    n_rows: usize,
+) -> Result<OpcodeTraceWithRaw, OpcodeTraceError> {
+    let raw = dispatch_opcode_kernel(
+        inputs, address_to_id, big_values, small_values, n_rows, 13,
+        U32Buffer::witness_jump_opcode_rel_imm_trace,
+    )?;
+    let evals = raw.to_metal_evaluations();
+    Ok(OpcodeTraceWithRaw {
+        evals,
+        raw_buffer: raw.values,
+        n_rows,
+        column_length: raw.column_length,
+    })
+}
+
 /// Generate the jump_opcode_rel_imm trace (13 columns) on GPU.
 pub fn generate_jump_opcode_rel_imm_trace(
     inputs: &[u32],
@@ -208,6 +288,28 @@ pub fn generate_jump_opcode_rel_imm_trace(
     Ok(raw.to_metal_evaluations())
 }
 
+/// Generate the call_opcode_rel_imm trace (24 columns) on GPU,
+/// returning both evaluations and the raw flat GPU buffer for interaction trace.
+pub fn generate_call_opcode_rel_imm_trace_with_raw(
+    inputs: &[u32],
+    address_to_id: &[u32],
+    big_values: &[u32],
+    small_values: &[u32],
+    n_rows: usize,
+) -> Result<OpcodeTraceWithRaw, OpcodeTraceError> {
+    let raw = dispatch_opcode_kernel(
+        inputs, address_to_id, big_values, small_values, n_rows, 24,
+        U32Buffer::witness_call_opcode_rel_imm_trace,
+    )?;
+    let evals = raw.to_metal_evaluations();
+    Ok(OpcodeTraceWithRaw {
+        evals,
+        raw_buffer: raw.values,
+        n_rows,
+        column_length: raw.column_length,
+    })
+}
+
 /// Generate the call_opcode_rel_imm trace (24 columns) on GPU.
 pub fn generate_call_opcode_rel_imm_trace(
     inputs: &[u32],
@@ -226,6 +328,28 @@ pub fn generate_call_opcode_rel_imm_trace(
         U32Buffer::witness_call_opcode_rel_imm_trace,
     )?;
     Ok(raw.to_metal_evaluations())
+}
+
+/// Generate the ret_opcode trace (16 columns) on GPU,
+/// returning both evaluations and the raw flat GPU buffer for interaction trace.
+pub fn generate_ret_opcode_trace_with_raw(
+    inputs: &[u32],
+    address_to_id: &[u32],
+    big_values: &[u32],
+    small_values: &[u32],
+    n_rows: usize,
+) -> Result<OpcodeTraceWithRaw, OpcodeTraceError> {
+    let raw = dispatch_opcode_kernel(
+        inputs, address_to_id, big_values, small_values, n_rows, 16,
+        U32Buffer::witness_ret_opcode_trace,
+    )?;
+    let evals = raw.to_metal_evaluations();
+    Ok(OpcodeTraceWithRaw {
+        evals,
+        raw_buffer: raw.values,
+        n_rows,
+        column_length: raw.column_length,
+    })
 }
 
 /// Generate the ret_opcode trace (16 columns) on GPU.
