@@ -2111,6 +2111,51 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    /// Generate the interaction trace using the generic data-driven kernel.
+    ///
+    /// # Arguments
+    /// * `values`       - Flat column-major [n_value_columns][n_rows] u32 lookup data
+    /// * `descriptors`  - Array of ColumnDescriptor (8 u32 each)
+    /// * `alpha_powers` - [max_combine_size] QM31 = [max_combine_size*4] u32
+    /// * `z`            - QM31 = [4] u32
+    /// * `n_rows`       - number of rows (power of two)
+    /// * `n_logup_cols` - number of logup columns
+    /// * `n_rows_real`  - actual row count for enabler computation
+    ///
+    /// # Returns
+    /// Column-major [n_logup_cols*4][n_rows] u32 output.
+    pub fn interaction_trace_generic(
+        values: &Self,
+        descriptors: &Self,
+        alpha_powers: &Self,
+        z: &Self,
+        n_rows: u32,
+        n_logup_cols: u32,
+        n_rows_real: u32,
+    ) -> Result<Self, MetalError> {
+        assert_eq!(z.len, 4, "z must have 4 u32");
+        assert!(n_logup_cols > 0, "must have at least one logup column");
+
+        let output_len = n_logup_cols as usize * 4 * n_rows as usize;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            ffi::interaction_trace_generic(
+                runtime.raw.as_ptr(),
+                values.raw.as_ptr(),
+                descriptors.raw.as_ptr(),
+                alpha_powers.raw.as_ptr(),
+                z.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_rows,
+                n_logup_cols,
+                n_rows_real,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
     pub fn accumulate_wide_fibonacci_quotients(
         trace_evaluations: &Self,
         random_coeff_powers: &Self,
@@ -4520,6 +4565,19 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_interaction_trace_generic(
+            runtime: *mut c_void,
+            values: *mut c_void,
+            descriptors: *mut c_void,
+            alpha_powers: *mut c_void,
+            z: *mut c_void,
+            trace: *mut c_void,
+            n_rows: u32,
+            n_logup_cols: u32,
+            n_rows_real: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_accumulate_wide_fibonacci_quotients_u32x4(
             runtime: *mut c_void,
             trace_evaluations: *mut c_void,
@@ -6701,6 +6759,38 @@ mod ffi {
             trace,
             n_rows,
             split,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn interaction_trace_generic(
+        runtime: *mut c_void,
+        values: *mut c_void,
+        descriptors: *mut c_void,
+        alpha_powers: *mut c_void,
+        z: *mut c_void,
+        trace: *mut c_void,
+        n_rows: u32,
+        n_logup_cols: u32,
+        n_rows_real: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_interaction_trace_generic(
+            runtime,
+            values,
+            descriptors,
+            alpha_powers,
+            z,
+            trace,
+            n_rows,
+            n_logup_cols,
+            n_rows_real,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -9093,6 +9183,23 @@ mod ffi {
         _trace: *mut c_void,
         _n_rows: u32,
         _split: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn interaction_trace_generic(
+        _runtime: *mut c_void,
+        _values: *mut c_void,
+        _descriptors: *mut c_void,
+        _alpha_powers: *mut c_void,
+        _z: *mut c_void,
+        _trace: *mut c_void,
+        _n_rows: u32,
+        _n_logup_cols: u32,
+        _n_rows_real: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

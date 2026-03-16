@@ -8328,6 +8328,93 @@ bool stwo_metal_interaction_trace_addr_to_id(
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Interaction trace: generic (data-driven, all component types)
+// ---------------------------------------------------------------------------
+
+bool stwo_metal_interaction_trace_generic(
+    void *runtime_ptr,
+    void *values_ptr,
+    void *descriptors_ptr,
+    void *alpha_powers_ptr,
+    void *z_ptr,
+    void *trace_ptr,
+    uint32_t n_rows,
+    uint32_t n_logup_cols,
+    uint32_t n_rows_real,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *values = stwo_metal_buffer_box(values_ptr);
+        StwoMetalBufferBox *descriptors = stwo_metal_buffer_box(descriptors_ptr);
+        StwoMetalBufferBox *alpha_powers = stwo_metal_buffer_box(alpha_powers_ptr);
+        StwoMetalBufferBox *z = stwo_metal_buffer_box(z_ptr);
+        StwoMetalBufferBox *trace = stwo_metal_buffer_box(trace_ptr);
+
+        NSUInteger expected_trace_len = (NSUInteger)n_logup_cols * 4u * (NSUInteger)n_rows;
+        if (trace.len != expected_trace_len) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"interaction_trace_generic: trace output buffer length mismatch.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(
+            runtime,
+            @"interaction_trace_generic_fractions",
+            error_message,
+            error_message_len
+        );
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:values.buffer offset:0 atIndex:0];
+        [encoder setBuffer:descriptors.buffer offset:0 atIndex:1];
+        [encoder setBuffer:alpha_powers.buffer offset:0 atIndex:2];
+        [encoder setBuffer:z.buffer offset:0 atIndex:3];
+        [encoder setBuffer:trace.buffer offset:0 atIndex:4];
+        [encoder setBytes:&n_rows length:sizeof(n_rows) atIndex:5];
+        [encoder setBytes:&n_logup_cols length:sizeof(n_logup_cols) atIndex:6];
+        [encoder setBytes:&n_rows_real length:sizeof(n_rows_real) atIndex:7];
+
+        MTLSize grid_size = MTLSizeMake((NSUInteger)n_rows, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(
+            stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                command_buffer.error.localizedDescription
+                    ?: @"interaction_trace_generic kernel failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+
 // Witness generation: range_check trace (generic for all range-check components)
 // ---------------------------------------------------------------------------
 
