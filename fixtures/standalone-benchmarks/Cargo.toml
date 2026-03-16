@@ -44,3 +44,9 @@ stwo-cairo-common = { path = "../../vendor/stwo-cairo/stwo_cairo_prover/crates/c
 [patch.crates-io]
 stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo" }
 stwo-constraint-framework = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/constraint-framework" }
+
+[patch."https://github.com/starkware-libs/stwo"]
+stwo = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/stwo" }
+stwo-constraint-framework = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/constraint-framework" }
+stwo-air-utils-derive = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/air-utils-derive" }
+stwo-air-utils = { path = "../../vendor/stwo-upstream-dev-62b228e/crates/air-utils" }

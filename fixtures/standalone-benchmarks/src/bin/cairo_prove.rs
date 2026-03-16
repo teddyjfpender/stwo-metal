@@ -701,6 +701,47 @@ mod cairo_prove_main {
         }
     }
 
+    /// Parse GPU thermal cooling pause duration from environment.
+    ///
+    /// Controls idle windows inserted between heavy GPU pipeline phases to
+    /// prevent Apple Silicon GPU thermal throttling.  Under sustained GPU load,
+    /// clock frequency can drop dramatically (e.g. composition kernel: 319ms
+    /// cool vs 4281ms throttled).  Even 5-10ms of GPU idle lets the clock
+    /// recover.
+    ///
+    /// Environment variables (checked in order):
+    ///   GPU_COOL_MS=<millis>  — explicit pause duration per cooling point
+    ///   GPU_COOL=1            — shorthand for GPU_COOL_MS=8  (sensible default)
+    ///
+    /// Returns 0 when neither variable is set (cooling disabled).
+    fn gpu_cool_pause_ms() -> u64 {
+        if let Ok(val) = std::env::var("GPU_COOL_MS") {
+            return val.parse::<u64>().unwrap_or(0);
+        }
+        if std::env::var("GPU_COOL").is_ok() {
+            return 8; // default: 8ms per cooling point
+        }
+        0
+    }
+
+    /// Number of composition sub-batches for GPU thermal management.
+    ///
+    /// When set to >1, the single batched command buffer for all JIT
+    /// composition kernels is split into N sub-batches with micro-pauses
+    /// between them.  This prevents the GPU from running all 21+ kernels
+    /// back-to-back without any idle time.
+    ///
+    /// Set via GPU_COMP_BATCHES=<N> (default: 1 = single batch).
+    /// Sub-batching adds synchronization overhead (~20-40ms) so it is
+    /// only beneficial when the per-sub-batch GPU cooling effect outweighs
+    /// the overhead.  Typical values: 2-4.
+    fn gpu_composition_batch_count() -> usize {
+        if let Ok(val) = std::env::var("GPU_COMP_BATCHES") {
+            return val.parse::<usize>().unwrap_or(1).max(1);
+        }
+        1 // default: single batch (original behavior)
+    }
+
     /// Lower all Cairo components and return lowering results + timing.
     fn lower_all_components(components: &CairoComponents) -> (Vec<LoweringResult>, f64) {
         let lowering_start = Instant::now();
@@ -899,7 +940,16 @@ mod cairo_prove_main {
             let cache_ms = cache_start.elapsed().as_secs_f64() * 1000.0;
             eprintln!("  Cache build: {:.1} ms (amortized across {} iters)", cache_ms, n_iters);
 
+            let cool_ms = gpu_cool_pause_ms();
             for i in 0..n_iters {
+                // GPU thermal management: cool between iterations.
+                // The previous iteration's prove_values + Merkle phases leave
+                // the GPU hot. A brief idle window before the next iteration
+                // lets the GPU clock recover for more consistent performance.
+                if cool_ms > 0 && i > 0 {
+                    let inter_iter_cool = cool_ms * 5; // longer pause between iterations
+                    std::thread::sleep(std::time::Duration::from_millis(inter_iter_cool));
+                }
                 let input_clone = input.clone();
                 let preprocessed_trace = preprocessed_trace.clone();
                 let t = Instant::now();
@@ -1791,14 +1841,15 @@ mod cairo_prove_main {
                 let mut wait_ms = 0.0f64;
                 let mut denom_ms = 0.0f64;
 
-                // Phase 3a: Batch all JIT-compilable components into a single
-                // Metal command buffer.  This eliminates per-component command
-                // buffer creation/commit overhead.
+                // Phase 3a: Batch JIT-compilable components into Metal command
+                // buffers.  When GPU_COOL is active, splits into multiple
+                // sub-batches with micro-pauses between them to prevent GPU
+                // thermal throttling.  Without GPU_COOL, uses a single batch
+                // (original behavior, maximum throughput when thermals allow).
                 struct PendingBatchEntry<'a> {
                     dst: stwo_metal_sys::metal::U32Buffer,
                     comp: &'a ComponentWork<'a>,
                 }
-                let mut batch_entries: Vec<PendingBatchEntry<'_>> = Vec::new();
                 let mut sync_components: Vec<&ComponentWork<'_>> = Vec::new();
                 let mut gpu_trace_ct = 0usize;
 
@@ -1813,31 +1864,77 @@ mod cairo_prove_main {
 
                 let submit_start = Instant::now();
 
-                // Create one shared command buffer for all JIT components.
-                let batch = match create_batch_command_buffer() {
-                    Ok(b) => Some(b),
-                    Err(ref e) => {
-                        eprintln!("    [BATCH CREATE FAIL] falling back to per-component dispatch: {:?}", e);
-                        None
-                    }
-                };
+                // Determine sub-batch count for GPU thermal management.
+                let n_sub_batches = gpu_composition_batch_count();
+                let cool_ms = gpu_cool_pause_ms();
 
-                for comp in &gpu_components {
+                // First pass: classify each GPU component as batchable, fallback, or sync.
+                // Batchable components are collected into `batchable_comps` and will be
+                // distributed across sub-batches in the second pass.
+                enum BatchableKind {
+                    /// GPU-resident columns: fused blit+compute dispatch.
+                    FusedBlit { comp_idx: usize },
+                    /// CPU-data path: standard JIT dispatch.
+                    CpuData { comp_idx: usize },
+                }
+                let mut batchable_comps: Vec<BatchableKind> = Vec::new();
+
+                for (comp_idx, comp) in gpu_components.iter().enumerate() {
                     let cache_entry = shader_cache.get(&comp.program.header().semantic_hash);
-                    if let Some((ref source, ref name)) = cache_entry {
-                        // GPU buffer pass-through: if we have GPU-resident columns,
-                        // use fused blit+compute dispatch to avoid CPU memmove.
+                    if let Some((ref _source, ref _name)) = cache_entry {
                         if let Some(ref gpu_interactions) = comp.gpu_interaction_cols {
                             let n_rows = 1usize << comp.eval_domain_log_size;
-                            let mut interaction_offsets: Vec<u32> = Vec::with_capacity(gpu_interactions.len() + 1);
                             let mut total_cols = 0u32;
-                            interaction_offsets.push(0);
                             for interaction in gpu_interactions {
                                 total_cols += interaction.len() as u32;
-                                interaction_offsets.push(total_cols);
                             }
                             let total_elements = (total_cols as usize) * n_rows;
                             if total_elements > 0 {
+                                batchable_comps.push(BatchableKind::FusedBlit { comp_idx });
+                                continue;
+                            }
+                        }
+                        batchable_comps.push(BatchableKind::CpuData { comp_idx });
+                    } else {
+                        sync_components.push(comp);
+                    }
+                }
+
+                // Second pass: distribute batchable components across sub-batches
+                // and encode+commit each sub-batch.
+                let total_batchable = batchable_comps.len();
+                let batch_size = if n_sub_batches > 1 && total_batchable > 1 {
+                    (total_batchable + n_sub_batches - 1) / n_sub_batches
+                } else {
+                    total_batchable // single batch
+                };
+
+                for (sub_batch_idx, chunk) in batchable_comps.chunks(batch_size.max(1)).enumerate() {
+                    // Create a command buffer for this sub-batch.
+                    let batch = match create_batch_command_buffer() {
+                        Ok(b) => Some(b),
+                        Err(ref e) => {
+                            eprintln!("    [BATCH CREATE FAIL] sub-batch {}: falling back to per-component: {:?}", sub_batch_idx, e);
+                            None
+                        }
+                    };
+
+                    let mut sub_batch_entries: Vec<PendingBatchEntry<'_>> = Vec::new();
+
+                    for kind in chunk {
+                        match kind {
+                            BatchableKind::FusedBlit { comp_idx } => {
+                                let comp = &gpu_components[*comp_idx];
+                                let (ref source, ref name) = shader_cache[&comp.program.header().semantic_hash];
+                                let gpu_interactions = comp.gpu_interaction_cols.as_ref().unwrap();
+                                let n_rows = 1usize << comp.eval_domain_log_size;
+                                let mut interaction_offsets: Vec<u32> = Vec::with_capacity(gpu_interactions.len() + 1);
+                                let mut total_cols = 0u32;
+                                interaction_offsets.push(0);
+                                for interaction in gpu_interactions {
+                                    total_cols += interaction.len() as u32;
+                                    interaction_offsets.push(total_cols);
+                                }
                                 let random_coeff_powers =
                                     &all_random_coeff_powers[comp.coeff_start..comp.coeff_end];
 
@@ -1857,7 +1954,6 @@ mod cairo_prove_main {
                                         .collect();
 
                                 if let Some(ref batch_cb) = batch {
-                                    // Batched path: encode into shared command buffer.
                                     match encode_compiled_fused_blit_into_batch(
                                         batch_cb,
                                         &col_buffers,
@@ -1871,7 +1967,7 @@ mod cairo_prove_main {
                                         Ok(dst) => {
                                             compiled_ct += 1;
                                             gpu_trace_ct += 1;
-                                            batch_entries.push(PendingBatchEntry { dst, comp });
+                                            sub_batch_entries.push(PendingBatchEntry { dst, comp });
                                             continue;
                                         }
                                         Err(ref e) => {
@@ -1896,7 +1992,6 @@ mod cairo_prove_main {
                                         compiled_ct += 1;
                                         gpu_trace_ct += 1;
                                         fallback_pending.push(PendingGpu { handle, dst, comp });
-                                        continue;
                                     }
                                     Err(ref e) => {
                                         eprintln!(
@@ -1904,92 +1999,132 @@ mod cairo_prove_main {
                                             comp.name, e,
                                         );
                                         sync_components.push(comp);
-                                        continue;
+                                    }
+                                }
+                            }
+                            BatchableKind::CpuData { comp_idx } => {
+                                let comp = &gpu_components[*comp_idx];
+                                let (ref source, ref name) = shader_cache[&comp.program.header().semantic_hash];
+
+                                let interaction_refs: Vec<Vec<&[BaseField]>> = comp.interaction_cols
+                                    .iter()
+                                    .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
+                                    .collect();
+                                let interaction_slice_refs: Vec<&[&[BaseField]]> =
+                                    interaction_refs.iter().map(|cols| cols.as_slice()).collect();
+                                let random_coeff_powers =
+                                    &all_random_coeff_powers[comp.coeff_start..comp.coeff_end];
+
+                                let runtime = MetalEvaluationProgramRuntimeInputsV1 {
+                                    trace: MetalEvaluationProgramTraceViewV1 {
+                                        trace_interactions: &interaction_slice_refs,
+                                        preprocessed_columns: &[],
+                                    },
+                                    base_params: &[],
+                                    ext_params: &[],
+                                    random_coeff_powers,
+                                };
+
+                                if let Some(ref batch_cb) = batch {
+                                    match encode_compiled_program_v1_into_batch(
+                                        batch_cb, runtime, source, name,
+                                    ) {
+                                        Ok(dst) => {
+                                            compiled_ct += 1;
+                                            sub_batch_entries.push(PendingBatchEntry { dst, comp });
+                                            continue;
+                                        }
+                                        Err(ref e) => {
+                                            eprintln!(
+                                                "    [BATCH JIT FALLBACK] component '{}': {:?}",
+                                                comp.name, e,
+                                            );
+                                        }
+                                    }
+                                }
+                                // Fallback: per-component async.
+                                let interaction_refs2: Vec<Vec<&[BaseField]>> = comp.interaction_cols
+                                    .iter()
+                                    .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
+                                    .collect();
+                                let interaction_slice_refs2: Vec<&[&[BaseField]]> =
+                                    interaction_refs2.iter().map(|cols| cols.as_slice()).collect();
+                                let random_coeff_powers2 =
+                                    &all_random_coeff_powers[comp.coeff_start..comp.coeff_end];
+                                let runtime2 = MetalEvaluationProgramRuntimeInputsV1 {
+                                    trace: MetalEvaluationProgramTraceViewV1 {
+                                        trace_interactions: &interaction_slice_refs2,
+                                        preprocessed_columns: &[],
+                                    },
+                                    base_params: &[],
+                                    ext_params: &[],
+                                    random_coeff_powers: random_coeff_powers2,
+                                };
+                                match execute_compiled_metal_evaluation_program_v1_async(
+                                    runtime2, source, name,
+                                ) {
+                                    Ok((handle, dst)) => {
+                                        compiled_ct += 1;
+                                        fallback_pending.push(PendingGpu { handle, dst, comp });
+                                    }
+                                    Err(ref e) => {
+                                        eprintln!(
+                                            "    [ASYNC JIT FALLBACK] component '{}': {:?}",
+                                            comp.name, e,
+                                        );
+                                        sync_components.push(comp);
                                     }
                                 }
                             }
                         }
+                    }
 
-                        // CPU-data path: build CPU slice refs.
-                        let interaction_refs: Vec<Vec<&[BaseField]>> = comp.interaction_cols
-                            .iter()
-                            .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
-                            .collect();
-                        let interaction_slice_refs: Vec<&[&[BaseField]]> =
-                            interaction_refs.iter().map(|cols| cols.as_slice()).collect();
-                        let random_coeff_powers =
-                            &all_random_coeff_powers[comp.coeff_start..comp.coeff_end];
-
-                        let runtime = MetalEvaluationProgramRuntimeInputsV1 {
-                            trace: MetalEvaluationProgramTraceViewV1 {
-                                trace_interactions: &interaction_slice_refs,
-                                preprocessed_columns: &[],
-                            },
-                            base_params: &[],
-                            ext_params: &[],
-                            random_coeff_powers,
-                        };
-
-                        if let Some(ref batch_cb) = batch {
-                            // Batched path.
-                            match encode_compiled_program_v1_into_batch(
-                                batch_cb, runtime, source, name,
-                            ) {
-                                Ok(dst) => {
-                                    compiled_ct += 1;
-                                    batch_entries.push(PendingBatchEntry { dst, comp });
-                                    continue;
+                    // Commit this sub-batch and wait for it.
+                    if let Some(b) = batch {
+                        if !sub_batch_entries.is_empty() {
+                            let handle = commit_batch_command_buffer(b);
+                            match handle.wait() {
+                                Ok(()) => {
+                                    for entry in sub_batch_entries {
+                                        let comp = entry.comp;
+                                        let raw = match entry.dst.to_vec() {
+                                            Ok(v) => v,
+                                            Err(ref e) => {
+                                                eprintln!(
+                                                    "    [BATCH READ FAIL] component '{}': {:?}",
+                                                    comp.name, e,
+                                                );
+                                                continue;
+                                            }
+                                        };
+                                        let mut row_res: Vec<SecureField> = raw
+                                            .chunks_exact(4)
+                                            .map(|limbs| {
+                                                SecureField::from_u32_unchecked(limbs[0], limbs[1], limbs[2], limbs[3])
+                                            })
+                                            .collect();
+                                        let denom_start = Instant::now();
+                                        apply_denom_inv(&mut row_res, comp.log_size, comp.eval_domain_log_size);
+                                        denom_ms += denom_start.elapsed().as_secs_f64() * 1000.0;
+                                        quotients.push((comp.eval_domain_log_size, row_res));
+                                    }
                                 }
                                 Err(ref e) => {
-                                    eprintln!(
-                                        "    [BATCH JIT FALLBACK] component '{}': {:?}",
-                                        comp.name, e,
-                                    );
+                                    eprintln!("    [BATCH WAIT FAIL] sub-batch {}: {:?}", sub_batch_idx, e);
                                 }
                             }
-                        }
-                        // Fallback: per-component async. Need to rebuild runtime
-                        // since the batch attempt consumed it.
-                        let interaction_refs2: Vec<Vec<&[BaseField]>> = comp.interaction_cols
-                            .iter()
-                            .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
-                            .collect();
-                        let interaction_slice_refs2: Vec<&[&[BaseField]]> =
-                            interaction_refs2.iter().map(|cols| cols.as_slice()).collect();
-                        let random_coeff_powers2 =
-                            &all_random_coeff_powers[comp.coeff_start..comp.coeff_end];
-                        let runtime2 = MetalEvaluationProgramRuntimeInputsV1 {
-                            trace: MetalEvaluationProgramTraceViewV1 {
-                                trace_interactions: &interaction_slice_refs2,
-                                preprocessed_columns: &[],
-                            },
-                            base_params: &[],
-                            ext_params: &[],
-                            random_coeff_powers: random_coeff_powers2,
-                        };
-                        match execute_compiled_metal_evaluation_program_v1_async(
-                            runtime2, source, name,
-                        ) {
-                            Ok((handle, dst)) => {
-                                compiled_ct += 1;
-                                fallback_pending.push(PendingGpu { handle, dst, comp });
-                            }
-                            Err(ref e) => {
-                                eprintln!(
-                                    "    [ASYNC JIT FALLBACK] component '{}': {:?}",
-                                    comp.name, e,
-                                );
-                                sync_components.push(comp);
+
+                            // GPU thermal cooling: insert micro-pause between
+                            // sub-batches to let the GPU clock recover.
+                            let is_last_sub_batch = sub_batch_idx == (total_batchable + batch_size.max(1) - 1) / batch_size.max(1) - 1;
+                            if cool_ms > 0 && n_sub_batches > 1 && !is_last_sub_batch {
+                                std::thread::sleep(std::time::Duration::from_millis(cool_ms));
                             }
                         }
-                    } else {
-                        sync_components.push(comp);
                     }
                 }
 
-                // Commit the batch (one GPU submission for all encoded components).
-                let batch_handle = batch.map(|b| commit_batch_command_buffer(b));
-                let n_batched = batch_entries.len();
+                let n_batched = quotients.len(); // components already resolved from sub-batches
 
                 let submit_ms = submit_start.elapsed().as_secs_f64() * 1000.0;
 
@@ -2079,46 +2214,9 @@ mod cairo_prove_main {
                     quotients.push((comp.eval_domain_log_size, row_res));
                 }
 
-                // Phase 3c: Wait on the single batched command buffer, then
-                // read back all destination buffers.
+                // Phase 3c: Wait on any per-component fallback handles.
+                // (Sub-batch results are already processed in the sub-batch loop above.)
                 let wait_start = Instant::now();
-
-                // Wait on the single batch handle (if any components were batched).
-                if let Some(handle) = batch_handle {
-                    match handle.wait() {
-                        Ok(()) => {
-                            // Read all batch destination buffers.
-                            for entry in batch_entries {
-                                let comp = entry.comp;
-                                let raw = match entry.dst.to_vec() {
-                                    Ok(v) => v,
-                                    Err(ref e) => {
-                                        eprintln!(
-                                            "    [BATCH READ FAIL] component '{}': {:?}",
-                                            comp.name, e,
-                                        );
-                                        continue;
-                                    }
-                                };
-                                let mut row_res: Vec<SecureField> = raw
-                                    .chunks_exact(4)
-                                    .map(|limbs| {
-                                        SecureField::from_u32_unchecked(limbs[0], limbs[1], limbs[2], limbs[3])
-                                    })
-                                    .collect();
-                                let denom_start = Instant::now();
-                                apply_denom_inv(&mut row_res, comp.log_size, comp.eval_domain_log_size);
-                                denom_ms += denom_start.elapsed().as_secs_f64() * 1000.0;
-                                quotients.push((comp.eval_domain_log_size, row_res));
-                            }
-                        }
-                        Err(ref e) => {
-                            eprintln!("    [BATCH WAIT FAIL]: {:?}", e);
-                        }
-                    }
-                }
-
-                // Wait on any per-component fallback handles.
                 let n_fallback = fallback_pending.len();
                 for p in fallback_pending {
                     let comp = p.comp;
@@ -2142,10 +2240,16 @@ mod cairo_prove_main {
                 let _n_async = n_batched + n_fallback;
                 let kernel_ms = submit_ms + wait_ms;
                 if n_batched > 0 || n_fallback > 0 {
+                    let sub_batch_info = if n_sub_batches > 1 {
+                        format!(" [{} sub-batches, {}ms cool]", n_sub_batches, cool_ms)
+                    } else {
+                        String::new()
+                    };
                     println!(
-                        "      batched pipeline: submit={:.1}ms wait={:.1}ms ({} batched, {} fallback-async [{} gpu-trace], {} sync)",
+                        "      batched pipeline: submit={:.1}ms wait={:.1}ms ({} batched, {} fallback-async [{} gpu-trace], {} sync){}",
                         submit_ms, wait_ms,
-                        n_batched, n_fallback, gpu_trace_ct, gpu_ct + cpu_ct
+                        n_batched, n_fallback, gpu_trace_ct, gpu_ct + cpu_ct,
+                        sub_batch_info,
                     );
                 }
 
@@ -3094,11 +3198,12 @@ mod cairo_prove_main {
             cairo_claim_generator.gpu_precomputed_metal_values = Some(precomputed_values);
         }
 
-        // --- GPU opcode dispatch: run opcode kernels on GPU in parallel with CPU ---
-        // Extract opcode inputs (pc, ap, fp) and dispatch GPU kernels on a
-        // background thread. The GPU thread runs concurrently with the CPU rayon
-        // opcode scope inside write_trace(). After the CPU scope finishes
-        // (multiplicities accumulated), the GPU results are joined and committed.
+        // --- GPU opcode dispatch (PRIMARY path): run opcode kernels on GPU ---
+        // GPU generates trace columns for 6 opcodes in parallel with CPU.
+        // CPU write_trace() still runs for multiplicity accumulation on
+        // sub-components, but GPU trace columns are committed instead of CPU
+        // columns via extend_opaque_evals. This eliminates redundant CPU trace
+        // generation for GPU-ready opcodes.
         {
             use stwo_cairo_prover::witness::cairo_claim_generator::GpuOpcodeTraces;
             use stwo_metal::{
@@ -3191,9 +3296,7 @@ mod cairo_prove_main {
                 }
 
                 let gpu_ms = t_opcode_gpu.elapsed().as_secs_f64() * 1000.0;
-                if std::env::var("GPU_WITNESS").is_ok() {
-                    eprintln!("  [GPU_WITNESS] GPU opcode dispatch thread: {:.1} ms", gpu_ms);
-                }
+                eprintln!("  GPU opcode trace (primary path): {:.1} ms", gpu_ms);
 
                 traces
             });
@@ -3426,6 +3529,9 @@ mod cairo_prove_main {
         hybrid_tb.commit(channel);
         let base_commit_ms = t_base_commit.elapsed().as_secs_f64() * 1000.0;
 
+        // GPU thermal management: parse cooling configuration once.
+        let gpu_cool_ms = gpu_cool_pause_ms();
+
         // 5. Interaction PoW (Metal GPU).
         let t_pow = Instant::now();
         let interaction_pow_bits = cairo_air::verifier::INTERACTION_POW_BITS;
@@ -3609,6 +3715,18 @@ mod cairo_prove_main {
         hybrid_tb.commit(channel);
         let inter_commit_ms = t_inter_commit.elapsed().as_secs_f64() * 1000.0;
 
+        // GPU thermal management: insert idle window after interaction commit
+        // (the last heavy GPU phase before composition). This is the most
+        // critical cooling point — composition kernels are the most sensitive
+        // to thermal throttling (319ms cool vs 4281ms throttled).
+        //
+        // The lowering phase (~0.5ms, CPU-only) provides a natural tiny idle
+        // window.  With GPU_COOL, we extend this with an explicit pause.
+        // The pause duration is `gpu_cool_ms` (e.g. GPU_COOL=1 gives 8ms).
+        if gpu_cool_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(gpu_cool_ms));
+        }
+
         // 7. Build CairoComponents and lower.
         println!("  Building CairoComponents...");
         let components = CairoComponents::new(
@@ -3760,7 +3878,12 @@ mod cairo_prove_main {
         println!("  Interaction trace gen + upload:    {:>8.1} ms", inter_gen_ms);
         println!("  Interaction trace commit:          {:>8.1} ms", inter_commit_ms);
         println!("  Lowering:                          {:>8.1} ms", lowering_only_ms);
-        println!("  Composition (Metal V1 GPU):        {:>8.1} ms", composition_ms);
+        println!("  Composition (Metal V1 GPU):        {:>8.1} ms{}", composition_ms,
+            if gpu_cool_ms > 0 {
+                format!(" [GPU_COOL={}ms, {} sub-batches]", gpu_cool_ms, gpu_composition_batch_count())
+            } else {
+                String::new()
+            });
         println!("  Composition commit:                {:>8.1} ms", comp_commit_ms);
         println!("  prove_values (MetalBackend):       {:>8.1} ms", prove_values_ms);
         println!("  ─────────────────────────────────────────");

@@ -126,6 +126,16 @@ impl<const N: usize> ComponentTrace<N> {
         )
     }
 
+    /// Returns a reference to the underlying column data.
+    pub fn column_data(&self) -> &[Vec<PackedM31>; N] {
+        &self.data
+    }
+
+    /// Extracts the underlying column data, consuming the trace.
+    pub fn into_column_data(self) -> [Vec<PackedM31>; N] {
+        self.data
+    }
+
     pub fn to_evals(self) -> Vec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>> {
         let domain = CanonicCoset::new(self.log_size).circle_domain();
         self.data
