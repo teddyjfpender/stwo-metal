@@ -146,8 +146,7 @@ kernel void interaction_trace_id_to_big_fractions(
     // ------------------------------------------------------------------
     {
         uint id_value = (row + id_offset) | large_id_base;
-        uint yield_vals[29]; // 1 relation_id + 1 id + 27 limbs... wait, it's 1+1+28=30
-        // Actually: [relation_id, id, limb0, limb1, ..., limb27] = 30 values total
+        uint yield_vals[30]; // [relation_id, id, limb0, limb1, ..., limb27] = 30 values total
         // relation_id is relation_ids[8] = MEMORY_ID_TO_BIG_RELATION_ID
         yield_vals[0] = relation_ids[8u];
         yield_vals[1] = id_value;
