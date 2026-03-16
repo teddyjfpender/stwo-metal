@@ -466,20 +466,16 @@ kernel void blake2s_build_next_layer_u32(
         return;
     }
 
-    uchar block[64];
+    // Read 16 message words directly — skip byte unpack/repack overhead.
+    uint m[16];
     uint child_base = row_index * 16u;
-    for (uint word_index = 0u; word_index < 16u; ++word_index) {
-        uint word = prev_layer[child_base + word_index];
-        uint byte_base = word_index * 4u;
-        block[byte_base + 0u] = (uchar)(word & 0xFFu);
-        block[byte_base + 1u] = (uchar)((word >> 8u) & 0xFFu);
-        block[byte_base + 2u] = (uchar)((word >> 16u) & 0xFFu);
-        block[byte_base + 3u] = (uchar)((word >> 24u) & 0xFFu);
+    for (uint i = 0u; i < 16u; ++i) {
+        m[i] = prev_layer[child_base + i];
     }
 
     thread uint state[8];
     stwo_metal_blake2s_init_words(state);
-    stwo_metal_blake2s_compress_words(state, block, 64u, 0xFFFFFFFFu);
+    stwo_metal_blake2s_compress_uint_words(state, m, 64u, 0xFFFFFFFFu);
 
     uint dst_base = row_index * 8u;
     for (uint i = 0u; i < 8u; ++i) {
