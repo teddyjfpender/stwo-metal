@@ -10,6 +10,26 @@
 //! buffers (`base_insts`, `ext_insts`, `constraint_roots`) and their count
 //! uniforms are no longer needed — instructions are baked into the shader
 //! source.
+//!
+//! ## Optimizations (v2)
+//!
+//! The JIT compiler performs several optimizations beyond simple unrolling:
+//!
+//! 1. **Inline trace reads**: Instead of calling `stwo_metal_eval_program_trace_value()`
+//!    (which computes `eval_log_size` via a loop and loads `interaction_offsets` from
+//!    device memory each time), trace reads are inlined as direct
+//!    `trace_values[COL_BASE + target_row]` accesses with the interaction offset
+//!    loaded once from device memory.
+//!
+//! 2. **Precomputed offset row indices**: For non-zero offsets, `eval_log_size` is
+//!    computed once at the top of the kernel (via `ctz` instead of a while-loop),
+//!    and each unique offset value gets a single precomputed `offset_row_N` variable.
+//!
+//! 3. **Duplicate trace read elimination**: If the same (interaction, column, offset)
+//!    triple appears in multiple instructions, the value is loaded once into a
+//!    `tcache_N` variable and reused.
+
+use std::collections::{BTreeSet, HashMap};
 
 use super::eval_program_v1::{
     MetalEvaluationProgramBaseOpcodeV1, MetalEvaluationProgramExtOpcodeV1,
@@ -167,8 +187,62 @@ pub fn compile_v1_to_metal_source_with_fused(
 }
 
 // ---------------------------------------------------------------------------
-// Shared instruction body emission
+// Shared instruction body emission (optimized)
 // ---------------------------------------------------------------------------
+
+/// Key for deduplicating trace column reads: (interaction, column, offset).
+type TraceColKey = (u8, u32, i32);
+
+/// Pre-analyze the base instructions to collect trace column access metadata.
+struct TraceColAnalysis {
+    /// Set of unique non-zero offset values used by any TraceCol instruction.
+    unique_offsets: BTreeSet<i32>,
+    /// Map from (interaction, column, offset) to cache variable index.
+    /// Only populated when a key appears more than once.
+    cache_map: HashMap<TraceColKey, usize>,
+    /// Number of cache variables allocated.
+    #[allow(dead_code)]
+    n_cache_vars: usize,
+    /// Whether any TraceCol instruction exists at all.
+    #[allow(dead_code)]
+    has_trace_reads: bool,
+}
+
+fn analyze_trace_cols(
+    base_insts: &[super::eval_program_v1::MetalEvaluationProgramBaseInstV1],
+) -> TraceColAnalysis {
+    let mut unique_offsets = BTreeSet::new();
+    let mut occurrence_count: HashMap<TraceColKey, usize> = HashMap::new();
+    let mut has_trace_reads = false;
+
+    for inst in base_insts {
+        if inst.op == MetalEvaluationProgramBaseOpcodeV1::TraceCol as u8 {
+            has_trace_reads = true;
+            let key: TraceColKey = (inst.interaction, inst.a, inst.imm);
+            *occurrence_count.entry(key).or_insert(0) += 1;
+            if inst.imm != 0 {
+                unique_offsets.insert(inst.imm);
+            }
+        }
+    }
+
+    // Only cache columns that appear more than once.
+    let mut cache_map = HashMap::new();
+    let mut n_cache_vars = 0usize;
+    for (key, count) in &occurrence_count {
+        if *count > 1 {
+            cache_map.insert(*key, n_cache_vars);
+            n_cache_vars += 1;
+        }
+    }
+
+    TraceColAnalysis {
+        unique_offsets,
+        cache_map,
+        n_cache_vars,
+        has_trace_reads,
+    }
+}
 
 /// Emit the base instructions, ext instructions, and constraint accumulation
 /// into the given source string.  This is the shared body used by both the
@@ -185,9 +259,32 @@ fn emit_instruction_body(program: &OwnedMetalEvaluationProgramV1, src: &mut Stri
     let n_base_regs = header.max_base_regs as usize;
     let n_ext_regs = header.max_ext_regs as usize;
 
+    // Pre-analyze trace column accesses.
+    let analysis = analyze_trace_cols(base_insts);
+
     // Track which base/ext registers have been written to avoid re-declaring.
     let mut base_declared = vec![false; n_base_regs];
     let mut ext_declared = vec![false; n_ext_regs];
+
+    // ── Precomputed offset row indices ───────────────────────────────────
+    if !analysis.unique_offsets.is_empty() {
+        src.push_str("    // ── Precomputed eval_log_size and offset row indices ──\n");
+        // Use ctz (count trailing zeros) to get log2 of row_count.
+        // row_count is always a power of 2, so ctz gives the exact log.
+        src.push_str("    uint eval_log_size = ctz(row_count);\n");
+        src.push_str("    uint domain_log_size = eval_log_size - 1u;\n");
+        for &offset in &analysis.unique_offsets {
+            let var_name = offset_row_var_name(offset);
+            src.push_str(&format!(
+                "    uint {var_name} = stwo_metal_offset_bit_reversed_circle_domain_index(\
+                 row_index, domain_log_size, eval_log_size, {offset});\n"
+            ));
+        }
+        src.push('\n');
+    }
+
+    // Track which cache vars have been emitted.
+    let mut cache_emitted: HashMap<usize, bool> = HashMap::new();
 
     // ── Base instructions ──────────────────────────────────────────────────
     src.push_str("    // ── Base instructions ──\n");
@@ -209,17 +306,44 @@ fn emit_instruction_body(program: &OwnedMetalEvaluationProgramV1, src: &mut Stri
                 let interaction = inst.interaction;
                 let column = inst.a;
                 let offset = inst.imm;
-                src.push_str(&format!(
-                    "    {decl}{dst_var} = stwo_metal_eval_program_trace_value(\
-                     trace_values, interaction_offsets, row_count, \
-                     {interaction}u, {column}u, row_index, {offset});\n"
-                ));
+                let key: TraceColKey = (interaction, column, offset);
+
+                // Check if this read is cached (appears >1 time).
+                if let Some(&cache_idx) = analysis.cache_map.get(&key) {
+                    if !cache_emitted.get(&cache_idx).copied().unwrap_or(false) {
+                        // First occurrence: emit the cache var and assign to dst.
+                        cache_emitted.insert(cache_idx, true);
+                        let cache_var = format!("tcache_{cache_idx}");
+                        let row_expr = row_expr_for_offset(offset);
+                        src.push_str(&format!(
+                            "    uint {cache_var} = trace_values[\
+                             interaction_offsets[{interaction}u] * row_count + \
+                             {column}u * row_count + {row_expr}];\n"
+                        ));
+                        src.push_str(&format!(
+                            "    {decl}{dst_var} = {cache_var};\n"
+                        ));
+                    } else {
+                        // Subsequent occurrences: reuse cache var.
+                        let cache_var = format!("tcache_{cache_idx}");
+                        src.push_str(&format!(
+                            "    {decl}{dst_var} = {cache_var};\n"
+                        ));
+                    }
+                } else {
+                    // Unique read (appears only once): inline directly.
+                    let row_expr = row_expr_for_offset(offset);
+                    src.push_str(&format!(
+                        "    {decl}{dst_var} = trace_values[\
+                         interaction_offsets[{interaction}u] * row_count + \
+                         {column}u * row_count + {row_expr}];\n"
+                    ));
+                }
             }
             MetalEvaluationProgramBaseOpcodeV1::PreprocessedCol => {
                 let column = inst.a;
                 src.push_str(&format!(
-                    "    {decl}{dst_var} = stwo_metal_eval_program_preprocessed_value(\
-                     preprocessed_values, row_count, {column}u, row_index);\n"
+                    "    {decl}{dst_var} = preprocessed_values[{column}u * row_count + row_index];\n"
                 ));
             }
             MetalEvaluationProgramBaseOpcodeV1::Param => {
@@ -352,6 +476,30 @@ fn emit_instruction_body(program: &OwnedMetalEvaluationProgramV1, src: &mut Stri
         ));
     }
     src.push('\n');
+}
+
+/// Return the Metal expression for the target row given an offset.
+///
+/// For offset==0, this is just `row_index`.
+/// For non-zero offsets, it's the precomputed variable `offset_row_N`.
+fn row_expr_for_offset(offset: i32) -> String {
+    if offset == 0 {
+        "row_index".to_string()
+    } else {
+        offset_row_var_name(offset)
+    }
+}
+
+/// Return a valid Metal identifier for the precomputed offset-row variable.
+///
+/// Positive offsets: `offset_row_p1`, `offset_row_p2`, ...
+/// Negative offsets: `offset_row_n1`, `offset_row_n2`, ...
+fn offset_row_var_name(offset: i32) -> String {
+    if offset >= 0 {
+        format!("offset_row_p{offset}")
+    } else {
+        format!("offset_row_n{}", -offset)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -696,9 +844,9 @@ mod tests {
         // The kernel name should encode the semantic hash.
         assert!(source.contains("eval_compiled_123456789abcdef0"));
 
-        // Verify that the base instructions are present as direct statements.
-        assert!(source.contains("uint b0 = stwo_metal_eval_program_trace_value("));
-        assert!(source.contains("uint b1 = stwo_metal_eval_program_trace_value("));
+        // Verify inlined trace reads (new optimized format).
+        assert!(source.contains("trace_values["));
+        assert!(source.contains("row_index]"));
         assert!(source.contains("uint b2 = stwo_metal_m31_mul(b0, b1)"));
         assert!(source.contains("uint b3 = 42u"));
         assert!(source.contains("uint b4 = stwo_metal_m31_sub(b2, b3)"));
@@ -773,8 +921,10 @@ mod tests {
         let source =
             compile_v1_to_metal_source(&build_test_program(base_insts, vec![], vec![], 9, 0));
 
-        assert!(source.contains("stwo_metal_eval_program_trace_value("));
-        assert!(source.contains("stwo_metal_eval_program_preprocessed_value("));
+        // Trace reads are now inlined (not calling stwo_metal_eval_program_trace_value).
+        assert!(source.contains("trace_values["));
+        // Preprocessed reads are now inlined too.
+        assert!(source.contains("preprocessed_values[5u * row_count + row_index]"));
         assert!(source.contains("base_params[3u]"));
         assert!(source.contains("uint b3 = 100u"));
         assert!(source.contains("stwo_metal_m31_add(b0, b1)"));
@@ -1010,5 +1160,96 @@ mod tests {
             compiled_fused_kernel_name(0xdeadbeef_cafebabe),
             "eval_compiled_fused_deadbeefcafebabe"
         );
+    }
+
+    #[test]
+    fn test_offset_row_precomputation() {
+        // Program with offset=1 trace reads should precompute eval_log_size
+        // and offset_row_p1 once.
+        let base_insts = vec![
+            MetalEvaluationProgramBaseInstV1::trace_col(0, 1, 0, 0),
+            MetalEvaluationProgramBaseInstV1::trace_col(1, 1, 0, 1), // offset=1
+            MetalEvaluationProgramBaseInstV1::binary(
+                MetalEvaluationProgramBaseOpcodeV1::Sub,
+                2,
+                0,
+                1,
+            ),
+        ];
+
+        let source = compile_v1_to_metal_source(&build_test_program(
+            base_insts,
+            vec![],
+            vec![],
+            3,
+            0,
+        ));
+
+        // Should have precomputed eval_log_size via ctz.
+        assert!(source.contains("uint eval_log_size = ctz(row_count);"));
+        assert!(source.contains("uint domain_log_size = eval_log_size - 1u;"));
+        // Should have precomputed offset_row_p1.
+        assert!(source.contains("uint offset_row_p1 = stwo_metal_offset_bit_reversed_circle_domain_index("));
+        // The trace read with offset=1 should use offset_row_p1.
+        assert!(source.contains("offset_row_p1]"));
+    }
+
+    #[test]
+    fn test_negative_offset_row_precomputation() {
+        // Program with offset=-1 trace reads.
+        let base_insts = vec![
+            MetalEvaluationProgramBaseInstV1::trace_col(0, 1, 0, 0),
+            MetalEvaluationProgramBaseInstV1::trace_col(1, 1, 0, -1), // offset=-1
+            MetalEvaluationProgramBaseInstV1::binary(
+                MetalEvaluationProgramBaseOpcodeV1::Sub,
+                2,
+                0,
+                1,
+            ),
+        ];
+
+        let source = compile_v1_to_metal_source(&build_test_program(
+            base_insts,
+            vec![],
+            vec![],
+            3,
+            0,
+        ));
+
+        // Should have precomputed offset_row_n1 for negative offset.
+        assert!(source.contains("uint offset_row_n1 = stwo_metal_offset_bit_reversed_circle_domain_index("));
+        assert!(source.contains("offset_row_n1]"));
+    }
+
+    #[test]
+    fn test_duplicate_trace_read_caching() {
+        // Program where the same trace column is read twice.
+        // (interaction=1, column=0, offset=0) appears in both b0 and b2.
+        let base_insts = vec![
+            MetalEvaluationProgramBaseInstV1::trace_col(0, 1, 0, 0),
+            MetalEvaluationProgramBaseInstV1::trace_col(1, 1, 1, 0),
+            MetalEvaluationProgramBaseInstV1::trace_col(2, 1, 0, 0), // duplicate of b0
+            MetalEvaluationProgramBaseInstV1::binary(
+                MetalEvaluationProgramBaseOpcodeV1::Add,
+                3,
+                0,
+                2,
+            ),
+        ];
+
+        let source = compile_v1_to_metal_source(&build_test_program(
+            base_insts,
+            vec![],
+            vec![],
+            4,
+            0,
+        ));
+
+        // Should have a cache variable for the duplicate read.
+        assert!(source.contains("uint tcache_0 = trace_values["));
+        // b0 should be assigned from cache.
+        assert!(source.contains("uint b0 = tcache_0;"));
+        // b2 should also be assigned from cache.
+        assert!(source.contains("uint b2 = tcache_0;"));
     }
 }
