@@ -3731,6 +3731,50 @@ impl U32Buffer {
         }
         Ok(dst)
     }
+
+    /// Dispatch a multiplicity accumulation kernel via a function pointer.
+    ///
+    /// The kernel atomically increments three multiplicity buffers based on
+    /// the opcode's memory access pattern.
+    #[allow(clippy::too_many_arguments)]
+    pub fn dispatch_mults_accumulate(
+        inputs: &U32Buffer,
+        address_to_id: &U32Buffer,
+        big_values: &U32Buffer,
+        small_values: &U32Buffer,
+        addr_to_id_mults: &U32Buffer,
+        id_to_big_mults: &U32Buffer,
+        id_to_small_mults: &U32Buffer,
+        n_rows: u32,
+        kernel_fn: unsafe fn(
+            *mut std::ffi::c_void,
+            *mut std::ffi::c_void,
+            *mut std::ffi::c_void,
+            *mut std::ffi::c_void,
+            *mut std::ffi::c_void,
+            *mut std::ffi::c_void,
+            *mut std::ffi::c_void,
+            *mut std::ffi::c_void,
+            u32,
+            fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+        ) -> Result<(), MetalError>,
+    ) -> Result<(), MetalError> {
+        let runtime = shared_runtime()?;
+        unsafe {
+            kernel_fn(
+                runtime.raw.as_ptr(),
+                inputs.raw.as_ptr(),
+                address_to_id.raw.as_ptr(),
+                big_values.raw.as_ptr(),
+                small_values.raw.as_ptr(),
+                addr_to_id_mults.raw.as_ptr(),
+                id_to_big_mults.raw.as_ptr(),
+                id_to_small_mults.raw.as_ptr(),
+                n_rows,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
 }
 
 impl Clone for U32Buffer {
@@ -3963,7 +4007,7 @@ fn decode_error_buffer(buffer: &[i8; ERROR_BUFFER_LEN]) -> String {
 }
 
 #[cfg(stwo_metal_link)]
-mod ffi {
+pub mod ffi {
     use super::{
         c_void, decode_error_buffer, BatchEvalGroupDescriptor, MetalError, NonNull,
         ERROR_BUFFER_LEN,
@@ -5204,6 +5248,84 @@ mod ffi {
             per_layer_counts: *const u32,
             out_hashes: *mut u32,
             total_gathers: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_mults_add_opcode_small(
+            runtime: *mut c_void,
+            inputs: *mut c_void,
+            address_to_id: *mut c_void,
+            big_values: *mut c_void,
+            small_values: *mut c_void,
+            addr_to_id_mults: *mut c_void,
+            id_to_big_mults: *mut c_void,
+            id_to_small_mults: *mut c_void,
+            n_rows: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_mults_assert_eq_double_deref(
+            runtime: *mut c_void,
+            inputs: *mut c_void,
+            address_to_id: *mut c_void,
+            big_values: *mut c_void,
+            small_values: *mut c_void,
+            addr_to_id_mults: *mut c_void,
+            id_to_big_mults: *mut c_void,
+            id_to_small_mults: *mut c_void,
+            n_rows: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_mults_jnz_opcode_taken(
+            runtime: *mut c_void,
+            inputs: *mut c_void,
+            address_to_id: *mut c_void,
+            big_values: *mut c_void,
+            small_values: *mut c_void,
+            addr_to_id_mults: *mut c_void,
+            id_to_big_mults: *mut c_void,
+            id_to_small_mults: *mut c_void,
+            n_rows: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_mults_jump_opcode_rel_imm(
+            runtime: *mut c_void,
+            inputs: *mut c_void,
+            address_to_id: *mut c_void,
+            big_values: *mut c_void,
+            small_values: *mut c_void,
+            addr_to_id_mults: *mut c_void,
+            id_to_big_mults: *mut c_void,
+            id_to_small_mults: *mut c_void,
+            n_rows: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_mults_call_opcode_rel_imm(
+            runtime: *mut c_void,
+            inputs: *mut c_void,
+            address_to_id: *mut c_void,
+            big_values: *mut c_void,
+            small_values: *mut c_void,
+            addr_to_id_mults: *mut c_void,
+            id_to_big_mults: *mut c_void,
+            id_to_small_mults: *mut c_void,
+            n_rows: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_mults_ret_opcode(
+            runtime: *mut c_void,
+            inputs: *mut c_void,
+            address_to_id: *mut c_void,
+            big_values: *mut c_void,
+            small_values: *mut c_void,
+            addr_to_id_mults: *mut c_void,
+            id_to_big_mults: *mut c_void,
+            id_to_small_mults: *mut c_void,
+            n_rows: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -8296,10 +8418,208 @@ mod ffi {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_add_opcode_small(
+        runtime: *mut c_void,
+        inputs: *mut c_void,
+        address_to_id: *mut c_void,
+        big_values: *mut c_void,
+        small_values: *mut c_void,
+        addr_to_id_mults: *mut c_void,
+        id_to_big_mults: *mut c_void,
+        id_to_small_mults: *mut c_void,
+        n_rows: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_mults_add_opcode_small(
+            runtime,
+            inputs,
+            address_to_id,
+            big_values,
+            small_values,
+            addr_to_id_mults,
+            id_to_big_mults,
+            id_to_small_mults,
+            n_rows,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_assert_eq_double_deref(
+        runtime: *mut c_void,
+        inputs: *mut c_void,
+        address_to_id: *mut c_void,
+        big_values: *mut c_void,
+        small_values: *mut c_void,
+        addr_to_id_mults: *mut c_void,
+        id_to_big_mults: *mut c_void,
+        id_to_small_mults: *mut c_void,
+        n_rows: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_mults_assert_eq_double_deref(
+            runtime,
+            inputs,
+            address_to_id,
+            big_values,
+            small_values,
+            addr_to_id_mults,
+            id_to_big_mults,
+            id_to_small_mults,
+            n_rows,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_jnz_opcode_taken(
+        runtime: *mut c_void,
+        inputs: *mut c_void,
+        address_to_id: *mut c_void,
+        big_values: *mut c_void,
+        small_values: *mut c_void,
+        addr_to_id_mults: *mut c_void,
+        id_to_big_mults: *mut c_void,
+        id_to_small_mults: *mut c_void,
+        n_rows: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_mults_jnz_opcode_taken(
+            runtime,
+            inputs,
+            address_to_id,
+            big_values,
+            small_values,
+            addr_to_id_mults,
+            id_to_big_mults,
+            id_to_small_mults,
+            n_rows,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_jump_opcode_rel_imm(
+        runtime: *mut c_void,
+        inputs: *mut c_void,
+        address_to_id: *mut c_void,
+        big_values: *mut c_void,
+        small_values: *mut c_void,
+        addr_to_id_mults: *mut c_void,
+        id_to_big_mults: *mut c_void,
+        id_to_small_mults: *mut c_void,
+        n_rows: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_mults_jump_opcode_rel_imm(
+            runtime,
+            inputs,
+            address_to_id,
+            big_values,
+            small_values,
+            addr_to_id_mults,
+            id_to_big_mults,
+            id_to_small_mults,
+            n_rows,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_call_opcode_rel_imm(
+        runtime: *mut c_void,
+        inputs: *mut c_void,
+        address_to_id: *mut c_void,
+        big_values: *mut c_void,
+        small_values: *mut c_void,
+        addr_to_id_mults: *mut c_void,
+        id_to_big_mults: *mut c_void,
+        id_to_small_mults: *mut c_void,
+        n_rows: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_mults_call_opcode_rel_imm(
+            runtime,
+            inputs,
+            address_to_id,
+            big_values,
+            small_values,
+            addr_to_id_mults,
+            id_to_big_mults,
+            id_to_small_mults,
+            n_rows,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_ret_opcode(
+        runtime: *mut c_void,
+        inputs: *mut c_void,
+        address_to_id: *mut c_void,
+        big_values: *mut c_void,
+        small_values: *mut c_void,
+        addr_to_id_mults: *mut c_void,
+        id_to_big_mults: *mut c_void,
+        id_to_small_mults: *mut c_void,
+        n_rows: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_mults_ret_opcode(
+            runtime,
+            inputs,
+            address_to_id,
+            big_values,
+            small_values,
+            addr_to_id_mults,
+            id_to_big_mults,
+            id_to_small_mults,
+            n_rows,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
 }
 
 #[cfg(not(stwo_metal_link))]
-mod ffi {
+pub mod ffi {
     use super::{c_void, BatchEvalGroupDescriptor, MetalError, NonNull};
 
     pub unsafe fn runtime_create(
@@ -9841,6 +10161,114 @@ mod ffi {
         _per_layer_counts: &[u32],
         _out_hashes: *mut u32,
         _total_gathers: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_add_opcode_small(
+        _runtime: *mut c_void,
+        _inputs: *mut c_void,
+        _address_to_id: *mut c_void,
+        _big_values: *mut c_void,
+        _small_values: *mut c_void,
+        _addr_to_id_mults: *mut c_void,
+        _id_to_big_mults: *mut c_void,
+        _id_to_small_mults: *mut c_void,
+        _n_rows: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_assert_eq_double_deref(
+        _runtime: *mut c_void,
+        _inputs: *mut c_void,
+        _address_to_id: *mut c_void,
+        _big_values: *mut c_void,
+        _small_values: *mut c_void,
+        _addr_to_id_mults: *mut c_void,
+        _id_to_big_mults: *mut c_void,
+        _id_to_small_mults: *mut c_void,
+        _n_rows: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_jnz_opcode_taken(
+        _runtime: *mut c_void,
+        _inputs: *mut c_void,
+        _address_to_id: *mut c_void,
+        _big_values: *mut c_void,
+        _small_values: *mut c_void,
+        _addr_to_id_mults: *mut c_void,
+        _id_to_big_mults: *mut c_void,
+        _id_to_small_mults: *mut c_void,
+        _n_rows: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_jump_opcode_rel_imm(
+        _runtime: *mut c_void,
+        _inputs: *mut c_void,
+        _address_to_id: *mut c_void,
+        _big_values: *mut c_void,
+        _small_values: *mut c_void,
+        _addr_to_id_mults: *mut c_void,
+        _id_to_big_mults: *mut c_void,
+        _id_to_small_mults: *mut c_void,
+        _n_rows: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_call_opcode_rel_imm(
+        _runtime: *mut c_void,
+        _inputs: *mut c_void,
+        _address_to_id: *mut c_void,
+        _big_values: *mut c_void,
+        _small_values: *mut c_void,
+        _addr_to_id_mults: *mut c_void,
+        _id_to_big_mults: *mut c_void,
+        _id_to_small_mults: *mut c_void,
+        _n_rows: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn mults_ret_opcode(
+        _runtime: *mut c_void,
+        _inputs: *mut c_void,
+        _address_to_id: *mut c_void,
+        _big_values: *mut c_void,
+        _small_values: *mut c_void,
+        _addr_to_id_mults: *mut c_void,
+        _id_to_big_mults: *mut c_void,
+        _id_to_small_mults: *mut c_void,
+        _n_rows: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

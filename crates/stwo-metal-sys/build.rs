@@ -31,6 +31,7 @@ const METAL_SOURCES: &[&str] = &[
     "witness_range_check",
     "witness_verify_instruction",
     "witness_opcodes",
+    "witness_mults_accumulate",
     "barycentric",
 ];
 
@@ -148,6 +149,7 @@ fn main() {
     println!("cargo:rerun-if-changed=metal/witness_range_check.metal");
     println!("cargo:rerun-if-changed=metal/witness_verify_instruction.metal");
     println!("cargo:rerun-if-changed=metal/witness_opcodes.metal");
+    println!("cargo:rerun-if-changed=metal/witness_mults_accumulate.metal");
     println!("cargo:rerun-if-changed=metal/barycentric.metal");
     for var in [
         CUDA_MODE_VAR,

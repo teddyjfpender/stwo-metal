@@ -3215,6 +3215,111 @@ mod cairo_prove_main {
             let t_opcode_gpu = Instant::now();
             let opcode_inputs = cairo_claim_generator.extract_gpu_opcode_inputs();
 
+            // --- GPU mults dispatch: atomically accumulate multiplicities on GPU ---
+            // Runs in parallel with both CPU write_trace and GPU opcode trace generation.
+            // Gate behind NO_GPU_MULTS=1 env var for opt-out.
+            if std::env::var("NO_GPU_MULTS").is_err() {
+                use stwo_cairo_prover::witness::cairo_claim_generator::GpuMultsAccumulationResult;
+                use stwo_metal::backend::metal::witness_mults_accumulate::accumulate_all_opcode_mults;
+
+                // Build (name, data, padded_n_rows) tuples from opcode inputs.
+                // Pad to next power of two (min N_LANES=16) matching CPU trace
+                // generation, which processes padded rows with the first row's data
+                // and applies mults for them.
+                use stwo::prover::backend::simd::m31::N_LANES;
+                let mut mults_input_list: Vec<(String, Vec<u32>, usize)> = Vec::new();
+                macro_rules! collect_mults_input {
+                    ($field:ident, $name:expr) => {
+                        if let Some(ref inp) = opcode_inputs.$field {
+                            let padded_size = std::cmp::max(
+                                inp.n_rows.next_power_of_two(),
+                                N_LANES,
+                            );
+                            let mut padded_data = inp.data.clone();
+                            // Pad by repeating row 0, matching CPU's
+                            // `self.inputs.resize(size, *self.inputs.first().unwrap())`
+                            if padded_size > inp.n_rows {
+                                let row0 = [padded_data[0], padded_data[1], padded_data[2]];
+                                for _ in inp.n_rows..padded_size {
+                                    padded_data.extend_from_slice(&row0);
+                                }
+                            }
+                            mults_input_list.push(($name.to_string(), padded_data, padded_size));
+                        }
+                    };
+                }
+                collect_mults_input!(add_opcode_small, "add_opcode_small");
+                collect_mults_input!(assert_eq_opcode_double_deref, "assert_eq_double_deref");
+                collect_mults_input!(jnz_opcode_taken, "jnz_opcode_taken");
+                collect_mults_input!(jump_opcode_rel_imm, "jump_opcode_rel_imm");
+                collect_mults_input!(call_opcode_rel_imm, "call_opcode_rel_imm");
+                collect_mults_input!(ret_opcode, "ret_opcode");
+
+                // Clone table data for the mults thread (opcode trace thread takes ownership).
+                let mults_addr_to_id = opcode_addr_to_id.clone();
+                let mults_big_values = opcode_big_values.clone();
+                let mults_small_values = opcode_small_values.clone();
+                let addr_to_id_len = mults_addr_to_id.len();
+                let big_values_len = input_big_values_len;
+                let small_values_len = input_small_values_len;
+
+                let gpu_mults_handle = std::thread::spawn(move || {
+                    let t_mults = Instant::now();
+                    // Upload lookup tables to GPU.
+                    let addr_to_id_buf = stwo_metal_sys::metal::U32Buffer::from_slice(&mults_addr_to_id)
+                        .expect("GPU mults: failed to upload addr_to_id");
+                    let big_vals_buf = stwo_metal_sys::metal::U32Buffer::from_slice(&mults_big_values)
+                        .expect("GPU mults: failed to upload big_values");
+                    let small_vals_buf = stwo_metal_sys::metal::U32Buffer::from_slice(&mults_small_values)
+                        .expect("GPU mults: failed to upload small_values");
+
+                    // Build references for accumulate_all_opcode_mults.
+                    let inputs_ref: Vec<(&str, &[u32], usize)> = mults_input_list
+                        .iter()
+                        .map(|(name, data, n_rows)| (name.as_str(), data.as_slice(), *n_rows))
+                        .collect();
+
+                    match accumulate_all_opcode_mults(
+                        &inputs_ref,
+                        &addr_to_id_buf,
+                        &big_vals_buf,
+                        &small_vals_buf,
+                        addr_to_id_len,
+                        big_values_len,
+                        small_values_len,
+                    ) {
+                        Ok(result) => {
+                            // Download GPU results to CPU Vec<u32>.
+                            let addr_mults = result.addr_to_id_mults.to_vec()
+                                .expect("GPU mults: failed to download addr_to_id_mults");
+                            let big_mults = result.id_to_big_mults.to_vec()
+                                .expect("GPU mults: failed to download id_to_big_mults");
+                            let small_mults = result.id_to_small_mults.to_vec()
+                                .expect("GPU mults: failed to download id_to_small_mults");
+
+                            let mults_ms = t_mults.elapsed().as_secs_f64() * 1000.0;
+                            eprintln!("  GPU mults accumulation: {:.1} ms", mults_ms);
+
+                            GpuMultsAccumulationResult {
+                                addr_to_id_mults: addr_mults,
+                                id_to_big_mults: big_mults,
+                                id_to_small_mults: small_mults,
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("  [gpu-mults] error: {e}, falling back to CPU mults");
+                            GpuMultsAccumulationResult {
+                                addr_to_id_mults: Vec::new(),
+                                id_to_big_mults: Vec::new(),
+                                id_to_small_mults: Vec::new(),
+                            }
+                        }
+                    }
+                });
+
+                cairo_claim_generator.gpu_mults_handle = Some(gpu_mults_handle);
+            }
+
             // Move memory data into the GPU thread closure.
             let addr_to_id = opcode_addr_to_id;
             let big_vals = opcode_big_values;

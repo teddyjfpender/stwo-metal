@@ -8823,3 +8823,224 @@ bool stwo_metal_merkle_decommit_gather(
         return true;
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// Multiplicity accumulation: generic dispatch for atomic mults kernels.
+//
+// All 6 opcode mults kernels share the same buffer layout:
+//   buffer(0): inputs            [n_rows * 3]  uint (pc, ap, fp)
+//   buffer(1): address_to_id     [table_size]  uint
+//   buffer(2): big_values        [n_big * 8]   uint
+//   buffer(3): small_values      [n_small * 4] uint
+//   buffer(4): addr_to_id_mults  [table_size]  atomic_uint
+//   buffer(5): id_to_big_mults   [n_big]       atomic_uint
+//   buffer(6): id_to_small_mults [n_small]     atomic_uint
+//   buffer(7): n_rows            uint constant
+// ---------------------------------------------------------------------------
+
+static bool stwo_metal_dispatch_mults_kernel(
+    void *runtime_ptr,
+    NSString *kernel_name,
+    void *inputs_ptr,
+    void *address_to_id_ptr,
+    void *big_values_ptr,
+    void *small_values_ptr,
+    void *addr_to_id_mults_ptr,
+    void *id_to_big_mults_ptr,
+    void *id_to_small_mults_ptr,
+    uint32_t n_rows,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *inputs = stwo_metal_buffer_box(inputs_ptr);
+        StwoMetalBufferBox *address_to_id = stwo_metal_buffer_box(address_to_id_ptr);
+        StwoMetalBufferBox *big_values = stwo_metal_buffer_box(big_values_ptr);
+        StwoMetalBufferBox *small_values = stwo_metal_buffer_box(small_values_ptr);
+        StwoMetalBufferBox *addr_to_id_mults = stwo_metal_buffer_box(addr_to_id_mults_ptr);
+        StwoMetalBufferBox *id_to_big_mults = stwo_metal_buffer_box(id_to_big_mults_ptr);
+        StwoMetalBufferBox *id_to_small_mults = stwo_metal_buffer_box(id_to_small_mults_ptr);
+
+        if (inputs.len < (NSUInteger)n_rows * 3u) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"mults_accumulate: inputs buffer length mismatch.");
+            return false;
+        }
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(
+            runtime,
+            kernel_name,
+            error_message,
+            error_message_len
+        );
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:inputs.buffer offset:0 atIndex:0];
+        [encoder setBuffer:address_to_id.buffer offset:0 atIndex:1];
+        [encoder setBuffer:big_values.buffer offset:0 atIndex:2];
+        [encoder setBuffer:small_values.buffer offset:0 atIndex:3];
+        [encoder setBuffer:addr_to_id_mults.buffer offset:0 atIndex:4];
+        [encoder setBuffer:id_to_big_mults.buffer offset:0 atIndex:5];
+        [encoder setBuffer:id_to_small_mults.buffer offset:0 atIndex:6];
+        [encoder setBytes:&n_rows length:sizeof(n_rows) atIndex:7];
+
+        MTLSize grid_size = MTLSizeMake((NSUInteger)n_rows, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(
+            stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                command_buffer.error.localizedDescription
+                    ?: @"mults_accumulate kernel failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+// Per-opcode C entry points for multiplicity accumulation.
+
+bool stwo_metal_mults_add_opcode_small(
+    void *runtime_ptr,
+    void *inputs_ptr,
+    void *address_to_id_ptr,
+    void *big_values_ptr,
+    void *small_values_ptr,
+    void *addr_to_id_mults_ptr,
+    void *id_to_big_mults_ptr,
+    void *id_to_small_mults_ptr,
+    uint32_t n_rows,
+    char *error_message,
+    size_t error_message_len
+) {
+    return stwo_metal_dispatch_mults_kernel(
+        runtime_ptr, @"mults_add_opcode_small",
+        inputs_ptr, address_to_id_ptr, big_values_ptr, small_values_ptr,
+        addr_to_id_mults_ptr, id_to_big_mults_ptr, id_to_small_mults_ptr,
+        n_rows, error_message, error_message_len);
+}
+
+bool stwo_metal_mults_assert_eq_double_deref(
+    void *runtime_ptr,
+    void *inputs_ptr,
+    void *address_to_id_ptr,
+    void *big_values_ptr,
+    void *small_values_ptr,
+    void *addr_to_id_mults_ptr,
+    void *id_to_big_mults_ptr,
+    void *id_to_small_mults_ptr,
+    uint32_t n_rows,
+    char *error_message,
+    size_t error_message_len
+) {
+    return stwo_metal_dispatch_mults_kernel(
+        runtime_ptr, @"mults_assert_eq_double_deref",
+        inputs_ptr, address_to_id_ptr, big_values_ptr, small_values_ptr,
+        addr_to_id_mults_ptr, id_to_big_mults_ptr, id_to_small_mults_ptr,
+        n_rows, error_message, error_message_len);
+}
+
+bool stwo_metal_mults_jnz_opcode_taken(
+    void *runtime_ptr,
+    void *inputs_ptr,
+    void *address_to_id_ptr,
+    void *big_values_ptr,
+    void *small_values_ptr,
+    void *addr_to_id_mults_ptr,
+    void *id_to_big_mults_ptr,
+    void *id_to_small_mults_ptr,
+    uint32_t n_rows,
+    char *error_message,
+    size_t error_message_len
+) {
+    return stwo_metal_dispatch_mults_kernel(
+        runtime_ptr, @"mults_jnz_opcode_taken",
+        inputs_ptr, address_to_id_ptr, big_values_ptr, small_values_ptr,
+        addr_to_id_mults_ptr, id_to_big_mults_ptr, id_to_small_mults_ptr,
+        n_rows, error_message, error_message_len);
+}
+
+bool stwo_metal_mults_jump_opcode_rel_imm(
+    void *runtime_ptr,
+    void *inputs_ptr,
+    void *address_to_id_ptr,
+    void *big_values_ptr,
+    void *small_values_ptr,
+    void *addr_to_id_mults_ptr,
+    void *id_to_big_mults_ptr,
+    void *id_to_small_mults_ptr,
+    uint32_t n_rows,
+    char *error_message,
+    size_t error_message_len
+) {
+    return stwo_metal_dispatch_mults_kernel(
+        runtime_ptr, @"mults_jump_opcode_rel_imm",
+        inputs_ptr, address_to_id_ptr, big_values_ptr, small_values_ptr,
+        addr_to_id_mults_ptr, id_to_big_mults_ptr, id_to_small_mults_ptr,
+        n_rows, error_message, error_message_len);
+}
+
+bool stwo_metal_mults_call_opcode_rel_imm(
+    void *runtime_ptr,
+    void *inputs_ptr,
+    void *address_to_id_ptr,
+    void *big_values_ptr,
+    void *small_values_ptr,
+    void *addr_to_id_mults_ptr,
+    void *id_to_big_mults_ptr,
+    void *id_to_small_mults_ptr,
+    uint32_t n_rows,
+    char *error_message,
+    size_t error_message_len
+) {
+    return stwo_metal_dispatch_mults_kernel(
+        runtime_ptr, @"mults_call_opcode_rel_imm",
+        inputs_ptr, address_to_id_ptr, big_values_ptr, small_values_ptr,
+        addr_to_id_mults_ptr, id_to_big_mults_ptr, id_to_small_mults_ptr,
+        n_rows, error_message, error_message_len);
+}
+
+bool stwo_metal_mults_ret_opcode(
+    void *runtime_ptr,
+    void *inputs_ptr,
+    void *address_to_id_ptr,
+    void *big_values_ptr,
+    void *small_values_ptr,
+    void *addr_to_id_mults_ptr,
+    void *id_to_big_mults_ptr,
+    void *id_to_small_mults_ptr,
+    uint32_t n_rows,
+    char *error_message,
+    size_t error_message_len
+) {
+    return stwo_metal_dispatch_mults_kernel(
+        runtime_ptr, @"mults_ret_opcode",
+        inputs_ptr, address_to_id_ptr, big_values_ptr, small_values_ptr,
+        addr_to_id_mults_ptr, id_to_big_mults_ptr, id_to_small_mults_ptr,
+        n_rows, error_message, error_message_len);
+}

@@ -37,6 +37,7 @@ pub mod interaction_trace_id_to_big;
 pub mod witness_memory_addr_to_id;
 pub mod witness_memory_id_to_big;
 pub mod witness_range_check;
+pub mod witness_mults_accumulate;
 pub mod witness_opcodes;
 pub mod witness_verify_instruction;
 mod workload;
