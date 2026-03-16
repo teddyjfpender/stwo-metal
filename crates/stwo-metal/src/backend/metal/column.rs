@@ -78,7 +78,7 @@ impl Column<BaseField> for BaseFieldVec {
 
     #[cfg(feature = "vendored-upstream-bridge")]
     fn split_at_mid(self) -> (Self, Self) {
-        split_host_backed_vec(self.to_vec(), BaseFieldVec::from_vec)
+        self.split_at_mid()
     }
 
     unsafe fn uninitialized(len: usize) -> Self {
@@ -124,7 +124,7 @@ impl Column<SecureField> for SecureFieldVec {
 
     #[cfg(feature = "vendored-upstream-bridge")]
     fn split_at_mid(self) -> (Self, Self) {
-        split_host_backed_vec(self.to_vec(), SecureFieldVec::from_vec)
+        self.split_at_mid()
     }
 
     unsafe fn uninitialized(len: usize) -> Self {

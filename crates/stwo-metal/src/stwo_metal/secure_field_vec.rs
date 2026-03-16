@@ -414,6 +414,29 @@ impl SecureFieldVec {
             SecureField::from_u32_unchecked(eval_at_2[0], eval_at_2[1], eval_at_2[2], eval_at_2[3]),
         )
     }
+
+    pub fn split_at_mid(self) -> (Self, Self) {
+        assert!(
+            self.size >= 2 && self.size.is_power_of_two(),
+            "Metal SecureFieldVec split_at_mid requires a power-of-two length of at least two"
+        );
+        let mid = self.size / 2;
+        // Each SecureField element occupies 4 u32 slots in the buffer.
+        let mid_u32 = mid * 4;
+        let half_u32 = mid * 4;
+        let left_buffer = self
+            .buffer
+            .clone_range(0, half_u32)
+            .expect("Metal SecureFieldVec split_at_mid left half GPU copy should succeed");
+        let right_buffer = self
+            .buffer
+            .clone_range(mid_u32, half_u32)
+            .expect("Metal SecureFieldVec split_at_mid right half GPU copy should succeed");
+        (
+            Self { buffer: left_buffer, size: mid },
+            Self { buffer: right_buffer, size: mid },
+        )
+    }
 }
 
 impl Clone for SecureFieldVec {
