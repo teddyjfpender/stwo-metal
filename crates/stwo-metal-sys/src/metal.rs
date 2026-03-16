@@ -1879,6 +1879,99 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    /// Dispatch an opcode interaction-values kernel.
+    ///
+    /// Reads GPU trace columns and produces flat LookupData values that
+    /// feed the generic interaction trace kernel.
+    ///
+    /// # Arguments
+    /// * `trace_cols` - Column-major [n_trace_cols][col_len] u32 trace data.
+    /// * `n_output_fields` - Number of flat output values per row.
+    /// * `n_rows` - Actual row count (for enabler).
+    /// * `col_len` - Padded power-of-two column length.
+    /// * `dispatch_fn` - The FFI function to call.
+    fn dispatch_interaction_values(
+        trace_cols: &Self,
+        n_output_fields: usize,
+        n_rows: u32,
+        col_len: u32,
+        dispatch_fn: unsafe fn(
+            *mut c_void, *mut c_void, *mut c_void,
+            u32, u32,
+            fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+        ) -> Result<(), MetalError>,
+    ) -> Result<Self, MetalError> {
+        let output_len = n_output_fields * col_len as usize;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            dispatch_fn(
+                runtime.raw.as_ptr(),
+                trace_cols.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_rows,
+                col_len,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    /// Produce LookupData values for ret_opcode from GPU trace columns.
+    /// 16 trace cols -> 82 flat output fields per row.
+    pub fn interaction_values_ret_opcode(
+        trace_cols: &Self, n_rows: u32, col_len: u32,
+    ) -> Result<Self, MetalError> {
+        Self::dispatch_interaction_values(
+            trace_cols, 82, n_rows, col_len,
+            ffi::interaction_values_ret_opcode,
+        )
+    }
+
+    /// Produce LookupData values for jnz_opcode_taken from GPU trace columns.
+    /// 47 trace cols -> 82 flat output fields per row.
+    pub fn interaction_values_jnz_opcode_taken(
+        trace_cols: &Self, n_rows: u32, col_len: u32,
+    ) -> Result<Self, MetalError> {
+        Self::dispatch_interaction_values(
+            trace_cols, 82, n_rows, col_len,
+            ffi::interaction_values_jnz_opcode_taken,
+        )
+    }
+
+    /// Produce LookupData values for assert_eq_opcode_double_deref from GPU trace columns.
+    /// 19 trace cols -> 55 flat output fields per row.
+    pub fn interaction_values_assert_eq_double_deref(
+        trace_cols: &Self, n_rows: u32, col_len: u32,
+    ) -> Result<Self, MetalError> {
+        Self::dispatch_interaction_values(
+            trace_cols, 55, n_rows, col_len,
+            ffi::interaction_values_assert_eq_double_deref,
+        )
+    }
+
+    /// Produce LookupData values for jump_opcode_rel_imm from GPU trace columns.
+    /// 13 trace cols -> 49 flat output fields per row.
+    pub fn interaction_values_jump_opcode_rel_imm(
+        trace_cols: &Self, n_rows: u32, col_len: u32,
+    ) -> Result<Self, MetalError> {
+        Self::dispatch_interaction_values(
+            trace_cols, 49, n_rows, col_len,
+            ffi::interaction_values_jump_opcode_rel_imm,
+        )
+    }
+
+    /// Produce LookupData values for call_opcode_rel_imm from GPU trace columns.
+    /// 24 trace cols -> 115 flat output fields per row.
+    pub fn interaction_values_call_opcode_rel_imm(
+        trace_cols: &Self, n_rows: u32, col_len: u32,
+    ) -> Result<Self, MetalError> {
+        Self::dispatch_interaction_values(
+            trace_cols, 115, n_rows, col_len,
+            ffi::interaction_values_call_opcode_rel_imm,
+        )
+    }
+
     /// Generic range-check witness trace generation on GPU.
     ///
     /// Copies `n_columns` multiplicity buffers (packed contiguously in column-major
@@ -5329,6 +5422,51 @@ pub mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_interaction_values_ret_opcode(
+            runtime: *mut c_void,
+            trace_cols: *mut c_void,
+            output: *mut c_void,
+            n_rows: u32,
+            col_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_interaction_values_jnz_opcode_taken(
+            runtime: *mut c_void,
+            trace_cols: *mut c_void,
+            output: *mut c_void,
+            n_rows: u32,
+            col_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_interaction_values_assert_eq_double_deref(
+            runtime: *mut c_void,
+            trace_cols: *mut c_void,
+            output: *mut c_void,
+            n_rows: u32,
+            col_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_interaction_values_jump_opcode_rel_imm(
+            runtime: *mut c_void,
+            trace_cols: *mut c_void,
+            output: *mut c_void,
+            n_rows: u32,
+            col_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_interaction_values_call_opcode_rel_imm(
+            runtime: *mut c_void,
+            trace_cols: *mut c_void,
+            output: *mut c_void,
+            n_rows: u32,
+            col_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
     }
 
     pub unsafe fn runtime_create(
@@ -8616,6 +8754,66 @@ pub mod ffi {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
     }
+
+    pub unsafe fn interaction_values_ret_opcode(
+        runtime: *mut c_void, trace_cols: *mut c_void, output: *mut c_void,
+        n_rows: u32, col_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_interaction_values_ret_opcode(
+            runtime, trace_cols, output, n_rows, col_len,
+            error_ptr(&mut error), error.len(),
+        ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
+    }
+
+    pub unsafe fn interaction_values_jnz_opcode_taken(
+        runtime: *mut c_void, trace_cols: *mut c_void, output: *mut c_void,
+        n_rows: u32, col_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_interaction_values_jnz_opcode_taken(
+            runtime, trace_cols, output, n_rows, col_len,
+            error_ptr(&mut error), error.len(),
+        ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
+    }
+
+    pub unsafe fn interaction_values_assert_eq_double_deref(
+        runtime: *mut c_void, trace_cols: *mut c_void, output: *mut c_void,
+        n_rows: u32, col_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_interaction_values_assert_eq_double_deref(
+            runtime, trace_cols, output, n_rows, col_len,
+            error_ptr(&mut error), error.len(),
+        ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
+    }
+
+    pub unsafe fn interaction_values_jump_opcode_rel_imm(
+        runtime: *mut c_void, trace_cols: *mut c_void, output: *mut c_void,
+        n_rows: u32, col_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_interaction_values_jump_opcode_rel_imm(
+            runtime, trace_cols, output, n_rows, col_len,
+            error_ptr(&mut error), error.len(),
+        ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
+    }
+
+    pub unsafe fn interaction_values_call_opcode_rel_imm(
+        runtime: *mut c_void, trace_cols: *mut c_void, output: *mut c_void,
+        n_rows: u32, col_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_interaction_values_call_opcode_rel_imm(
+            runtime, trace_cols, output, n_rows, col_len,
+            error_ptr(&mut error), error.len(),
+        ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
+    }
 }
 
 #[cfg(not(stwo_metal_link))]
@@ -10274,5 +10472,45 @@ pub mod ffi {
         Err(MetalError::new(
             "Metal support was not linked into stwo-metal-sys.",
         ))
+    }
+
+    pub unsafe fn interaction_values_ret_opcode(
+        _runtime: *mut c_void, _trace_cols: *mut c_void, _output: *mut c_void,
+        _n_rows: u32, _col_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new("Metal support was not linked into stwo-metal-sys."))
+    }
+
+    pub unsafe fn interaction_values_jnz_opcode_taken(
+        _runtime: *mut c_void, _trace_cols: *mut c_void, _output: *mut c_void,
+        _n_rows: u32, _col_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new("Metal support was not linked into stwo-metal-sys."))
+    }
+
+    pub unsafe fn interaction_values_assert_eq_double_deref(
+        _runtime: *mut c_void, _trace_cols: *mut c_void, _output: *mut c_void,
+        _n_rows: u32, _col_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new("Metal support was not linked into stwo-metal-sys."))
+    }
+
+    pub unsafe fn interaction_values_jump_opcode_rel_imm(
+        _runtime: *mut c_void, _trace_cols: *mut c_void, _output: *mut c_void,
+        _n_rows: u32, _col_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new("Metal support was not linked into stwo-metal-sys."))
+    }
+
+    pub unsafe fn interaction_values_call_opcode_rel_imm(
+        _runtime: *mut c_void, _trace_cols: *mut c_void, _output: *mut c_void,
+        _n_rows: u32, _col_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new("Metal support was not linked into stwo-metal-sys."))
     }
 }

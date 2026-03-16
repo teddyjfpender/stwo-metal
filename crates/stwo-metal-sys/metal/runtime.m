@@ -9044,3 +9044,121 @@ bool stwo_metal_mults_ret_opcode(
         addr_to_id_mults_ptr, id_to_big_mults_ptr, id_to_small_mults_ptr,
         n_rows, error_message, error_message_len);
 }
+
+// ---------------------------------------------------------------------------
+// Interaction values from trace: shared dispatch for opcode interaction kernels
+// ---------------------------------------------------------------------------
+
+static bool stwo_metal_dispatch_interaction_values_kernel(
+    void *runtime_ptr,
+    NSString *kernel_name,
+    void *trace_cols_ptr,
+    void *output_ptr,
+    uint32_t n_rows,
+    uint32_t col_len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *trace_cols = stwo_metal_buffer_box(trace_cols_ptr);
+        StwoMetalBufferBox *output = stwo_metal_buffer_box(output_ptr);
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(
+            runtime, kernel_name, error_message, error_message_len);
+        if (pipeline == nil) return false;
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:trace_cols.buffer offset:0 atIndex:0];
+        [encoder setBuffer:output.buffer offset:0 atIndex:1];
+        [encoder setBytes:&n_rows length:sizeof(n_rows) atIndex:2];
+        [encoder setBytes:&col_len length:sizeof(col_len) atIndex:3];
+
+        MTLSize grid_size = MTLSizeMake((NSUInteger)col_len, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(
+            stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                command_buffer.error.localizedDescription
+                    ?: @"interaction values kernel failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_interaction_values_ret_opcode(
+    void *runtime_ptr, void *trace_cols_ptr, void *output_ptr,
+    uint32_t n_rows, uint32_t col_len,
+    char *error_message, size_t error_message_len
+) {
+    return stwo_metal_dispatch_interaction_values_kernel(
+        runtime_ptr, @"interaction_values_ret_opcode",
+        trace_cols_ptr, output_ptr, n_rows, col_len,
+        error_message, error_message_len);
+}
+
+bool stwo_metal_interaction_values_jnz_opcode_taken(
+    void *runtime_ptr, void *trace_cols_ptr, void *output_ptr,
+    uint32_t n_rows, uint32_t col_len,
+    char *error_message, size_t error_message_len
+) {
+    return stwo_metal_dispatch_interaction_values_kernel(
+        runtime_ptr, @"interaction_values_jnz_opcode_taken",
+        trace_cols_ptr, output_ptr, n_rows, col_len,
+        error_message, error_message_len);
+}
+
+bool stwo_metal_interaction_values_assert_eq_double_deref(
+    void *runtime_ptr, void *trace_cols_ptr, void *output_ptr,
+    uint32_t n_rows, uint32_t col_len,
+    char *error_message, size_t error_message_len
+) {
+    return stwo_metal_dispatch_interaction_values_kernel(
+        runtime_ptr, @"interaction_values_assert_eq_double_deref",
+        trace_cols_ptr, output_ptr, n_rows, col_len,
+        error_message, error_message_len);
+}
+
+bool stwo_metal_interaction_values_jump_opcode_rel_imm(
+    void *runtime_ptr, void *trace_cols_ptr, void *output_ptr,
+    uint32_t n_rows, uint32_t col_len,
+    char *error_message, size_t error_message_len
+) {
+    return stwo_metal_dispatch_interaction_values_kernel(
+        runtime_ptr, @"interaction_values_jump_opcode_rel_imm",
+        trace_cols_ptr, output_ptr, n_rows, col_len,
+        error_message, error_message_len);
+}
+
+bool stwo_metal_interaction_values_call_opcode_rel_imm(
+    void *runtime_ptr, void *trace_cols_ptr, void *output_ptr,
+    uint32_t n_rows, uint32_t col_len,
+    char *error_message, size_t error_message_len
+) {
+    return stwo_metal_dispatch_interaction_values_kernel(
+        runtime_ptr, @"interaction_values_call_opcode_rel_imm",
+        trace_cols_ptr, output_ptr, n_rows, col_len,
+        error_message, error_message_len);
+}

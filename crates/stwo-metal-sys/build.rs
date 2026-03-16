@@ -33,6 +33,7 @@ const METAL_SOURCES: &[&str] = &[
     "witness_opcodes",
     "witness_mults_accumulate",
     "barycentric",
+    "interaction_trace_opcodes_from_trace",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -151,6 +152,7 @@ fn main() {
     println!("cargo:rerun-if-changed=metal/witness_opcodes.metal");
     println!("cargo:rerun-if-changed=metal/witness_mults_accumulate.metal");
     println!("cargo:rerun-if-changed=metal/barycentric.metal");
+    println!("cargo:rerun-if-changed=metal/interaction_trace_opcodes_from_trace.metal");
     for var in [
         CUDA_MODE_VAR,
         METAL_MODE_VAR,

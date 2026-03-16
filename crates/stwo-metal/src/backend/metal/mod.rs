@@ -34,6 +34,7 @@ mod witness;
 pub mod interaction_trace_addr_to_id;
 pub mod interaction_trace_generic;
 pub mod interaction_trace_id_to_big;
+pub mod interaction_trace_opcodes;
 pub mod witness_memory_addr_to_id;
 pub mod witness_memory_id_to_big;
 pub mod witness_range_check;
