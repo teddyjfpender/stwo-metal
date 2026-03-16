@@ -1480,7 +1480,14 @@ pub fn interpret_metal_evaluation_program_v1(
         );
     }
     let mut row_res = Vec::with_capacity(n_rows);
-    let domain_log_size = program.header().reserved[0];
+    // Compute domain_log_size from n_rows, matching the GPU kernel's approach:
+    //   eval_log_size = log2(n_rows)
+    //   domain_log_size = eval_log_size - 1
+    // This replaces the previous approach of reading from header.reserved[0],
+    // which stored the component's compile-time log_size and could differ from
+    // the actual eval domain when running on synthetic data.
+    let eval_log_size = n_rows.trailing_zeros();
+    let domain_log_size = eval_log_size - 1;
     let max_base_regs = program.header().max_base_regs as usize;
     let max_ext_regs = program.header().max_ext_regs as usize;
     for row in 0..n_rows {
@@ -3908,6 +3915,62 @@ mod tests {
             },
         );
         assert!(result.is_ok(), "non-zero trace offset should succeed: {:?}", result.err());
+    }
+
+    /// Validate that the CPU interpreter computes domain_log_size from the
+    /// actual row count (not from the program header), so it agrees with the
+    /// GPU kernel when running on synthetic data whose row count differs from
+    /// the program's compile-time log_n_rows.
+    ///
+    /// Before the fix, the CPU interpreter read domain_log_size from
+    /// header.reserved[0] (set at lowering time to the component's log_size).
+    /// When the diagnostic test ran with 64 rows but the program was lowered
+    /// with log_n_rows=3, the CPU used domain_log_size=3 while the GPU used
+    /// domain_log_size = log2(64) - 1 = 5, causing mismatches for any
+    /// instruction with non-zero trace offset.
+    #[test]
+    fn cpu_interpreter_domain_log_size_from_row_count() {
+        // Lower a program with log_n_rows=3 (8-row trace domain).
+        let mut program =
+            lower_wide_fibonacci_evaluation_program_v1(MetalEvaluationProgramSpecializationV1 {
+                log_n_rows: 3,
+                n_columns: 3,
+            })
+            .unwrap();
+
+        // Force a non-zero offset on the first trace column read so the
+        // domain_log_size value actually matters.
+        program.base_insts[1].imm = 1;
+
+        // Run with 64 rows (NOT 8), simulating the diagnostic test scenario
+        // where synthetic data size differs from the program's log_n_rows.
+        let n_rows = 64usize;
+        let columns = wide_fibonacci_trace(n_rows, 3);
+        let trace_columns = columns.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let trace_interactions = [&[][..], trace_columns.as_slice()];
+
+        let result = interpret_metal_evaluation_program_v1(
+            &program,
+            MetalEvaluationProgramRuntimeInputsV1 {
+                trace: MetalEvaluationProgramTraceViewV1 {
+                    trace_interactions: &trace_interactions,
+                    preprocessed_columns: &[],
+                },
+                base_params: &[],
+                ext_params: &[],
+                random_coeff_powers: &[SecureField::from(BaseField::from_u32_unchecked(1))],
+            },
+        );
+
+        // The result should succeed and produce n_rows results.
+        let values = result.expect("CPU interpreter should handle mismatched row count");
+        assert_eq!(values.len(), n_rows, "should produce one result per row");
+
+        // The result should be non-trivial (not all zeros), since the trace
+        // data is non-zero and the constraint (col2 - col0^2 - col1^2) is
+        // evaluated with a shifted first column.
+        let any_nonzero = values.iter().any(|v| !v.is_zero());
+        assert!(any_nonzero, "results should be non-trivial for non-zero trace data with offset");
     }
 
     #[test]
