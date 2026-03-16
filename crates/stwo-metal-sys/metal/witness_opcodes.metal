@@ -94,13 +94,15 @@ static void split_felt252(
 
 // ---------------------------------------------------------------------------
 // Lookup: address_to_id — returns the raw memory ID for a given address.
-// The address is an M31 value used as a direct index.
+// The address is an M31 value (>= 1). The lookup table is offset by 1:
+// address 1 is stored at index 0, address 2 at index 1, etc.
+// This matches the CPU's AddressToId which indexes via data[addr - 1].
 // ---------------------------------------------------------------------------
 static inline uint lookup_addr_to_id(
     device const uint *address_to_id,
     uint addr
 ) {
-    return address_to_id[addr];
+    return address_to_id[addr - 1u];
 }
 
 // ---------------------------------------------------------------------------
