@@ -1,9 +1,7 @@
-use std::array;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use stwo::core::circle::Coset;
-use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::fri::{FriConfig, CIRCLE_TO_LINE_FOLD_STEP};
 use stwo::core::poly::circle::{CanonicCoset, CircleDomain};
@@ -248,18 +246,6 @@ pub fn fold_line(
     current
 }
 
-fn metal_secure_column_from_values(values: Vec<SecureField>) -> SecureColumnByCoords<MetalBackend> {
-    let mut columns = array::from_fn(|_| Vec::<BaseField>::with_capacity(values.len()));
-    for value in values {
-        for (column, coord) in columns.iter_mut().zip(value.to_m31_array()) {
-            column.push(coord);
-        }
-    }
-    SecureColumnByCoords {
-        columns: columns.map(BaseFieldVec::from_vec),
-    }
-}
-
 fn metal_line_evaluation_from_base_coords(
     domain: LineDomain,
     columns: [BaseFieldVec; 4],
@@ -354,30 +340,34 @@ impl FriOps for MetalBackend {
     fn decompose(
         eval: &SecureEvaluation<Self, BitReversedOrder>,
     ) -> (SecureEvaluation<Self, BitReversedOrder>, SecureField) {
-        let domain_size = eval.len();
-        let half_domain_size = domain_size / 2;
+        let domain_log_size = eval.domain.log_size();
 
-        let a_sum = (0..half_domain_size)
-            .map(|i| eval.values.at(i))
-            .sum::<SecureField>();
-        let b_sum = (half_domain_size..domain_size)
-            .map(|i| eval.values.at(i))
-            .sum::<SecureField>();
-        let lambda = (a_sum - b_sum) / BaseField::from_u32_unchecked(domain_size as u32);
+        let ([dst_0, dst_1, dst_2, dst_3], lambda_limbs) =
+            U32Buffer::fri_decompose_from_coords_u32x4(
+                [
+                    &eval.values.columns[0].buffer,
+                    &eval.values.columns[1].buffer,
+                    &eval.values.columns[2].buffer,
+                    &eval.values.columns[3].buffer,
+                ],
+                domain_log_size,
+            )
+            .expect("Metal FRI decompose should succeed");
 
-        let values = (0..domain_size)
-            .map(|i| {
-                let value = eval.values.at(i);
-                if i < half_domain_size {
-                    value - lambda
-                } else {
-                    value + lambda
-                }
-            })
-            .collect();
-        (
-            SecureEvaluation::new(eval.domain, metal_secure_column_from_values(values)),
-            lambda,
-        )
+        let columns = SecureColumnByCoords {
+            columns: [
+                BaseFieldVec::from_buffer(dst_0),
+                BaseFieldVec::from_buffer(dst_1),
+                BaseFieldVec::from_buffer(dst_2),
+                BaseFieldVec::from_buffer(dst_3),
+            ],
+        };
+        let lambda = SecureField::from_u32_unchecked(
+            lambda_limbs[0],
+            lambda_limbs[1],
+            lambda_limbs[2],
+            lambda_limbs[3],
+        );
+        (SecureEvaluation::new(eval.domain, columns), lambda)
     }
 }

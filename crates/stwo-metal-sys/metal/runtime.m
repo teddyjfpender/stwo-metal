@@ -1068,11 +1068,6 @@ bool stwo_metal_rfft_evaluate_multi_u32(
     }
 }
 
-// --- Fused-tail IFFT constants (must match ifft.metal defines) ---
-#define IFFT_FUSED_TILE_LOG_HOST  11u
-#define IFFT_FUSED_TILE_SIZE_HOST (1u << IFFT_FUSED_TILE_LOG_HOST)
-#define IFFT_FUSED_THREADS_HOST   256u
-
 bool stwo_metal_ifft_interpolate_u32(
     void *runtime_ptr,
     void *values_ptr,
@@ -1108,12 +1103,6 @@ bool stwo_metal_ifft_interpolate_u32(
         if (rescale_pipeline == nil) {
             return false;
         }
-        id<MTLComputePipelineState> fused_pipeline = (values_log_len >= IFFT_FUSED_TILE_LOG_HOST)
-            ? stwo_metal_pipeline(runtime, @"ifft_tail_fused_u32", error_message, error_message_len)
-            : nil;
-        if (values_log_len >= IFFT_FUSED_TILE_LOG_HOST && fused_pipeline == nil) {
-            return false;
-        }
 
         uint32_t pair_count = values_len >> 1;
         id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
@@ -1122,104 +1111,44 @@ bool stwo_metal_ifft_interpolate_u32(
             return false;
         }
 
-        if (fused_pipeline != nil && values_log_len >= IFFT_FUSED_TILE_LOG_HOST) {
-            // Fused tail: circle_part + layers 1..(IFFT_FUSED_TILE_LOG_HOST-1)
-            uint32_t n_fused_layers = IFFT_FUSED_TILE_LOG_HOST - 1u;  // 10
-            uint32_t n_tiles = values_len >> IFFT_FUSED_TILE_LOG_HOST;
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
 
-            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-            if (encoder == nil) {
+        [encoder setComputePipelineState:circle_pipeline];
+        [encoder setBuffer:values.buffer offset:0 atIndex:0];
+        [encoder setBuffer:inverse_twiddles.buffer offset:0 atIndex:1];
+        [encoder setBytes:&values_len length:sizeof(values_len) atIndex:2];
+        MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(circle_pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        uint32_t layer_domain_offset = 0u;
+        uint32_t layer_domain_size = pair_count;
+        for (uint32_t layer = 1u; layer < values_log_len; ++layer) {
+            id<MTLComputeCommandEncoder> line_encoder = [command_buffer computeCommandEncoder];
+            if (line_encoder == nil) {
                 stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
                 return false;
             }
 
-            [encoder setComputePipelineState:fused_pipeline];
-            [encoder setBuffer:values.buffer offset:0 atIndex:0];
-            [encoder setBuffer:inverse_twiddles.buffer offset:0 atIndex:1];
-            [encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
-            [encoder setBytes:&n_fused_layers length:sizeof(n_fused_layers) atIndex:3];
+            [line_encoder setComputePipelineState:line_pipeline];
+            [line_encoder setBuffer:values.buffer offset:0 atIndex:0];
+            [line_encoder setBuffer:inverse_twiddles.buffer offset:0 atIndex:1];
+            [line_encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
+            [line_encoder setBytes:&layer length:sizeof(layer) atIndex:3];
+            [line_encoder setBytes:&layer_domain_offset length:sizeof(layer_domain_offset) atIndex:4];
 
-            MTLSize grid_size = MTLSizeMake(n_tiles, 1, 1);
-            MTLSize tg_size = MTLSizeMake(IFFT_FUSED_THREADS_HOST, 1, 1);
-            [encoder dispatchThreadgroups:grid_size threadsPerThreadgroup:tg_size];
-            [encoder endEncoding];
+            MTLSize line_grid_size = MTLSizeMake(pair_count, 1, 1);
+            MTLSize line_threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(line_pipeline), 1, 1);
+            [line_encoder dispatchThreads:line_grid_size threadsPerThreadgroup:line_threadgroup_size];
+            [line_encoder endEncoding];
 
-            // Wide stages: layers IFFT_FUSED_TILE_LOG_HOST up to values_log_len-1
-            // Compute layer_domain_offset for the first wide layer.
-            // For IFFT, layer l has twiddle offset = sum_{k=1}^{l-1} (pair_count >> k)
-            // = pair_count - (pair_count >> (l-1)).
-            // But the existing kernel uses cumulative offset tracking.
-            uint32_t layer_domain_offset = 0u;
-            uint32_t layer_domain_size = pair_count;
-            // Skip layers 1..(IFFT_FUSED_TILE_LOG_HOST-1) in the offset computation.
-            for (uint32_t skip = 1u; skip < IFFT_FUSED_TILE_LOG_HOST; ++skip) {
-                layer_domain_size >>= 1u;
-                layer_domain_offset += layer_domain_size;
-            }
-
-            for (uint32_t layer = IFFT_FUSED_TILE_LOG_HOST; layer < values_log_len; ++layer) {
-                id<MTLComputeCommandEncoder> line_encoder = [command_buffer computeCommandEncoder];
-                if (line_encoder == nil) {
-                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
-                    return false;
-                }
-
-                [line_encoder setComputePipelineState:line_pipeline];
-                [line_encoder setBuffer:values.buffer offset:0 atIndex:0];
-                [line_encoder setBuffer:inverse_twiddles.buffer offset:0 atIndex:1];
-                [line_encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
-                [line_encoder setBytes:&layer length:sizeof(layer) atIndex:3];
-                [line_encoder setBytes:&layer_domain_offset length:sizeof(layer_domain_offset) atIndex:4];
-
-                MTLSize line_grid_size = MTLSizeMake(pair_count, 1, 1);
-                MTLSize line_threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(line_pipeline), 1, 1);
-                [line_encoder dispatchThreads:line_grid_size threadsPerThreadgroup:line_threadgroup_size];
-                [line_encoder endEncoding];
-
-                layer_domain_size >>= 1u;
-                layer_domain_offset += layer_domain_size;
-            }
-        } else {
-            // Original per-stage dispatch for small buffers
-            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-            if (encoder == nil) {
-                stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
-                return false;
-            }
-
-            [encoder setComputePipelineState:circle_pipeline];
-            [encoder setBuffer:values.buffer offset:0 atIndex:0];
-            [encoder setBuffer:inverse_twiddles.buffer offset:0 atIndex:1];
-            [encoder setBytes:&values_len length:sizeof(values_len) atIndex:2];
-            MTLSize grid_size = MTLSizeMake(pair_count, 1, 1);
-            MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(circle_pipeline), 1, 1);
-            [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
-            [encoder endEncoding];
-
-            uint32_t layer_domain_offset = 0u;
-            uint32_t layer_domain_size = pair_count;
-            for (uint32_t layer = 1u; layer < values_log_len; ++layer) {
-                id<MTLComputeCommandEncoder> line_encoder = [command_buffer computeCommandEncoder];
-                if (line_encoder == nil) {
-                    stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
-                    return false;
-                }
-
-                [line_encoder setComputePipelineState:line_pipeline];
-                [line_encoder setBuffer:values.buffer offset:0 atIndex:0];
-                [line_encoder setBuffer:inverse_twiddles.buffer offset:0 atIndex:1];
-                [line_encoder setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
-                [line_encoder setBytes:&layer length:sizeof(layer) atIndex:3];
-                [line_encoder setBytes:&layer_domain_offset length:sizeof(layer_domain_offset) atIndex:4];
-
-                MTLSize line_grid_size = MTLSizeMake(pair_count, 1, 1);
-                MTLSize line_threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(line_pipeline), 1, 1);
-                [line_encoder dispatchThreads:line_grid_size threadsPerThreadgroup:line_threadgroup_size];
-                [line_encoder endEncoding];
-
-                layer_domain_size >>= 1u;
-                layer_domain_offset += layer_domain_size;
-            }
+            layer_domain_size >>= 1u;
+            layer_domain_offset += layer_domain_size;
         }
 
         id<MTLComputeCommandEncoder> rescale_encoder = [command_buffer computeCommandEncoder];
@@ -3416,6 +3345,189 @@ bool stwo_metal_fri_fold_line_step_u32x4(
 
         if (command_buffer.status == MTLCommandBufferStatusError) {
             stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+bool stwo_metal_fri_decompose_coords_u32x4(
+    void *runtime_ptr,
+    void *src_0_ptr,
+    void *src_1_ptr,
+    void *src_2_ptr,
+    void *src_3_ptr,
+    void *dst_0_ptr,
+    void *dst_1_ptr,
+    void *dst_2_ptr,
+    void *dst_3_ptr,
+    uint32_t domain_log_size,
+    uint32_t *lambda_limbs_out,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *src_0 = stwo_metal_buffer_box(src_0_ptr);
+        StwoMetalBufferBox *src_1 = stwo_metal_buffer_box(src_1_ptr);
+        StwoMetalBufferBox *src_2 = stwo_metal_buffer_box(src_2_ptr);
+        StwoMetalBufferBox *src_3 = stwo_metal_buffer_box(src_3_ptr);
+        StwoMetalBufferBox *dst_0 = stwo_metal_buffer_box(dst_0_ptr);
+        StwoMetalBufferBox *dst_1 = stwo_metal_buffer_box(dst_1_ptr);
+        StwoMetalBufferBox *dst_2 = stwo_metal_buffer_box(dst_2_ptr);
+        StwoMetalBufferBox *dst_3 = stwo_metal_buffer_box(dst_3_ptr);
+
+        NSUInteger domain_size = ((NSUInteger)1) << domain_log_size;
+        NSUInteger half_domain_size = domain_size >> 1;
+
+        if (src_0.len != domain_size || src_1.len != domain_size ||
+            src_2.len != domain_size || src_3.len != domain_size ||
+            dst_0.len != domain_size || dst_1.len != domain_size ||
+            dst_2.len != domain_size || dst_3.len != domain_size) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"FRI decompose expects four source and four destination coordinate buffers of domain_size length.");
+            return false;
+        }
+
+        // --- Phase 1: Compute signed terms for lambda reduction ---
+        id<MTLComputePipelineState> terms_pipeline =
+            stwo_metal_pipeline(runtime, @"fri_decompose_lambda_terms_coords_u32x4", error_message, error_message_len);
+        id<MTLComputePipelineState> reduce_pipeline =
+            stwo_metal_pipeline(runtime, @"gkr_sum_reduce_pairs_u32x4", error_message, error_message_len);
+        id<MTLComputePipelineState> apply_pipeline =
+            stwo_metal_pipeline(runtime, @"fri_decompose_apply_lambda_coords_u32x4", error_message, error_message_len);
+        if (terms_pipeline == nil || reduce_pipeline == nil || apply_pipeline == nil) {
+            return false;
+        }
+
+        // Allocate scratch buffers for the reduction.  Each element is a QM31
+        // (4 x uint32), and we need domain_size terms plus a ping-pong temp.
+        NSUInteger term_bytes = domain_size * 4u * sizeof(uint32_t);
+        id<MTLBuffer> terms_buf = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> temp_buf  = [runtime.device newBufferWithLength:term_bytes options:MTLResourceStorageModeShared];
+        if (terms_buf == nil || temp_buf == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to allocate Metal FRI decompose scratch buffers.");
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        // Encode the signed-term computation.
+        {
+            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+            if (encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    @"Failed to create Metal compute encoder.");
+                return false;
+            }
+            uint32_t half_size_u32 = (uint32_t)half_domain_size;
+            [encoder setComputePipelineState:terms_pipeline];
+            [encoder setBuffer:src_0.buffer offset:0 atIndex:0];
+            [encoder setBuffer:src_1.buffer offset:0 atIndex:1];
+            [encoder setBuffer:src_2.buffer offset:0 atIndex:2];
+            [encoder setBuffer:src_3.buffer offset:0 atIndex:3];
+            [encoder setBuffer:terms_buf offset:0 atIndex:4];
+            [encoder setBytes:&half_size_u32 length:sizeof(half_size_u32) atIndex:5];
+            MTLSize grid = MTLSizeMake(domain_size, 1, 1);
+            MTLSize tg = MTLSizeMake(stwo_metal_threads_per_group(terms_pipeline), 1, 1);
+            [encoder dispatchThreads:grid threadsPerThreadgroup:tg];
+            [encoder endEncoding];
+        }
+
+        // Encode the pairwise QM31 reduction tree.
+        id<MTLBuffer> final_sum = stwo_metal_encode_qm31_pair_reduction(
+            command_buffer, reduce_pipeline,
+            terms_buf, temp_buf, (uint32_t)domain_size,
+            error_message, error_message_len);
+        if (final_sum == nil) {
+            return false;
+        }
+
+        // Commit and wait -- we need the sum on CPU to compute lambda.
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                command_buffer.error.localizedDescription ?: @"Metal kernel execution failed.");
+            return false;
+        }
+
+        // Read back (a_sum - b_sum) and compute lambda = sum / domain_size on CPU.
+        // Division by domain_size in M31 is multiplication by the modular inverse.
+        // Since domain_size is a power of two and fits in M31, we compute the
+        // inverse via Fermat's little theorem (already available in the Metal
+        // header, but here we do it on CPU for a single scalar).
+        uint32_t sum_limbs[4];
+        memcpy(sum_limbs, final_sum.contents, sizeof(uint32_t) * 4u);
+
+        // M31 modular inverse of domain_size.
+        // domain_size = 2^domain_log_size.
+        // inv(2^k) mod P where P = 2^31 - 1:
+        //   2^(-1) mod P = (P+1)/2 = 2^30
+        //   2^(-k) mod P = 2^(31-k) mod P   for k <= 31
+        // Actually: inv(2) = (P+1)/2 = 1073741824.  inv(2^k) = inv(2)^k.
+        // More precisely: 2^(-k) mod (2^31-1) = 2^(31-k) for k <= 31.
+        uint64_t P = 2147483647ULL;
+        uint32_t domain_size_inv;
+        if (domain_log_size <= 31) {
+            domain_size_inv = (uint32_t)(1ULL << (31u - domain_log_size));
+        } else {
+            // Should not happen in practice.
+            domain_size_inv = 1;
+        }
+
+        // lambda = sum * inv(domain_size) per coordinate (each is M31).
+        for (int c = 0; c < 4; c++) {
+            uint64_t prod = (uint64_t)sum_limbs[c] * (uint64_t)domain_size_inv;
+            uint64_t reduced = ((((prod >> 31u) + prod + 1u) >> 31u) + prod) & P;
+            lambda_limbs_out[c] = (uint32_t)reduced;
+        }
+
+        // --- Phase 2: Apply lambda correction ---
+        id<MTLCommandBuffer> apply_cb = [runtime.queue commandBuffer];
+        if (apply_cb == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to create Metal command buffer for decompose apply.");
+            return false;
+        }
+
+        {
+            id<MTLComputeCommandEncoder> encoder = [apply_cb computeCommandEncoder];
+            if (encoder == nil) {
+                stwo_metal_write_error(error_message, error_message_len,
+                    @"Failed to create Metal compute encoder for decompose apply.");
+                return false;
+            }
+            uint32_t half_size_u32 = (uint32_t)half_domain_size;
+            [encoder setComputePipelineState:apply_pipeline];
+            [encoder setBuffer:src_0.buffer offset:0 atIndex:0];
+            [encoder setBuffer:src_1.buffer offset:0 atIndex:1];
+            [encoder setBuffer:src_2.buffer offset:0 atIndex:2];
+            [encoder setBuffer:src_3.buffer offset:0 atIndex:3];
+            [encoder setBuffer:dst_0.buffer offset:0 atIndex:4];
+            [encoder setBuffer:dst_1.buffer offset:0 atIndex:5];
+            [encoder setBuffer:dst_2.buffer offset:0 atIndex:6];
+            [encoder setBuffer:dst_3.buffer offset:0 atIndex:7];
+            [encoder setBytes:lambda_limbs_out length:sizeof(uint32_t) * 4 atIndex:8];
+            [encoder setBytes:&half_size_u32 length:sizeof(half_size_u32) atIndex:9];
+            MTLSize grid = MTLSizeMake(domain_size, 1, 1);
+            MTLSize tg = MTLSizeMake(stwo_metal_threads_per_group(apply_pipeline), 1, 1);
+            [encoder dispatchThreads:grid threadsPerThreadgroup:tg];
+            [encoder endEncoding];
+        }
+
+        [apply_cb commit];
+        [apply_cb waitUntilCompleted];
+        if (apply_cb.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                apply_cb.error.localizedDescription ?: @"Metal kernel execution failed.");
             return false;
         }
 
@@ -8574,122 +8686,6 @@ bool stwo_metal_witness_verify_instruction_trace(
             return false;
         }
 
-        return true;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// GPU Merkle tree decommitment: bulk gather of hash witnesses
-// ---------------------------------------------------------------------------
-//
-// Gathers hash nodes from multiple Merkle tree layers in a single command
-// buffer.  For each layer the caller provides an array of node indices to
-// gather.  The kernel copies the 8 x uint32 words of each node to a
-// contiguous output buffer.
-//
-// layer_ptrs:       array of `n_layers` StwoMetalBufferBox* (Merkle layers,
-//                   index 0 = root layer, index n_layers-1 = leaf layer).
-// n_layers:         number of layers.
-// per_layer_indices: array of `n_layers` host uint32_t* arrays, each
-//                   containing the node indices to gather from that layer.
-// per_layer_counts: array of `n_layers` uint32_t values -- number of gathers
-//                   per layer.
-// out_hashes:       host buffer receiving ALL gathered hashes contiguously
-//                   (8 x uint32 per hash).  The caller determines the total
-//                   count as sum(per_layer_counts).
-// total_gathers:    sum of all per_layer_counts.
-//
-// Returns true on success.
-bool stwo_metal_merkle_decommit_gather(
-    void *runtime_ptr,
-    void **layer_ptrs,
-    uint32_t n_layers,
-    const uint32_t **per_layer_indices,
-    const uint32_t *per_layer_counts,
-    uint32_t *out_hashes,
-    uint32_t total_gathers,
-    char *error_message,
-    size_t error_message_len
-) {
-    @autoreleasepool {
-        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
-
-        // Short-circuit: if nothing to gather, return immediately.
-        if (total_gathers == 0) {
-            return true;
-        }
-
-        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(
-            runtime, @"merkle_decommit_gather", error_message, error_message_len
-        );
-        if (pipeline == nil) return false;
-
-        // Allocate a single output buffer for all gathered hashes.
-        NSUInteger out_bytes = (NSUInteger)total_gathers * 8u * sizeof(uint32_t);
-        id<MTLBuffer> output_buffer = [runtime.device
-            newBufferWithLength:out_bytes
-            options:MTLResourceStorageModeShared];
-        if (output_buffer == nil) {
-            stwo_metal_write_error(error_message, error_message_len,
-                @"merkle_decommit_gather: failed to allocate output buffer.");
-            return false;
-        }
-
-        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
-
-        uint32_t output_offset_hashes = 0;
-
-        for (uint32_t layer = 0; layer < n_layers; ++layer) {
-            uint32_t count = per_layer_counts[layer];
-            if (count == 0) continue;
-
-            StwoMetalBufferBox *layer_box = stwo_metal_buffer_box(layer_ptrs[layer]);
-
-            // Upload gather indices for this layer.
-            NSUInteger idx_bytes = (NSUInteger)count * sizeof(uint32_t);
-            id<MTLBuffer> indices_buffer = [runtime.device
-                newBufferWithBytes:per_layer_indices[layer]
-                length:idx_bytes
-                options:MTLResourceStorageModeShared];
-            if (indices_buffer == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    @"merkle_decommit_gather: failed to allocate index buffer.");
-                return false;
-            }
-
-            // Params: [num_gathers].
-            uint32_t params[1] = { count };
-
-            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-            [encoder setComputePipelineState:pipeline];
-            [encoder setBuffer:layer_box.buffer offset:0 atIndex:0];
-            [encoder setBuffer:indices_buffer offset:0 atIndex:1];
-            [encoder setBuffer:output_buffer
-                        offset:(NSUInteger)output_offset_hashes * 8u * sizeof(uint32_t)
-                       atIndex:2];
-            [encoder setBytes:params length:sizeof(params) atIndex:3];
-
-            MTLSize grid_size = MTLSizeMake(count, 1, 1);
-            MTLSize threadgroup_size = MTLSizeMake(
-                stwo_metal_threads_per_group(pipeline), 1, 1);
-            [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
-            [encoder endEncoding];
-
-            output_offset_hashes += count;
-        }
-
-        [command_buffer commit];
-        [command_buffer waitUntilCompleted];
-
-        if (command_buffer.status == MTLCommandBufferStatusError) {
-            stwo_metal_write_error(error_message, error_message_len,
-                command_buffer.error.localizedDescription
-                    ?: @"merkle_decommit_gather kernel failed.");
-            return false;
-        }
-
-        // Copy results to host.
-        memcpy(out_hashes, output_buffer.contents, out_bytes);
         return true;
     }
 }

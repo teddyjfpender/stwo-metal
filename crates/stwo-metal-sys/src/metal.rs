@@ -1344,6 +1344,44 @@ impl U32Buffer {
         Ok(dst)
     }
 
+    /// GPU-accelerated FRI decompose operating on four separate M31 coordinate
+    /// columns (SecureColumnByCoords layout).
+    ///
+    /// Returns four destination coordinate buffers and the lambda limbs.
+    pub fn fri_decompose_from_coords_u32x4(
+        src_columns: [&Self; 4],
+        domain_log_size: u32,
+    ) -> Result<([Self; 4], [u32; 4]), MetalError> {
+        let [src_0, src_1, src_2, src_3] = src_columns;
+        let domain_size: usize = 1 << domain_log_size;
+        assert_eq!(src_0.len, domain_size);
+        assert_eq!(src_1.len, domain_size);
+        assert_eq!(src_2.len, domain_size);
+        assert_eq!(src_3.len, domain_size);
+
+        let runtime = shared_runtime()?;
+        let dst_0 = Self::uninitialized(domain_size)?;
+        let dst_1 = Self::uninitialized(domain_size)?;
+        let dst_2 = Self::uninitialized(domain_size)?;
+        let dst_3 = Self::uninitialized(domain_size)?;
+        let lambda_limbs = unsafe {
+            ffi::fri_decompose_coords_u32x4(
+                runtime.raw.as_ptr(),
+                src_0.raw.as_ptr(),
+                src_1.raw.as_ptr(),
+                src_2.raw.as_ptr(),
+                src_3.raw.as_ptr(),
+                dst_0.raw.as_ptr(),
+                dst_1.raw.as_ptr(),
+                dst_2.raw.as_ptr(),
+                dst_3.raw.as_ptr(),
+                domain_log_size,
+                error_buffer_mut_ptr,
+            )?
+        };
+        Ok(([dst_0, dst_1, dst_2, dst_3], lambda_limbs))
+    }
+
     pub fn generate_wide_fibonacci_trace(
         input_a: &Self,
         input_b: &Self,
@@ -2809,6 +2847,55 @@ impl U32Buffer {
                 error_buffer_mut_ptr,
             )
         }
+    }
+
+    /// Bulk gather hash nodes from multiple Merkle tree layers in a single
+    /// GPU command buffer dispatch.
+    ///
+    /// `layers`: the Merkle tree layer buffers (index 0 = root, last = leaves).
+    ///           Each buffer stores hashes as 8 x u32 words per node.
+    /// `per_layer_indices`: for each layer, the node indices to gather.
+    /// `total_gathers`: sum of all per-layer gather counts.
+    ///
+    /// Returns a flat `Vec<u32>` containing `total_gathers * 8` words
+    /// (the gathered hashes in per-layer order).
+    pub fn merkle_decommit_gather(
+        layers: &[&Self],
+        per_layer_indices: &[&[u32]],
+    ) -> Result<Vec<u32>, MetalError> {
+        assert_eq!(
+            layers.len(),
+            per_layer_indices.len(),
+            "merkle_decommit_gather: layers and per_layer_indices must have the same length"
+        );
+        let runtime = shared_runtime()?;
+        let layer_ptrs: Vec<*mut std::ffi::c_void> =
+            layers.iter().map(|l| l.raw.as_ptr()).collect();
+        let per_layer_index_ptrs: Vec<*const u32> = per_layer_indices
+            .iter()
+            .map(|indices| indices.as_ptr())
+            .collect();
+        let per_layer_counts: Vec<u32> = per_layer_indices
+            .iter()
+            .map(|indices| indices.len() as u32)
+            .collect();
+        let total_gathers: u32 = per_layer_counts.iter().sum();
+        if total_gathers == 0 {
+            return Ok(Vec::new());
+        }
+        let mut out_hashes = vec![0u32; total_gathers as usize * 8];
+        unsafe {
+            ffi::merkle_decommit_gather(
+                runtime.raw.as_ptr(),
+                &layer_ptrs,
+                &per_layer_index_ptrs,
+                &per_layer_counts,
+                out_hashes.as_mut_ptr(),
+                total_gathers,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(out_hashes)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -4277,6 +4364,21 @@ mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_fri_decompose_coords_u32x4(
+            runtime: *mut c_void,
+            src_0: *mut c_void,
+            src_1: *mut c_void,
+            src_2: *mut c_void,
+            src_3: *mut c_void,
+            dst_0: *mut c_void,
+            dst_1: *mut c_void,
+            dst_2: *mut c_void,
+            dst_3: *mut c_void,
+            domain_log_size: u32,
+            lambda_limbs_out: *mut u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_generate_wide_fibonacci_trace_u32(
             runtime: *mut c_void,
             input_a: *mut c_void,
@@ -5053,6 +5155,17 @@ mod ffi {
             n_rows: u32,
             column_length: u32,
             addr_to_id_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_merkle_decommit_gather(
+            runtime: *mut c_void,
+            layer_ptrs: *const *mut c_void,
+            n_layers: u32,
+            per_layer_indices: *const *const u32,
+            per_layer_counts: *const u32,
+            out_hashes: *mut u32,
+            total_gathers: u32,
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
@@ -6152,6 +6265,42 @@ mod ffi {
             error.len(),
         ) {
             Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn fri_decompose_coords_u32x4(
+        runtime: *mut c_void,
+        src_0: *mut c_void,
+        src_1: *mut c_void,
+        src_2: *mut c_void,
+        src_3: *mut c_void,
+        dst_0: *mut c_void,
+        dst_1: *mut c_void,
+        dst_2: *mut c_void,
+        dst_3: *mut c_void,
+        domain_log_size: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<[u32; 4], MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let mut lambda_limbs = [0u32; 4];
+        if stwo_metal_fri_decompose_coords_u32x4(
+            runtime,
+            src_0,
+            src_1,
+            src_2,
+            src_3,
+            dst_0,
+            dst_1,
+            dst_2,
+            dst_3,
+            domain_log_size,
+            lambda_limbs.as_mut_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(lambda_limbs)
         } else {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
@@ -8058,6 +8207,38 @@ mod ffi {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
     }
+
+    /// Bulk gather hash nodes from multiple Merkle tree layers in a single
+    /// GPU command buffer dispatch.
+    pub unsafe fn merkle_decommit_gather(
+        runtime: *mut c_void,
+        layer_ptrs: &[*mut c_void],
+        per_layer_indices: &[*const u32],
+        per_layer_counts: &[u32],
+        out_hashes: *mut u32,
+        total_gathers: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let n_layers = layer_ptrs.len() as u32;
+        debug_assert_eq!(per_layer_indices.len(), n_layers as usize);
+        debug_assert_eq!(per_layer_counts.len(), n_layers as usize);
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_merkle_decommit_gather(
+            runtime,
+            layer_ptrs.as_ptr() as *const *mut c_void,
+            n_layers,
+            per_layer_indices.as_ptr(),
+            per_layer_counts.as_ptr(),
+            out_hashes,
+            total_gathers,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
 }
 
 #[cfg(not(stwo_metal_link))]
@@ -8701,6 +8882,24 @@ mod ffi {
         _alpha_limbs: [u32; 4],
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn fri_decompose_coords_u32x4(
+        _runtime: *mut c_void,
+        _src_0: *mut c_void,
+        _src_1: *mut c_void,
+        _src_2: *mut c_void,
+        _src_3: *mut c_void,
+        _dst_0: *mut c_void,
+        _dst_1: *mut c_void,
+        _dst_2: *mut c_void,
+        _dst_3: *mut c_void,
+        _domain_log_size: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<[u32; 4], MetalError> {
         Err(MetalError::new(
             "Metal support was not linked into stwo-metal-sys.",
         ))
@@ -9561,6 +9760,20 @@ mod ffi {
         _batch_size: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<u32, MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn merkle_decommit_gather(
+        _runtime: *mut c_void,
+        _layer_ptrs: &[*mut c_void],
+        _per_layer_indices: &[*const u32],
+        _per_layer_counts: &[u32],
+        _out_hashes: *mut u32,
+        _total_gathers: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
         Err(MetalError::new(
             "Metal support was not linked into stwo-metal-sys.",
         ))
