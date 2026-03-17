@@ -298,14 +298,27 @@ pub fn evaluate_polys_on_domain_batch(
             .checked_mul(domain_size)
             .expect("Metal batched evaluate length should fit in usize"),
     )?;
+
+    // Phase 1: Copy coefficients and submit RFFTs without blocking.
+    let mut handles = Vec::with_capacity(polys.len());
     for (index, poly) in polys.iter().enumerate() {
         let extended = MetalBackend::extend(poly, domain_log_size);
         let offset = index
             .checked_mul(domain_size)
             .expect("Metal batched evaluate offset should fit in usize");
         values.copy_from_offset(&extended.coeffs.buffer, offset)?;
-        values.rfft_evaluate_subbuffer_in_place(offset, domain_size, &twiddle_tail)?;
+        let handle =
+            values.rfft_evaluate_subbuffer_in_place_async(offset, domain_size, &twiddle_tail)?;
+        handles.push(handle);
     }
+
+    // Phase 2: Wait for all RFFTs to complete (same-queue CBs finish in order,
+    // so after the last wait returns all previous ones are guaranteed complete).
+    if let Some(last) = handles.pop() {
+        last.wait()?;
+    }
+    // Remaining handles are already complete; just release them.
+    drop(handles);
 
     Ok(BaseFieldColumnBatch::from_buffer(
         values,

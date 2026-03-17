@@ -433,6 +433,42 @@ impl U32Buffer {
         }
     }
 
+    /// Submit subbuffer RFFT without blocking. Returns a handle to wait on later.
+    pub fn rfft_evaluate_subbuffer_in_place_async(
+        &mut self,
+        value_offset: usize,
+        values_len: usize,
+        twiddles: &Self,
+    ) -> Result<CommandBufferHandle, MetalError> {
+        assert!(
+            values_len.is_power_of_two(),
+            "RFFT async subbuffer requires a power-of-two value buffer"
+        );
+        assert!(
+            value_offset + values_len <= self.len,
+            "RFFT async subbuffer range must stay within the backing buffer"
+        );
+        assert_eq!(
+            twiddles.len,
+            values_len / 2,
+            "RFFT async subbuffer requires a twiddle slice with one half-coset tree tail"
+        );
+        let runtime = shared_runtime()?;
+        let handle = unsafe {
+            ffi::rfft_evaluate_subbuffer_async_u32(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                value_offset,
+                values_len.ilog2(),
+                twiddles.raw.as_ptr(),
+                error_buffer_mut_ptr,
+            )?
+        };
+        Ok(CommandBufferHandle {
+            raw: NonNull::new(handle).expect("async subbuffer RFFT returned null handle despite success"),
+        })
+    }
+
     /// Batch RFFT evaluate: process multiple same-size buffers in a single
     /// GPU command submission, eliminating per-buffer waitUntilCompleted overhead.
     ///
@@ -4320,6 +4356,15 @@ pub mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_rfft_evaluate_subbuffer_async_u32(
+            runtime: *mut c_void,
+            values: *mut c_void,
+            value_offset: usize,
+            values_log_len: u32,
+            twiddles: *mut c_void,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> *mut c_void;
         fn stwo_metal_rfft_evaluate_multi_u32(
             runtime: *mut c_void,
             buffer_ptrs: *const *mut c_void,
@@ -5916,6 +5961,31 @@ pub mod ffi {
             error.len(),
         ) {
             Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn rfft_evaluate_subbuffer_async_u32(
+        runtime: *mut c_void,
+        values: *mut c_void,
+        value_offset: usize,
+        values_log_len: u32,
+        twiddles: *mut c_void,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let handle = stwo_metal_rfft_evaluate_subbuffer_async_u32(
+            runtime,
+            values,
+            value_offset,
+            values_log_len,
+            twiddles,
+            error_ptr(&mut error),
+            error.len(),
+        );
+        if !handle.is_null() {
+            Ok(handle)
         } else {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
@@ -9243,6 +9313,32 @@ pub mod ffi {
         _values: *mut c_void,
         _twiddles: *mut c_void,
         _values_log_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn rfft_evaluate_subbuffer_u32(
+        _runtime: *mut c_void,
+        _values: *mut c_void,
+        _value_offset: usize,
+        _values_log_len: u32,
+        _twiddles: *mut c_void,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn rfft_evaluate_subbuffer_async_u32(
+        _runtime: *mut c_void,
+        _values: *mut c_void,
+        _value_offset: usize,
+        _values_log_len: u32,
+        _twiddles: *mut c_void,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<*mut c_void, MetalError> {
         Err(MetalError::new(
