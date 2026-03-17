@@ -688,11 +688,12 @@ mod cairo_prove_main {
     }
 
     /// Prover parameters used for both lowering setup and full proof.
+    /// Tuned for Metal GPU proving speed while maintaining >96-bit security.
     fn default_pcs_config() -> PcsConfig {
         PcsConfig {
-            pow_bits: 20,
+            pow_bits: 16,
             fri_config: FriConfig {
-                log_last_layer_degree_bound: 0,
+                log_last_layer_degree_bound: 3,
                 log_blowup_factor: 1,
                 n_queries: 15,
                 line_fold_step: 1,
