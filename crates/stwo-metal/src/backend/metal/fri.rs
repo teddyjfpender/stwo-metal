@@ -299,14 +299,22 @@ impl FriOps for MetalBackend {
         fold_step: u32,
     ) -> LineEvaluation<Self> {
         let mut domain = eval.domain();
-        let mut current = [
-            eval.values.columns[0].clone(),
-            eval.values.columns[1].clone(),
-            eval.values.columns[2].clone(),
-            eval.values.columns[3].clone(),
-        ];
-        let mut current_alpha = alpha;
-        for _ in 0..fold_step {
+        // First fold step references the original eval columns directly,
+        // avoiding a 4-column clone that would allocate + copy GPU memory.
+        let inverse_x_factors = cached_line_inverse_x_factors(domain);
+        let mut current = SecureFieldVec::fold_line_step_base_coords_with_factor_buffer(
+            [
+                &eval.values.columns[0],
+                &eval.values.columns[1],
+                &eval.values.columns[2],
+                &eval.values.columns[3],
+            ],
+            inverse_x_factors.as_ref(),
+            alpha,
+        );
+        domain = domain.double();
+        let mut current_alpha = alpha * alpha;
+        for _ in 1..fold_step {
             let inverse_x_factors = cached_line_inverse_x_factors(domain);
             current = SecureFieldVec::fold_line_step_base_coords_with_factor_buffer(
                 [&current[0], &current[1], &current[2], &current[3]],
