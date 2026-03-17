@@ -1972,6 +1972,114 @@ impl U32Buffer {
         )
     }
 
+    /// Dispatch a fused interaction trace kernel (single-pass: trace cols → logup fractions).
+    ///
+    /// # Arguments
+    /// * `trace_cols`    - Column-major [n_trace_cols][col_len] u32 trace data
+    /// * `alpha_powers`  - [max_combine_size * 4] u32 QM31 alpha powers
+    /// * `z`             - [4] u32 QM31 z value
+    /// * `n_logup_cols`  - Number of logup columns for this opcode
+    /// * `n_rows`        - Actual row count (for enabler)
+    /// * `col_len`       - Padded power-of-two column length
+    /// * `dispatch_fn`   - The FFI function to call
+    fn dispatch_fused_interaction(
+        trace_cols: &Self,
+        alpha_powers: &Self,
+        z: &Self,
+        n_logup_cols: usize,
+        n_rows: u32,
+        col_len: u32,
+        dispatch_fn: unsafe fn(
+            *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void,
+            u32, u32,
+            fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+        ) -> Result<(), MetalError>,
+    ) -> Result<Self, MetalError> {
+        assert_eq!(z.len, 4, "z must have 4 u32");
+        let output_len = n_logup_cols * 4 * col_len as usize;
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(output_len)?;
+        unsafe {
+            dispatch_fn(
+                runtime.raw.as_ptr(),
+                trace_cols.raw.as_ptr(),
+                alpha_powers.raw.as_ptr(),
+                z.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_rows,
+                col_len,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
+    /// Fused interaction trace for ret_opcode: 16 trace cols → 4 logup cols.
+    pub fn fused_interaction_ret_opcode(
+        trace_cols: &Self, alpha_powers: &Self, z: &Self,
+        n_rows: u32, col_len: u32,
+    ) -> Result<Self, MetalError> {
+        Self::dispatch_fused_interaction(
+            trace_cols, alpha_powers, z, 4, n_rows, col_len,
+            ffi::fused_interaction_ret_opcode,
+        )
+    }
+
+    /// Fused interaction trace for jump_opcode_rel_imm: 13 trace cols → 3 logup cols.
+    pub fn fused_interaction_jump_opcode_rel_imm(
+        trace_cols: &Self, alpha_powers: &Self, z: &Self,
+        n_rows: u32, col_len: u32,
+    ) -> Result<Self, MetalError> {
+        Self::dispatch_fused_interaction(
+            trace_cols, alpha_powers, z, 3, n_rows, col_len,
+            ffi::fused_interaction_jump_opcode_rel_imm,
+        )
+    }
+
+    /// Fused interaction trace for assert_eq_double_deref: 19 trace cols → 4 logup cols.
+    pub fn fused_interaction_assert_eq_double_deref(
+        trace_cols: &Self, alpha_powers: &Self, z: &Self,
+        n_rows: u32, col_len: u32,
+    ) -> Result<Self, MetalError> {
+        Self::dispatch_fused_interaction(
+            trace_cols, alpha_powers, z, 4, n_rows, col_len,
+            ffi::fused_interaction_assert_eq_double_deref,
+        )
+    }
+
+    /// Fused interaction trace for jnz_opcode_taken: 47 trace cols → 4 logup cols.
+    pub fn fused_interaction_jnz_opcode_taken(
+        trace_cols: &Self, alpha_powers: &Self, z: &Self,
+        n_rows: u32, col_len: u32,
+    ) -> Result<Self, MetalError> {
+        Self::dispatch_fused_interaction(
+            trace_cols, alpha_powers, z, 4, n_rows, col_len,
+            ffi::fused_interaction_jnz_opcode_taken,
+        )
+    }
+
+    /// Fused interaction trace for call_opcode_rel_imm: 24 trace cols → 5 logup cols.
+    pub fn fused_interaction_call_opcode_rel_imm(
+        trace_cols: &Self, alpha_powers: &Self, z: &Self,
+        n_rows: u32, col_len: u32,
+    ) -> Result<Self, MetalError> {
+        Self::dispatch_fused_interaction(
+            trace_cols, alpha_powers, z, 5, n_rows, col_len,
+            ffi::fused_interaction_call_opcode_rel_imm,
+        )
+    }
+
+    /// Fused interaction trace for add_opcode_small: 39 trace cols → 5 logup cols.
+    pub fn fused_interaction_add_opcode_small(
+        trace_cols: &Self, alpha_powers: &Self, z: &Self,
+        n_rows: u32, col_len: u32,
+    ) -> Result<Self, MetalError> {
+        Self::dispatch_fused_interaction(
+            trace_cols, alpha_powers, z, 5, n_rows, col_len,
+            ffi::fused_interaction_add_opcode_small,
+        )
+    }
+
     /// Generic range-check witness trace generation on GPU.
     ///
     /// Copies `n_columns` multiplicity buffers (packed contiguously in column-major
@@ -5467,6 +5575,72 @@ pub mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_fused_interaction_ret_opcode(
+            runtime: *mut c_void,
+            trace_cols: *mut c_void,
+            alpha_powers: *mut c_void,
+            z: *mut c_void,
+            output: *mut c_void,
+            n_rows: u32,
+            col_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_fused_interaction_jump_opcode_rel_imm(
+            runtime: *mut c_void,
+            trace_cols: *mut c_void,
+            alpha_powers: *mut c_void,
+            z: *mut c_void,
+            output: *mut c_void,
+            n_rows: u32,
+            col_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_fused_interaction_assert_eq_double_deref(
+            runtime: *mut c_void,
+            trace_cols: *mut c_void,
+            alpha_powers: *mut c_void,
+            z: *mut c_void,
+            output: *mut c_void,
+            n_rows: u32,
+            col_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_fused_interaction_jnz_opcode_taken(
+            runtime: *mut c_void,
+            trace_cols: *mut c_void,
+            alpha_powers: *mut c_void,
+            z: *mut c_void,
+            output: *mut c_void,
+            n_rows: u32,
+            col_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_fused_interaction_call_opcode_rel_imm(
+            runtime: *mut c_void,
+            trace_cols: *mut c_void,
+            alpha_powers: *mut c_void,
+            z: *mut c_void,
+            output: *mut c_void,
+            n_rows: u32,
+            col_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_fused_interaction_add_opcode_small(
+            runtime: *mut c_void,
+            trace_cols: *mut c_void,
+            alpha_powers: *mut c_void,
+            z: *mut c_void,
+            output: *mut c_void,
+            n_rows: u32,
+            col_len: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
     }
 
     pub unsafe fn runtime_create(
@@ -8814,6 +8988,84 @@ pub mod ffi {
             error_ptr(&mut error), error.len(),
         ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
     }
+
+    pub unsafe fn fused_interaction_ret_opcode(
+        runtime: *mut c_void, trace_cols: *mut c_void,
+        alpha_powers: *mut c_void, z: *mut c_void, output: *mut c_void,
+        n_rows: u32, col_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fused_interaction_ret_opcode(
+            runtime, trace_cols, alpha_powers, z, output, n_rows, col_len,
+            error_ptr(&mut error), error.len(),
+        ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
+    }
+
+    pub unsafe fn fused_interaction_jump_opcode_rel_imm(
+        runtime: *mut c_void, trace_cols: *mut c_void,
+        alpha_powers: *mut c_void, z: *mut c_void, output: *mut c_void,
+        n_rows: u32, col_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fused_interaction_jump_opcode_rel_imm(
+            runtime, trace_cols, alpha_powers, z, output, n_rows, col_len,
+            error_ptr(&mut error), error.len(),
+        ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
+    }
+
+    pub unsafe fn fused_interaction_assert_eq_double_deref(
+        runtime: *mut c_void, trace_cols: *mut c_void,
+        alpha_powers: *mut c_void, z: *mut c_void, output: *mut c_void,
+        n_rows: u32, col_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fused_interaction_assert_eq_double_deref(
+            runtime, trace_cols, alpha_powers, z, output, n_rows, col_len,
+            error_ptr(&mut error), error.len(),
+        ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
+    }
+
+    pub unsafe fn fused_interaction_jnz_opcode_taken(
+        runtime: *mut c_void, trace_cols: *mut c_void,
+        alpha_powers: *mut c_void, z: *mut c_void, output: *mut c_void,
+        n_rows: u32, col_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fused_interaction_jnz_opcode_taken(
+            runtime, trace_cols, alpha_powers, z, output, n_rows, col_len,
+            error_ptr(&mut error), error.len(),
+        ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
+    }
+
+    pub unsafe fn fused_interaction_call_opcode_rel_imm(
+        runtime: *mut c_void, trace_cols: *mut c_void,
+        alpha_powers: *mut c_void, z: *mut c_void, output: *mut c_void,
+        n_rows: u32, col_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fused_interaction_call_opcode_rel_imm(
+            runtime, trace_cols, alpha_powers, z, output, n_rows, col_len,
+            error_ptr(&mut error), error.len(),
+        ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
+    }
+
+    pub unsafe fn fused_interaction_add_opcode_small(
+        runtime: *mut c_void, trace_cols: *mut c_void,
+        alpha_powers: *mut c_void, z: *mut c_void, output: *mut c_void,
+        n_rows: u32, col_len: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_fused_interaction_add_opcode_small(
+            runtime, trace_cols, alpha_powers, z, output, n_rows, col_len,
+            error_ptr(&mut error), error.len(),
+        ) { Ok(()) } else { Err(MetalError::new(decode_error_buffer(&error))) }
+    }
 }
 
 #[cfg(not(stwo_metal_link))]
@@ -10508,6 +10760,60 @@ pub mod ffi {
 
     pub unsafe fn interaction_values_call_opcode_rel_imm(
         _runtime: *mut c_void, _trace_cols: *mut c_void, _output: *mut c_void,
+        _n_rows: u32, _col_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new("Metal support was not linked into stwo-metal-sys."))
+    }
+
+    pub unsafe fn fused_interaction_ret_opcode(
+        _runtime: *mut c_void, _trace_cols: *mut c_void,
+        _alpha_powers: *mut c_void, _z: *mut c_void, _output: *mut c_void,
+        _n_rows: u32, _col_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new("Metal support was not linked into stwo-metal-sys."))
+    }
+
+    pub unsafe fn fused_interaction_jump_opcode_rel_imm(
+        _runtime: *mut c_void, _trace_cols: *mut c_void,
+        _alpha_powers: *mut c_void, _z: *mut c_void, _output: *mut c_void,
+        _n_rows: u32, _col_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new("Metal support was not linked into stwo-metal-sys."))
+    }
+
+    pub unsafe fn fused_interaction_assert_eq_double_deref(
+        _runtime: *mut c_void, _trace_cols: *mut c_void,
+        _alpha_powers: *mut c_void, _z: *mut c_void, _output: *mut c_void,
+        _n_rows: u32, _col_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new("Metal support was not linked into stwo-metal-sys."))
+    }
+
+    pub unsafe fn fused_interaction_jnz_opcode_taken(
+        _runtime: *mut c_void, _trace_cols: *mut c_void,
+        _alpha_powers: *mut c_void, _z: *mut c_void, _output: *mut c_void,
+        _n_rows: u32, _col_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new("Metal support was not linked into stwo-metal-sys."))
+    }
+
+    pub unsafe fn fused_interaction_call_opcode_rel_imm(
+        _runtime: *mut c_void, _trace_cols: *mut c_void,
+        _alpha_powers: *mut c_void, _z: *mut c_void, _output: *mut c_void,
+        _n_rows: u32, _col_len: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new("Metal support was not linked into stwo-metal-sys."))
+    }
+
+    pub unsafe fn fused_interaction_add_opcode_small(
+        _runtime: *mut c_void, _trace_cols: *mut c_void,
+        _alpha_powers: *mut c_void, _z: *mut c_void, _output: *mut c_void,
         _n_rows: u32, _col_len: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {

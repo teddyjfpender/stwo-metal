@@ -3858,11 +3858,11 @@ mod cairo_prove_main {
                 OpcodeInteractionGenerators,
             };
             use stwo_metal::backend::metal::interaction_trace_opcodes::{
-                gpu_interaction_trace_ret_opcode,
-                gpu_interaction_trace_jump_opcode_rel_imm,
-                gpu_interaction_trace_assert_eq_double_deref,
-                gpu_interaction_trace_jnz_opcode_taken,
-                gpu_interaction_trace_call_opcode_rel_imm,
+                gpu_fused_interaction_trace_ret_opcode,
+                gpu_fused_interaction_trace_jump_opcode_rel_imm,
+                gpu_fused_interaction_trace_assert_eq_double_deref,
+                gpu_fused_interaction_trace_jnz_opcode_taken,
+                gpu_fused_interaction_trace_call_opcode_rel_imm,
             };
             use stwo_metal::backend::metal::interaction_trace_id_to_big::extract_lookup_elements_for_gpu;
             use stwo_metal_sys::metal::U32Buffer as GpuU32Buffer;
@@ -3917,24 +3917,24 @@ mod cairo_prove_main {
 
                     dispatch_opcode_interaction!(
                         ret_opcode_raw, ret_opcode, ret_opcode,
-                        gpu_interaction_trace_ret_opcode, "ret_opcode"
+                        gpu_fused_interaction_trace_ret_opcode, "ret_opcode"
                     );
                     dispatch_opcode_interaction!(
                         jump_opcode_rel_imm_raw, jump_opcode_rel_imm, jump_opcode_rel_imm,
-                        gpu_interaction_trace_jump_opcode_rel_imm, "jump_opcode_rel_imm"
+                        gpu_fused_interaction_trace_jump_opcode_rel_imm, "jump_opcode_rel_imm"
                     );
                     dispatch_opcode_interaction!(
                         assert_eq_opcode_double_deref_raw, assert_eq_opcode_double_deref,
                         assert_eq_opcode_double_deref,
-                        gpu_interaction_trace_assert_eq_double_deref, "assert_eq_double_deref"
+                        gpu_fused_interaction_trace_assert_eq_double_deref, "assert_eq_double_deref"
                     );
                     dispatch_opcode_interaction!(
                         jnz_opcode_taken_raw, jnz_opcode_taken, jnz_opcode_taken,
-                        gpu_interaction_trace_jnz_opcode_taken, "jnz_opcode_taken"
+                        gpu_fused_interaction_trace_jnz_opcode_taken, "jnz_opcode_taken"
                     );
                     dispatch_opcode_interaction!(
                         call_opcode_rel_imm_raw, call_opcode_rel_imm, call_opcode_rel_imm,
-                        gpu_interaction_trace_call_opcode_rel_imm, "call_opcode_rel_imm"
+                        gpu_fused_interaction_trace_call_opcode_rel_imm, "call_opcode_rel_imm"
                     );
 
                     let gpu_opcode_inter_ms = t_gpu_opcode_inter.elapsed().as_secs_f64() * 1000.0;

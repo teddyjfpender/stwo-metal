@@ -1,18 +1,27 @@
 //! GPU-accelerated interaction trace generation for opcode components.
 //!
-//! Each function takes a GPU trace buffer (produced by the witness opcode kernel),
-//! dispatches a Metal kernel to extract LookupData-equivalent values, then feeds
-//! those into the generic interaction trace kernel via `GenericInteractionTraceBuilder`.
+//! Two dispatch modes:
+//!
+//! **Two-phase (legacy):** Extract LookupData values via a Metal kernel, then feed
+//! them into the generic interaction trace kernel. Each opcode requires two dispatches.
+//!
+//! **Fused (single-pass):** A single Metal kernel reads trace columns AND computes
+//! logup fractions in one dispatch. LookupData values stay in registers and are
+//! never written to global memory. ~3x faster than the two-phase approach.
 //!
 //! Supported opcodes:
-//! - ret_opcode (16 trace cols -> 82 interaction values -> 4 logup cols)
-//! - jnz_opcode_taken (47 trace cols -> 82 interaction values -> 4 logup cols)
-//! - assert_eq_opcode_double_deref (19 trace cols -> 55 interaction values -> 4 logup cols)
-//! - jump_opcode_rel_imm (13 trace cols -> 49 interaction values -> 3 logup cols)
-//! - call_opcode_rel_imm (24 trace cols -> 115 interaction values -> 5 logup cols)
+//! - ret_opcode (16 trace cols, 4 logup cols)
+//! - jnz_opcode_taken (47 trace cols, 4 logup cols)
+//! - assert_eq_opcode_double_deref (19 trace cols, 4 logup cols)
+//! - jump_opcode_rel_imm (13 trace cols, 3 logup cols)
+//! - call_opcode_rel_imm (24 trace cols, 5 logup cols)
+//! - add_opcode_small (39 trace cols, 5 logup cols)
 
-use stwo::core::fields::m31::BaseField;
-use stwo::core::fields::qm31::SecureField;
+use stwo::core::fields::m31::{BaseField, M31};
+use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::prover::backend::simd::m31::{PackedBaseField, N_LANES};
+use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 use stwo_metal_sys::metal::U32Buffer;
@@ -23,6 +32,7 @@ use super::interaction_trace_generic::{
 };
 use super::interaction_trace_id_to_big::InteractionLookupElements;
 use super::MetalBackend;
+use crate::stwo_metal::base_field_vec::BaseFieldVec;
 
 // Relation ID constants (must match the Metal shader and CPU code).
 const REL_VERIFY_INSTRUCTION: u32 = 1719106205;
@@ -441,4 +451,252 @@ pub fn gpu_interaction_trace_call_opcode_rel_imm(
     ];
 
     dispatch_generic(&output_buf, col_len, n_rows_real, 115, &logup_layout, lookup_elements)
+}
+
+// ===========================================================================
+// Fused (single-pass) interaction trace dispatch
+// ===========================================================================
+
+/// Parse the output of a fused kernel into CircleEvaluations + claimed_sum.
+///
+/// The fused kernel output is [n_logup_cols * 4][col_len] u32 running-sum QM31.
+/// Non-last columns are zero-copy from GPU. The last column needs prefix-sum
+/// finalization on CPU (same as GenericInteractionTraceBuilder::dispatch_metal).
+fn parse_fused_output(
+    trace_buf: &U32Buffer,
+    n_logup_cols: usize,
+    col_len: usize,
+) -> Result<
+    (
+        Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
+        SecureField,
+    ),
+    OpcodeInteractionTraceError,
+> {
+    let log_size = col_len.ilog2();
+    let packed_len = col_len / N_LANES;
+    let domain = CanonicCoset::new(log_size).circle_domain();
+    let mut all_evals: Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>> =
+        Vec::new();
+
+    // Non-last columns: zero-copy from GPU buffer.
+    for logup_col in 0..(n_logup_cols - 1) {
+        let base_m31_col = logup_col * 4;
+        for coord in 0..SECURE_EXTENSION_DEGREE {
+            let col_idx = base_m31_col + coord;
+            let offset = col_idx * col_len;
+            let col_buf = trace_buf.clone_range(offset, col_len)?;
+            all_evals.push(CircleEvaluation::new(
+                domain,
+                BaseFieldVec::from_buffer(col_buf),
+            ));
+        }
+    }
+
+    // Last column: read back for prefix-sum finalization.
+    {
+        let last_logup = n_logup_cols - 1;
+        let base_m31_col = last_logup * 4;
+
+        let mut coord_columns: [stwo::prover::backend::simd::column::BaseColumn;
+            SECURE_EXTENSION_DEGREE] = std::array::from_fn(|coord| {
+            let col_idx = base_m31_col + coord;
+            let gpu_offset = col_idx * col_len;
+            let col_raw = trace_buf
+                .clone_range(gpu_offset, col_len)
+                .expect("clone_range for prefix-sum column")
+                .to_vec()
+                .expect("to_vec for prefix-sum column");
+            let mut col_data = Vec::with_capacity(packed_len);
+            for vec_row in 0..packed_len {
+                let mut arr = [M31(0); N_LANES];
+                for lane in 0..N_LANES {
+                    arr[lane] = M31(col_raw[vec_row * N_LANES + lane]);
+                }
+                col_data.push(PackedBaseField::from_array(arr));
+            }
+            stwo::prover::backend::simd::column::BaseColumn::from_simd(col_data)
+        });
+
+        // Compute cumsum_shift = sum_of_all_elements / domain_size.
+        let coordinate_sums: [BaseField; SECURE_EXTENSION_DEGREE] =
+            std::array::from_fn(|i| {
+                coord_columns[i]
+                    .data
+                    .iter()
+                    .copied()
+                    .sum::<PackedBaseField>()
+                    .pointwise_sum()
+            });
+        let claimed_sum = SecureField::from_m31_array(coordinate_sums);
+        let cumsum_shift =
+            claimed_sum / BaseField::from_u32_unchecked(1 << log_size);
+        let packed_cumsum_shift =
+            stwo::prover::backend::simd::qm31::PackedSecureField::broadcast(cumsum_shift);
+
+        // Subtract cumsum_shift from each element.
+        for (i, col) in coord_columns.iter_mut().enumerate() {
+            for x in col.data.iter_mut() {
+                *x -= packed_cumsum_shift.into_packed_m31s()[i];
+            }
+        }
+
+        // Inclusive prefix sum on each coordinate.
+        let coord_prefix_sum = coord_columns.map(inclusive_prefix_sum);
+
+        // Re-upload prefix-summed columns to Metal.
+        for col in coord_prefix_sum {
+            let raw: Vec<u32> = col.data.iter()
+                .flat_map(|packed| packed.to_array().map(|v| v.0))
+                .collect();
+            let col_buf = U32Buffer::from_slice(&raw)?;
+            all_evals.push(CircleEvaluation::new(
+                domain,
+                BaseFieldVec::from_buffer(col_buf),
+            ));
+        }
+
+        return Ok((all_evals, claimed_sum));
+    }
+}
+
+/// Upload alpha powers and z to GPU buffers for fused kernels.
+fn upload_lookup_elements(
+    lookup_elements: &InteractionLookupElements,
+    max_combine_size: usize,
+) -> Result<(U32Buffer, U32Buffer), OpcodeInteractionTraceError> {
+    let n_powers = max_combine_size.min(lookup_elements.alpha_powers.len());
+    let mut flat_alpha: Vec<u32> = Vec::with_capacity(n_powers * 4);
+    for ap in &lookup_elements.alpha_powers[..n_powers] {
+        flat_alpha.extend_from_slice(ap);
+    }
+    let alpha_buf = U32Buffer::from_slice(&flat_alpha)?;
+    let z_buf = U32Buffer::from_slice(&lookup_elements.z)?;
+    Ok((alpha_buf, z_buf))
+}
+
+/// Fused interaction trace for ret_opcode (single dispatch).
+pub fn gpu_fused_interaction_trace_ret_opcode(
+    trace_cols: &U32Buffer,
+    n_rows_real: usize,
+    col_len: usize,
+    lookup_elements: &InteractionLookupElements,
+) -> Result<
+    (
+        Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
+        SecureField,
+    ),
+    OpcodeInteractionTraceError,
+> {
+    let (alpha_buf, z_buf) = upload_lookup_elements(lookup_elements, 30)?;
+    let trace_buf = U32Buffer::fused_interaction_ret_opcode(
+        trace_cols, &alpha_buf, &z_buf,
+        n_rows_real as u32, col_len as u32,
+    )?;
+    parse_fused_output(&trace_buf, 4, col_len)
+}
+
+/// Fused interaction trace for jump_opcode_rel_imm (single dispatch).
+pub fn gpu_fused_interaction_trace_jump_opcode_rel_imm(
+    trace_cols: &U32Buffer,
+    n_rows_real: usize,
+    col_len: usize,
+    lookup_elements: &InteractionLookupElements,
+) -> Result<
+    (
+        Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
+        SecureField,
+    ),
+    OpcodeInteractionTraceError,
+> {
+    let (alpha_buf, z_buf) = upload_lookup_elements(lookup_elements, 30)?;
+    let trace_buf = U32Buffer::fused_interaction_jump_opcode_rel_imm(
+        trace_cols, &alpha_buf, &z_buf,
+        n_rows_real as u32, col_len as u32,
+    )?;
+    parse_fused_output(&trace_buf, 3, col_len)
+}
+
+/// Fused interaction trace for assert_eq_double_deref (single dispatch).
+pub fn gpu_fused_interaction_trace_assert_eq_double_deref(
+    trace_cols: &U32Buffer,
+    n_rows_real: usize,
+    col_len: usize,
+    lookup_elements: &InteractionLookupElements,
+) -> Result<
+    (
+        Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
+        SecureField,
+    ),
+    OpcodeInteractionTraceError,
+> {
+    let (alpha_buf, z_buf) = upload_lookup_elements(lookup_elements, 30)?;
+    let trace_buf = U32Buffer::fused_interaction_assert_eq_double_deref(
+        trace_cols, &alpha_buf, &z_buf,
+        n_rows_real as u32, col_len as u32,
+    )?;
+    parse_fused_output(&trace_buf, 4, col_len)
+}
+
+/// Fused interaction trace for jnz_opcode_taken (single dispatch).
+pub fn gpu_fused_interaction_trace_jnz_opcode_taken(
+    trace_cols: &U32Buffer,
+    n_rows_real: usize,
+    col_len: usize,
+    lookup_elements: &InteractionLookupElements,
+) -> Result<
+    (
+        Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
+        SecureField,
+    ),
+    OpcodeInteractionTraceError,
+> {
+    let (alpha_buf, z_buf) = upload_lookup_elements(lookup_elements, 30)?;
+    let trace_buf = U32Buffer::fused_interaction_jnz_opcode_taken(
+        trace_cols, &alpha_buf, &z_buf,
+        n_rows_real as u32, col_len as u32,
+    )?;
+    parse_fused_output(&trace_buf, 4, col_len)
+}
+
+/// Fused interaction trace for call_opcode_rel_imm (single dispatch).
+pub fn gpu_fused_interaction_trace_call_opcode_rel_imm(
+    trace_cols: &U32Buffer,
+    n_rows_real: usize,
+    col_len: usize,
+    lookup_elements: &InteractionLookupElements,
+) -> Result<
+    (
+        Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
+        SecureField,
+    ),
+    OpcodeInteractionTraceError,
+> {
+    let (alpha_buf, z_buf) = upload_lookup_elements(lookup_elements, 30)?;
+    let trace_buf = U32Buffer::fused_interaction_call_opcode_rel_imm(
+        trace_cols, &alpha_buf, &z_buf,
+        n_rows_real as u32, col_len as u32,
+    )?;
+    parse_fused_output(&trace_buf, 5, col_len)
+}
+
+/// Fused interaction trace for add_opcode_small (single dispatch).
+pub fn gpu_fused_interaction_trace_add_opcode_small(
+    trace_cols: &U32Buffer,
+    n_rows_real: usize,
+    col_len: usize,
+    lookup_elements: &InteractionLookupElements,
+) -> Result<
+    (
+        Vec<CircleEvaluation<MetalBackend, BaseField, BitReversedOrder>>,
+        SecureField,
+    ),
+    OpcodeInteractionTraceError,
+> {
+    let (alpha_buf, z_buf) = upload_lookup_elements(lookup_elements, 30)?;
+    let trace_buf = U32Buffer::fused_interaction_add_opcode_small(
+        trace_cols, &alpha_buf, &z_buf,
+        n_rows_real as u32, col_len as u32,
+    )?;
+    parse_fused_output(&trace_buf, 5, col_len)
 }
