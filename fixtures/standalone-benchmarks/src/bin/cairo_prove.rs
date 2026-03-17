@@ -3614,6 +3614,15 @@ mod cairo_prove_main {
             inner: commitment_scheme.tree_builder(),
             gpu_witness: Some(&gpu_precompute),
         };
+        // When GPU_OPCODE_INTER=1 and GPU opcodes are available, skip LookupData
+        // allocation during base trace mults computation (~900MB savings).
+        if cairo_claim_generator.gpu_opcode_handle.is_some()
+            && cairo_claim_generator.gpu_mults_handle.is_some()
+            && std::env::var("GPU_OPCODE_INTER").is_ok()
+        {
+            cairo_claim_generator.has_gpu_opcode_interaction = true;
+            eprintln!("  GPU opcode interaction: ENABLED (skipping LookupData allocation)");
+        }
         let (claim, mut interaction_generator) =
             cairo_claim_generator.write_trace(&mut hybrid_tb);
         let base_gen_ms = t_base.elapsed().as_secs_f64() * 1000.0;
