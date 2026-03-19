@@ -11,6 +11,7 @@
 @property(nonatomic, strong) id<MTLCommandQueue> queue;
 @property(nonatomic, strong) id<MTLLibrary> library;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, id<MTLComputePipelineState>> *pipelines;
+@property(nonatomic, strong) id<MTLBinaryArchive> binaryArchive;
 @end
 
 @implementation StwoMetalRuntimeBox
@@ -242,6 +243,148 @@ static NSUInteger stwo_metal_threads_per_group(id<MTLComputePipelineState> pipel
     NSUInteger threadgroup_width = pipeline.threadExecutionWidth > 0 ? pipeline.threadExecutionWidth : 1;
     NSUInteger max_threads = pipeline.maxTotalThreadsPerThreadgroup > 0 ? pipeline.maxTotalThreadsPerThreadgroup : 1;
     return MIN((NSUInteger)256, MAX(threadgroup_width, max_threads));
+}
+
+// ---------------------------------------------------------------------------
+// Binary archive cache for JIT-compiled shaders
+// ---------------------------------------------------------------------------
+
+static NSURL *stwo_metal_binary_archive_url(void) {
+    NSString *cachePath = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *dir = [cachePath stringByAppendingPathComponent:@"stwo-metal"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:nil];
+    return [NSURL fileURLWithPath:[dir stringByAppendingPathComponent:@"shader_archive.metallib"]];
+}
+
+static void stwo_metal_ensure_binary_archive(StwoMetalRuntimeBox *runtime) {
+    if (runtime.binaryArchive != nil) return;
+
+    MTLBinaryArchiveDescriptor *desc = [[MTLBinaryArchiveDescriptor alloc] init];
+    NSURL *url = stwo_metal_binary_archive_url();
+
+    // Try loading an existing archive from disk.
+    if ([[NSFileManager defaultManager] fileExistsAtPath:url.path]) {
+        desc.url = url;
+        NSError *loadError = nil;
+        id<MTLBinaryArchive> archive = [runtime.device newBinaryArchiveWithDescriptor:desc
+                                                                                error:&loadError];
+        if (archive != nil) {
+            runtime.binaryArchive = archive;
+            return;
+        }
+        // Fall through: corrupted or incompatible archive — create fresh.
+    }
+
+    // Create a new empty archive.
+    desc.url = nil;
+    NSError *createError = nil;
+    id<MTLBinaryArchive> archive = [runtime.device newBinaryArchiveWithDescriptor:desc
+                                                                            error:&createError];
+    if (archive != nil) {
+        runtime.binaryArchive = archive;
+    }
+}
+
+/// JIT-compile a shader and cache the pipeline in both the in-memory dictionary
+/// and the on-disk binary archive.  Returns nil on failure (and writes to
+/// error_message).
+///
+/// When max_threads_per_tg > 0, a descriptor-based pipeline is created with
+/// maxTotalThreadsPerThreadgroup set to the given value, and the cache key is
+/// suffixed with "@tg<N>".  Pass 0 for the default behavior.
+static id<MTLComputePipelineState> stwo_metal_jit_pipeline_cached(
+    StwoMetalRuntimeBox *runtime,
+    NSString *sourceStr,
+    NSString *functionName,
+    uint32_t max_threads_per_tg,
+    char *error_message,
+    size_t error_message_len
+) {
+    NSString *cacheKey = (max_threads_per_tg > 0)
+        ? [NSString stringWithFormat:@"%@@tg%u", functionName, max_threads_per_tg]
+        : functionName;
+
+    // 1. Check in-memory pipeline cache.
+    @synchronized(runtime) {
+        id<MTLComputePipelineState> existing = runtime.pipelines[cacheKey];
+        if (existing != nil) {
+            return existing;
+        }
+    }
+
+    // 2. Compile from source.
+    MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
+    if (@available(macOS 15.0, *)) {
+        options.mathMode = MTLMathModeFast;
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        options.fastMathEnabled = YES;
+#pragma clang diagnostic pop
+    }
+
+    NSError *compileError = nil;
+    id<MTLLibrary> library = [runtime.device newLibraryWithSource:sourceStr
+                                                         options:options
+                                                           error:&compileError];
+    if (library == nil) {
+        stwo_metal_write_error(error_message, error_message_len,
+            compileError.localizedDescription ?: @"Failed to JIT-compile Metal shader.");
+        return nil;
+    }
+
+    id<MTLFunction> function = [library newFunctionWithName:functionName];
+    if (function == nil) {
+        stwo_metal_write_error(error_message, error_message_len,
+            [NSString stringWithFormat:@"JIT-compiled library missing kernel '%@'.", functionName]);
+        return nil;
+    }
+
+    // 3. Create pipeline.
+    NSError *pipelineError = nil;
+    id<MTLComputePipelineState> pipeline = nil;
+    if (max_threads_per_tg > 0) {
+        MTLComputePipelineDescriptor *desc = [[MTLComputePipelineDescriptor alloc] init];
+        desc.computeFunction = function;
+        desc.maxTotalThreadsPerThreadgroup = (NSUInteger)max_threads_per_tg;
+        pipeline = [runtime.device newComputePipelineStateWithDescriptor:desc
+                                                                options:0
+                                                             reflection:nil
+                                                                  error:&pipelineError];
+    } else {
+        pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&pipelineError];
+    }
+    if (pipeline == nil) {
+        stwo_metal_write_error(error_message, error_message_len,
+            pipelineError.localizedDescription ?: @"Failed to create pipeline from JIT-compiled shader.");
+        return nil;
+    }
+
+    // 4. Store in memory cache.
+    @synchronized(runtime) {
+        runtime.pipelines[cacheKey] = pipeline;
+    }
+
+    // 5. Add to binary archive and persist.
+    stwo_metal_ensure_binary_archive(runtime);
+    if (runtime.binaryArchive != nil) {
+        if (max_threads_per_tg > 0) {
+            MTLComputePipelineDescriptor *archiveDesc = [[MTLComputePipelineDescriptor alloc] init];
+            archiveDesc.computeFunction = function;
+            archiveDesc.maxTotalThreadsPerThreadgroup = (NSUInteger)max_threads_per_tg;
+            [runtime.binaryArchive addComputePipelineFunctionsWithDescriptor:archiveDesc error:nil];
+        } else {
+            MTLComputePipelineDescriptor *archiveDesc = [[MTLComputePipelineDescriptor alloc] init];
+            archiveDesc.computeFunction = function;
+            [runtime.binaryArchive addComputePipelineFunctionsWithDescriptor:archiveDesc error:nil];
+        }
+        [runtime.binaryArchive serializeToURL:stwo_metal_binary_archive_url() error:nil];
+    }
+
+    return pipeline;
 }
 
 static id<MTLBuffer> stwo_metal_encode_qm31_pair_reduction(
@@ -1800,6 +1943,72 @@ bool stwo_metal_batch_eval_at_point_multi_group_u32(
 
         if (command_buffer.status == MTLCommandBufferStatusError) {
             stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal multi-group point evaluation failed.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Transposed dot-product batch evaluation: parallel dot product against
+// precomputed basis evaluations.  256 threads per polynomial, one threadgroup
+// per polynomial.
+// ---------------------------------------------------------------------------
+
+bool stwo_metal_batch_eval_at_point_transposed_u32(
+    void *runtime_ptr,
+    void *flat_coeffs_ptr,
+    void *basis_evals_ptr,
+    void *dst_ptr,
+    uint32_t n_polys,
+    uint32_t n_coeffs,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *flat_coeffs = stwo_metal_buffer_box(flat_coeffs_ptr);
+        StwoMetalBufferBox *basis_evals = stwo_metal_buffer_box(basis_evals_ptr);
+        StwoMetalBufferBox *dst = stwo_metal_buffer_box(dst_ptr);
+
+        id<MTLComputePipelineState> pipeline =
+            stwo_metal_pipeline(runtime, @"batch_eval_at_point_transposed_u32", error_message, error_message_len);
+        if (pipeline == nil) {
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal compute encoder.");
+            return false;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:flat_coeffs.buffer offset:0 atIndex:0];
+        [encoder setBuffer:basis_evals.buffer offset:0 atIndex:1];
+        [encoder setBuffer:dst.buffer offset:0 atIndex:2];
+        [encoder setBytes:&n_polys length:sizeof(n_polys) atIndex:3];
+        [encoder setBytes:&n_coeffs length:sizeof(n_coeffs) atIndex:4];
+
+        // 256 threads per polynomial, one threadgroup per polynomial
+        MTLSize grid_size = MTLSizeMake((NSUInteger)n_polys * 256u, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(256, 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len,
+                command_buffer.error.localizedDescription ?: @"Metal transposed point evaluation failed.");
             return false;
         }
 
@@ -6353,57 +6562,13 @@ bool stwo_metal_eval_compiled_program_v1_u32x4(
         NSString *nameStr = [[NSString alloc] initWithBytes:kernel_name
                                                      length:kernel_name_len
                                                    encoding:NSUTF8StringEncoding];
+        NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
+                                                       length:shader_source_len
+                                                     encoding:NSUTF8StringEncoding];
 
-        // Check if pipeline is already cached.
-        id<MTLComputePipelineState> pipeline = nil;
-        @synchronized(runtime) {
-            pipeline = runtime.pipelines[nameStr];
-        }
-
-        if (pipeline == nil) {
-            // JIT-compile the shader source.
-            NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
-                                                          length:shader_source_len
-                                                        encoding:NSUTF8StringEncoding];
-            MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
-            if (@available(macOS 15.0, *)) {
-                options.mathMode = MTLMathModeFast;
-            } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                options.fastMathEnabled = YES;
-#pragma clang diagnostic pop
-            }
-
-            NSError *compileError = nil;
-            id<MTLLibrary> library = [runtime.device newLibraryWithSource:sourceStr
-                                                                 options:options
-                                                                   error:&compileError];
-            if (library == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    compileError.localizedDescription ?: @"Failed to JIT-compile Metal shader.");
-                return false;
-            }
-
-            id<MTLFunction> function = [library newFunctionWithName:nameStr];
-            if (function == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    [NSString stringWithFormat:@"JIT-compiled library missing kernel '%@'.", nameStr]);
-                return false;
-            }
-
-            NSError *pipelineError = nil;
-            pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&pipelineError];
-            if (pipeline == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    pipelineError.localizedDescription ?: @"Failed to create pipeline from JIT-compiled shader.");
-                return false;
-            }
-
-            @synchronized(runtime) {
-                runtime.pipelines[nameStr] = pipeline;
-            }
-        }
+        id<MTLComputePipelineState> pipeline = stwo_metal_jit_pipeline_cached(
+            runtime, sourceStr, nameStr, 0, error_message, error_message_len);
+        if (pipeline == nil) return false;
 
         id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
         if (command_buffer == nil) {
@@ -6492,57 +6657,13 @@ bool stwo_metal_eval_compiled_fused_composition_v1(
         NSString *nameStr = [[NSString alloc] initWithBytes:kernel_name
                                                      length:kernel_name_len
                                                    encoding:NSUTF8StringEncoding];
+        NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
+                                                       length:shader_source_len
+                                                     encoding:NSUTF8StringEncoding];
 
-        // Check if pipeline is already cached.
-        id<MTLComputePipelineState> pipeline = nil;
-        @synchronized(runtime) {
-            pipeline = runtime.pipelines[nameStr];
-        }
-
-        if (pipeline == nil) {
-            // JIT-compile the shader source.
-            NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
-                                                          length:shader_source_len
-                                                        encoding:NSUTF8StringEncoding];
-            MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
-            if (@available(macOS 15.0, *)) {
-                options.mathMode = MTLMathModeFast;
-            } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                options.fastMathEnabled = YES;
-#pragma clang diagnostic pop
-            }
-
-            NSError *compileError = nil;
-            id<MTLLibrary> library = [runtime.device newLibraryWithSource:sourceStr
-                                                                 options:options
-                                                                   error:&compileError];
-            if (library == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    compileError.localizedDescription ?: @"Failed to JIT-compile Metal shader (fused).");
-                return false;
-            }
-
-            id<MTLFunction> function = [library newFunctionWithName:nameStr];
-            if (function == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    [NSString stringWithFormat:@"JIT-compiled library missing fused kernel '%@'.", nameStr]);
-                return false;
-            }
-
-            NSError *pipelineError = nil;
-            pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&pipelineError];
-            if (pipeline == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    pipelineError.localizedDescription ?: @"Failed to create fused composition pipeline.");
-                return false;
-            }
-
-            @synchronized(runtime) {
-                runtime.pipelines[nameStr] = pipeline;
-            }
-        }
+        id<MTLComputePipelineState> pipeline = stwo_metal_jit_pipeline_cached(
+            runtime, sourceStr, nameStr, 0, error_message, error_message_len);
+        if (pipeline == nil) return false;
 
         id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
         if (command_buffer == nil) {
@@ -6625,73 +6746,13 @@ bool stwo_metal_eval_compiled_program_v1_u32x4_tg(
                                                      length:kernel_name_len
                                                    encoding:NSUTF8StringEncoding];
 
-        // Use descriptor-based pipeline with maxTotalThreadsPerThreadgroup when
-        // threads_per_group > 0, telling the Metal compiler the expected TG size.
-        // This affects register allocation and occupancy differently from just
-        // changing the dispatch threadgroup size.
-        NSString *cacheKey = (threads_per_group > 0)
-            ? [NSString stringWithFormat:@"%@@tg%u", nameStr, threads_per_group]
-            : nameStr;
+        NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
+                                                       length:shader_source_len
+                                                     encoding:NSUTF8StringEncoding];
 
-        id<MTLComputePipelineState> pipeline = nil;
-        @synchronized(runtime) {
-            pipeline = runtime.pipelines[cacheKey];
-        }
-
-        if (pipeline == nil) {
-            // JIT-compile the shader source.
-            NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
-                                                          length:shader_source_len
-                                                        encoding:NSUTF8StringEncoding];
-            MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
-            if (@available(macOS 15.0, *)) {
-                options.mathMode = MTLMathModeFast;
-            } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                options.fastMathEnabled = YES;
-#pragma clang diagnostic pop
-            }
-
-            NSError *compileError = nil;
-            id<MTLLibrary> library = [runtime.device newLibraryWithSource:sourceStr
-                                                                 options:options
-                                                                   error:&compileError];
-            if (library == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    compileError.localizedDescription ?: @"Failed to JIT-compile Metal shader.");
-                return false;
-            }
-
-            id<MTLFunction> function = [library newFunctionWithName:nameStr];
-            if (function == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    [NSString stringWithFormat:@"JIT-compiled library missing kernel '%@'.", nameStr]);
-                return false;
-            }
-
-            NSError *pipelineError = nil;
-            if (threads_per_group > 0) {
-                MTLComputePipelineDescriptor *desc = [[MTLComputePipelineDescriptor alloc] init];
-                desc.computeFunction = function;
-                desc.maxTotalThreadsPerThreadgroup = (NSUInteger)threads_per_group;
-                pipeline = [runtime.device newComputePipelineStateWithDescriptor:desc
-                                                                        options:0
-                                                                     reflection:nil
-                                                                          error:&pipelineError];
-            } else {
-                pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&pipelineError];
-            }
-            if (pipeline == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    pipelineError.localizedDescription ?: @"Failed to create pipeline from JIT-compiled shader.");
-                return false;
-            }
-
-            @synchronized(runtime) {
-                runtime.pipelines[cacheKey] = pipeline;
-            }
-        }
+        id<MTLComputePipelineState> pipeline = stwo_metal_jit_pipeline_cached(
+            runtime, sourceStr, nameStr, threads_per_group, error_message, error_message_len);
+        if (pipeline == nil) return false;
 
         NSUInteger tg_size = (threads_per_group > 0)
             ? (NSUInteger)threads_per_group
@@ -6780,57 +6841,13 @@ bool stwo_metal_eval_compiled_program_v1_u32x4_async(
         NSString *nameStr = [[NSString alloc] initWithBytes:kernel_name
                                                      length:kernel_name_len
                                                    encoding:NSUTF8StringEncoding];
+        NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
+                                                       length:shader_source_len
+                                                     encoding:NSUTF8StringEncoding];
 
-        // Check if pipeline is already cached.
-        id<MTLComputePipelineState> pipeline = nil;
-        @synchronized(runtime) {
-            pipeline = runtime.pipelines[nameStr];
-        }
-
-        if (pipeline == nil) {
-            // JIT-compile the shader source.
-            NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
-                                                          length:shader_source_len
-                                                        encoding:NSUTF8StringEncoding];
-            MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
-            if (@available(macOS 15.0, *)) {
-                options.mathMode = MTLMathModeFast;
-            } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                options.fastMathEnabled = YES;
-#pragma clang diagnostic pop
-            }
-
-            NSError *compileError = nil;
-            id<MTLLibrary> library = [runtime.device newLibraryWithSource:sourceStr
-                                                                 options:options
-                                                                   error:&compileError];
-            if (library == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    compileError.localizedDescription ?: @"Failed to JIT-compile Metal shader.");
-                return false;
-            }
-
-            id<MTLFunction> function = [library newFunctionWithName:nameStr];
-            if (function == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    [NSString stringWithFormat:@"JIT-compiled library missing kernel '%@'.", nameStr]);
-                return false;
-            }
-
-            NSError *pipelineError = nil;
-            pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&pipelineError];
-            if (pipeline == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    pipelineError.localizedDescription ?: @"Failed to create pipeline from JIT-compiled shader.");
-                return false;
-            }
-
-            @synchronized(runtime) {
-                runtime.pipelines[nameStr] = pipeline;
-            }
-        }
+        id<MTLComputePipelineState> pipeline = stwo_metal_jit_pipeline_cached(
+            runtime, sourceStr, nameStr, 0, error_message, error_message_len);
+        if (pipeline == nil) return false;
 
         id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
         if (command_buffer == nil) {
@@ -6911,56 +6928,13 @@ bool stwo_metal_eval_compiled_fused_blit_async(
         NSString *nameStr = [[NSString alloc] initWithBytes:kernel_name
                                                      length:kernel_name_len
                                                    encoding:NSUTF8StringEncoding];
+        NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
+                                                       length:shader_source_len
+                                                     encoding:NSUTF8StringEncoding];
 
-        // Look up or JIT-compile the pipeline.
-        id<MTLComputePipelineState> pipeline = nil;
-        @synchronized(runtime) {
-            pipeline = runtime.pipelines[nameStr];
-        }
-
-        if (pipeline == nil) {
-            NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
-                                                          length:shader_source_len
-                                                        encoding:NSUTF8StringEncoding];
-            MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
-            if (@available(macOS 15.0, *)) {
-                options.mathMode = MTLMathModeFast;
-            } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                options.fastMathEnabled = YES;
-#pragma clang diagnostic pop
-            }
-
-            NSError *compileError = nil;
-            id<MTLLibrary> library = [runtime.device newLibraryWithSource:sourceStr
-                                                                 options:options
-                                                                   error:&compileError];
-            if (library == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    compileError.localizedDescription ?: @"Failed to JIT-compile Metal shader.");
-                return false;
-            }
-
-            id<MTLFunction> function = [library newFunctionWithName:nameStr];
-            if (function == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    [NSString stringWithFormat:@"JIT-compiled library missing kernel '%@'.", nameStr]);
-                return false;
-            }
-
-            NSError *pipelineError = nil;
-            pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&pipelineError];
-            if (pipeline == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    pipelineError.localizedDescription ?: @"Failed to create pipeline from JIT-compiled shader.");
-                return false;
-            }
-
-            @synchronized(runtime) {
-                runtime.pipelines[nameStr] = pipeline;
-            }
-        }
+        id<MTLComputePipelineState> pipeline = stwo_metal_jit_pipeline_cached(
+            runtime, sourceStr, nameStr, 0, error_message, error_message_len);
+        if (pipeline == nil) return false;
 
         // Allocate the flat trace buffer on GPU (uninitialized — blit will fill it).
         size_t total_elements = (size_t)n_columns * (size_t)row_count;
@@ -7106,56 +7080,13 @@ bool stwo_metal_encode_compiled_program_v1(
         NSString *nameStr = [[NSString alloc] initWithBytes:kernel_name
                                                      length:kernel_name_len
                                                    encoding:NSUTF8StringEncoding];
+        NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
+                                                       length:shader_source_len
+                                                     encoding:NSUTF8StringEncoding];
 
-        // Look up or JIT-compile the pipeline.
-        id<MTLComputePipelineState> pipeline = nil;
-        @synchronized(runtime) {
-            pipeline = runtime.pipelines[nameStr];
-        }
-
-        if (pipeline == nil) {
-            NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
-                                                          length:shader_source_len
-                                                        encoding:NSUTF8StringEncoding];
-            MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
-            if (@available(macOS 15.0, *)) {
-                options.mathMode = MTLMathModeFast;
-            } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                options.fastMathEnabled = YES;
-#pragma clang diagnostic pop
-            }
-
-            NSError *compileError = nil;
-            id<MTLLibrary> library = [runtime.device newLibraryWithSource:sourceStr
-                                                                 options:options
-                                                                   error:&compileError];
-            if (library == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    compileError.localizedDescription ?: @"Failed to JIT-compile Metal shader (batch).");
-                return false;
-            }
-
-            id<MTLFunction> function = [library newFunctionWithName:nameStr];
-            if (function == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    [NSString stringWithFormat:@"Batch JIT-compiled library missing kernel '%@'.", nameStr]);
-                return false;
-            }
-
-            NSError *pipelineError = nil;
-            pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&pipelineError];
-            if (pipeline == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    pipelineError.localizedDescription ?: @"Failed to create pipeline from JIT-compiled shader (batch).");
-                return false;
-            }
-
-            @synchronized(runtime) {
-                runtime.pipelines[nameStr] = pipeline;
-            }
-        }
+        id<MTLComputePipelineState> pipeline = stwo_metal_jit_pipeline_cached(
+            runtime, sourceStr, nameStr, 0, error_message, error_message_len);
+        if (pipeline == nil) return false;
 
         id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
         if (encoder == nil) {
@@ -7212,56 +7143,13 @@ bool stwo_metal_encode_compiled_fused_blit_v1(
         NSString *nameStr = [[NSString alloc] initWithBytes:kernel_name
                                                      length:kernel_name_len
                                                    encoding:NSUTF8StringEncoding];
+        NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
+                                                       length:shader_source_len
+                                                     encoding:NSUTF8StringEncoding];
 
-        // Look up or JIT-compile the pipeline.
-        id<MTLComputePipelineState> pipeline = nil;
-        @synchronized(runtime) {
-            pipeline = runtime.pipelines[nameStr];
-        }
-
-        if (pipeline == nil) {
-            NSString *sourceStr = [[NSString alloc] initWithBytes:shader_source
-                                                          length:shader_source_len
-                                                        encoding:NSUTF8StringEncoding];
-            MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
-            if (@available(macOS 15.0, *)) {
-                options.mathMode = MTLMathModeFast;
-            } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                options.fastMathEnabled = YES;
-#pragma clang diagnostic pop
-            }
-
-            NSError *compileError = nil;
-            id<MTLLibrary> library = [runtime.device newLibraryWithSource:sourceStr
-                                                                 options:options
-                                                                   error:&compileError];
-            if (library == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    compileError.localizedDescription ?: @"Failed to JIT-compile Metal shader (batch fused).");
-                return false;
-            }
-
-            id<MTLFunction> function = [library newFunctionWithName:nameStr];
-            if (function == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    [NSString stringWithFormat:@"Batch JIT-compiled library missing kernel '%@'.", nameStr]);
-                return false;
-            }
-
-            NSError *pipelineError = nil;
-            pipeline = [runtime.device newComputePipelineStateWithFunction:function error:&pipelineError];
-            if (pipeline == nil) {
-                stwo_metal_write_error(error_message, error_message_len,
-                    pipelineError.localizedDescription ?: @"Failed to create pipeline from JIT-compiled shader (batch fused).");
-                return false;
-            }
-
-            @synchronized(runtime) {
-                runtime.pipelines[nameStr] = pipeline;
-            }
-        }
+        id<MTLComputePipelineState> pipeline = stwo_metal_jit_pipeline_cached(
+            runtime, sourceStr, nameStr, 0, error_message, error_message_len);
+        if (pipeline == nil) return false;
 
         // Allocate flat trace buffer on GPU.
         size_t total_elements = (size_t)n_columns * (size_t)row_count;

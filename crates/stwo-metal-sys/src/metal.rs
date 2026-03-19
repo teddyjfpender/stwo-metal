@@ -681,6 +681,52 @@ impl U32Buffer {
         Ok(dst_buffers)
     }
 
+    /// Evaluate multiple same-size polynomials at a point using the transposed
+    /// dot-product algorithm: precomputed QM31 basis evaluations are dotted
+    /// against M31 coefficients on the GPU with 256 threads per polynomial.
+    ///
+    /// `flat_coeffs`: flattened coefficient buffer (n_polys * n_coeffs M31 values)
+    /// `basis_evals`: precomputed QM31 basis values (n_coeffs * 4 u32 values)
+    /// `n_polys`: number of polynomials
+    /// `n_coeffs`: number of coefficients per polynomial
+    ///
+    /// Returns a buffer of n_polys * 4 u32 values (packed QM31 results).
+    pub fn batch_eval_at_point_transposed(
+        flat_coeffs: &Self,
+        basis_evals: &Self,
+        n_polys: usize,
+        n_coeffs: usize,
+    ) -> Result<Self, MetalError> {
+        assert_eq!(
+            flat_coeffs.len,
+            n_polys * n_coeffs,
+            "transposed eval requires flat_coeffs with n_polys * n_coeffs elements"
+        );
+        assert_eq!(
+            basis_evals.len,
+            n_coeffs * 4,
+            "transposed eval requires basis_evals with n_coeffs * 4 elements (packed QM31)"
+        );
+        let runtime = shared_runtime()?;
+        let dst = Self::uninitialized(n_polys * 4)?;
+        unsafe {
+            ffi::batch_eval_at_point_transposed_u32(
+                runtime.raw.as_ptr(),
+                flat_coeffs.raw.as_ptr(),
+                basis_evals.raw.as_ptr(),
+                dst.raw.as_ptr(),
+                n_polys
+                    .try_into()
+                    .expect("transposed eval polynomial count should fit in u32"),
+                n_coeffs
+                    .try_into()
+                    .expect("transposed eval coefficient count should fit in u32"),
+                error_buffer_mut_ptr,
+            )?;
+        }
+        Ok(dst)
+    }
+
     /// Computes the barycentric evaluation: sum(eval_values[i] * weights[i])
     /// where eval_values is M31 and weights is QM31, returning a single QM31.
     pub fn barycentric_eval_at_point(
@@ -4423,6 +4469,16 @@ pub mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_batch_eval_at_point_transposed_u32(
+            runtime: *mut c_void,
+            flat_coeffs: *mut c_void,
+            basis_evals: *mut c_void,
+            dst: *mut c_void,
+            n_polys: u32,
+            n_coeffs: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_barycentric_eval_at_point_u32(
             runtime: *mut c_void,
             eval_values: *mut c_void,
@@ -6139,6 +6195,32 @@ pub mod ffi {
             runtime,
             groups,
             n_groups,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn batch_eval_at_point_transposed_u32(
+        runtime: *mut c_void,
+        flat_coeffs: *mut c_void,
+        basis_evals: *mut c_void,
+        dst: *mut c_void,
+        n_polys: u32,
+        n_coeffs: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_batch_eval_at_point_transposed_u32(
+            runtime,
+            flat_coeffs,
+            basis_evals,
+            dst,
+            n_polys,
+            n_coeffs,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -9457,6 +9539,20 @@ pub mod ffi {
         _runtime: *mut c_void,
         _groups: *const super::BatchEvalGroupDescriptor,
         _n_groups: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn batch_eval_at_point_transposed_u32(
+        _runtime: *mut c_void,
+        _flat_coeffs: *mut c_void,
+        _basis_evals: *mut c_void,
+        _dst: *mut c_void,
+        _n_polys: u32,
+        _n_coeffs: u32,
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(
