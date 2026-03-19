@@ -68,24 +68,27 @@ pub fn metal_evals_to_simd_evals(
 }
 
 /// Convert a `CircleEvaluation<SimdBackend>` to `CircleEvaluation<MetalBackend>` by
-/// uploading the `PackedM31` data directly as raw u32 values.
+/// uploading the `PackedM31` data directly to a private (GPU-only) Metal buffer.
 ///
 /// This is the fast inverse of `metal_eval_to_simd_eval`. Instead of the naive path:
 /// `eval.values.to_cpu() -> into_iter() -> collect::<MetalBaseFieldVec>()`
 /// which iterates element-by-element through `FromIterator<BaseField>`, this function
 /// reinterprets the `Vec<PackedM31>` backing the `BaseColumn` as `&[u32]` and uploads
-/// it in a single bulk copy to the Metal buffer.
+/// it in a single bulk copy to a private GPU buffer via a staging blit.
+///
+/// Private buffers receive driver-level optimizations (faster GPU reads) compared to
+/// shared buffers, and the CPU never needs to read back committed trace data.
 ///
 /// # Performance
 ///
 /// For a column of N values (N/16 PackedM31 groups):
-/// - Naive path: to_cpu() allocates Vec<BaseField>, then from_iter collects back
-/// - This function: single memcpy of the PackedM31 data directly to GPU buffer
+/// - Naive path: to_cpu() allocates Vec<BaseField>, then from_iter collects back to shared buffer
+/// - This function: single memcpy of the PackedM31 data directly to private GPU buffer
 pub fn simd_eval_to_metal_eval(
     eval: &CircleEvaluation<SimdBackend, M31, BitReversedOrder>,
 ) -> CircleEvaluation<MetalBackend, BaseField, BitReversedOrder> {
     let domain = eval.domain;
-    let metal_values = MetalBaseFieldVec::from_packed_m31_slice(&eval.values.data);
+    let metal_values = MetalBaseFieldVec::from_packed_m31_slice_private(&eval.values.data);
     CircleEvaluation::new(domain, metal_values)
 }
 

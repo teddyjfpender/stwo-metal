@@ -348,7 +348,6 @@ mod cairo_prove_main {
                 stwo::prover::poly::BitReversedOrder,
             >>,
         ) -> stwo::core::pcs::TreeSubspan {
-            use stwo::prover::backend::Column;
             let metal_columns: Vec<stwo::prover::poly::circle::CircleEvaluation<
                 stwo_metal::MetalBackend,
                 stwo::core::fields::m31::BaseField,
@@ -357,7 +356,9 @@ mod cairo_prove_main {
                 .into_iter()
                 .map(|eval| {
                     let domain = eval.domain;
-                    let metal_values = eval.values.to_cpu().into_iter().collect();
+                    let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice_private(
+                        &eval.values.data,
+                    );
                     stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
                 })
                 .collect();
@@ -440,7 +441,6 @@ mod cairo_prove_main {
             stwo::core::fields::m31::BaseField,
             stwo::prover::poly::BitReversedOrder,
         >>> {
-            use stwo::prover::backend::Column;
             let idx = self.big_next.get();
             if columns.len() != Self::BIG_TOTAL_COLS || idx >= self.big_value_evals.len() {
                 return None;
@@ -458,10 +458,12 @@ mod cairo_prove_main {
                 stwo::core::fields::m31::BaseField,
                 stwo::prover::poly::BitReversedOrder,
             >> = gpu_vals.clone();
-            // Convert only the multiplicity column (last) from CPU to Metal.
+            // Convert only the multiplicity column (last) from CPU to private Metal buffer.
             let mult_eval = &columns[Self::BIG_VALUE_COLS];
             let domain = mult_eval.domain;
-            let metal_values = mult_eval.values.to_cpu().into_iter().collect();
+            let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice_private(
+                &mult_eval.values.data,
+            );
             result.push(stwo::prover::poly::circle::CircleEvaluation::new(
                 domain,
                 metal_values,
@@ -487,7 +489,6 @@ mod cairo_prove_main {
             stwo::core::fields::m31::BaseField,
             stwo::prover::poly::BitReversedOrder,
         >>> {
-            use stwo::prover::backend::Column;
             if self.small_done.get() || columns.len() != Self::SMALL_TOTAL_COLS {
                 return None;
             }
@@ -507,7 +508,9 @@ mod cairo_prove_main {
             >> = gpu_vals.clone();
             let mult_eval = &columns[Self::SMALL_VALUE_COLS];
             let domain = mult_eval.domain;
-            let metal_values = mult_eval.values.to_cpu().into_iter().collect();
+            let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice_private(
+                &mult_eval.values.data,
+            );
             result.push(stwo::prover::poly::circle::CircleEvaluation::new(
                 domain,
                 metal_values,
@@ -536,7 +539,6 @@ mod cairo_prove_main {
             stwo::core::fields::m31::BaseField,
             stwo::prover::poly::BitReversedOrder,
         >>> {
-            use stwo::prover::backend::Column;
             if self.addr_to_id_done.get() || columns.len() != Self::ADDR_TO_ID_TOTAL_COLS {
                 return None;
             }
@@ -561,10 +563,12 @@ mod cairo_prove_main {
                 let mult_col = chunk * 2 + 1;
                 // GPU id column.
                 result.push(gpu_evals[id_col].clone());
-                // CPU multiplicity column (upload to Metal).
+                // CPU multiplicity column (upload to private Metal buffer).
                 let mult_eval = &columns[mult_col];
                 let domain = mult_eval.domain;
-                let metal_values = mult_eval.values.to_cpu().into_iter().collect();
+                let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice_private(
+                    &mult_eval.values.data,
+                );
                 result.push(stwo::prover::poly::circle::CircleEvaluation::new(
                     domain,
                     metal_values,
@@ -611,8 +615,6 @@ mod cairo_prove_main {
                 stwo::prover::poly::BitReversedOrder,
             >>,
         ) -> stwo::core::pcs::TreeSubspan {
-            use stwo::prover::backend::Column;
-
             // Try GPU replacement for memory_id_to_big and memory_address_to_id columns.
             if let Some(gpu) = self.gpu_witness {
                 if let Some(metal_cols) = gpu.try_replace_big(&columns) {
@@ -626,7 +628,10 @@ mod cairo_prove_main {
                 }
             }
 
-            // Default path: convert SimdBackend → MetalBackend via CPU copy.
+            // Default path: convert SimdBackend → MetalBackend via private GPU upload.
+            // Uses from_packed_m31_slice_private() to bulk-upload PackedM31 data
+            // directly to private GPU memory in a single memcpy per column,
+            // instead of the naive to_cpu().into_iter().collect() element-by-element path.
             let metal_columns: Vec<stwo::prover::poly::circle::CircleEvaluation<
                 stwo_metal::MetalBackend,
                 stwo::core::fields::m31::BaseField,
@@ -635,7 +640,9 @@ mod cairo_prove_main {
                 .into_iter()
                 .map(|eval| {
                     let domain = eval.domain;
-                    let metal_values = eval.values.to_cpu().into_iter().collect();
+                    let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice_private(
+                        &eval.values.data,
+                    );
                     stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
                 })
                 .collect();
@@ -2682,7 +2689,6 @@ mod cairo_prove_main {
         preprocessed_trace: Arc<PreProcessedTrace>,
     ) -> CachedMetalArtifacts {
         use stwo::core::fields::m31::BaseField;
-        use stwo::prover::backend::Column;
         use stwo::prover::poly::circle::PolyOps;
         use stwo_cairo_prover::witness::preprocessed_trace::gen_trace;
         use stwo_metal::MetalBackend;
@@ -2726,7 +2732,9 @@ mod cairo_prove_main {
                 .into_iter()
                 .map(|eval| {
                     let domain = eval.domain;
-                    let metal_values = eval.values.to_cpu().into_iter().collect();
+                    let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice_private(
+                        &eval.values.data,
+                    );
                     stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
                 })
                 .collect();
@@ -2797,7 +2805,6 @@ mod cairo_prove_main {
         use stwo::core::proof_of_work::GrindOps;
         use stwo::core::utils::MaybeOwned;
         use stwo::core::verifier::PREPROCESSED_TRACE_IDX;
-        use stwo::prover::backend::Column;
         use stwo::prover::mempool::BaseColumnPool;
         use stwo::prover::poly::circle::PolyOps;
         use stwo::prover::{CommitmentSchemeProver, CommitmentTreeProver, ComponentProvers};
@@ -2883,7 +2890,9 @@ mod cairo_prove_main {
                     .into_iter()
                     .map(|eval| {
                         let domain = eval.domain;
-                        let metal_values = eval.values.to_cpu().into_iter().collect();
+                        let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice_private(
+                            &eval.values.data,
+                        );
                         stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
                     })
                     .collect();
@@ -4057,14 +4066,15 @@ mod cairo_prove_main {
         let right_coord_polys = right_half.into_coordinate_polys();
         {
             use stwo::core::poly::circle::CanonicCoset;
-            use stwo::prover::backend::Column;
             let simd_to_metal_evals = |polys: [stwo::prover::poly::circle::CircleCoefficients<SimdBackend>; stwo::core::fields::qm31::SECURE_EXTENSION_DEGREE]|
                 -> Vec<stwo::prover::poly::circle::CircleEvaluation<MetalBackend, stwo::core::fields::m31::BaseField, stwo::prover::poly::BitReversedOrder>>
             {
                 polys.into_iter().map(|p| {
                     let domain = CanonicCoset::new(p.log_size()).circle_domain();
                     let simd_eval = p.evaluate(domain);
-                    let metal_values = simd_eval.values.to_cpu().into_iter().collect();
+                    let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice_private(
+                        &simd_eval.values.data,
+                    );
                     stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
                 }).collect()
             };

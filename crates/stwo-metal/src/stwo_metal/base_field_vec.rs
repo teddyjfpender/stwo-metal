@@ -325,6 +325,26 @@ impl BaseFieldVec {
         }
     }
 
+    /// Like `from_packed_m31_slice`, but uploads to a private (GPU-only) Metal buffer
+    /// via a staging blit. Private buffers receive driver-level optimizations that shared
+    /// buffers cannot, and should be used for trace columns that are only read by
+    /// GPU compute/blit passes and never by the CPU after initial upload.
+    pub fn from_packed_m31_slice_private(packed: &[PackedM31]) -> Self {
+        let size = packed.len() * N_LANES;
+        // SAFETY: PackedM31 is #[repr(transparent)] over Simd<u32, 16> which has
+        // the same layout as [u32; 16]. Reinterpreting &[PackedM31] as &[u32] is
+        // safe because both are POD types with compatible layouts.
+        let raw_u32_slice: &[u32] =
+            unsafe { std::slice::from_raw_parts(packed.as_ptr() as *const u32, size) };
+        let buffer = U32Buffer::from_slice_private(raw_u32_slice)
+            .expect("Metal BaseFieldVec private upload should succeed");
+        Self {
+            buffer,
+            size,
+            host_cache: OnceLock::new(),
+        }
+    }
+
     /// Returns a zero-copy view of the GPU buffer as a `&[PackedM31]` slice.
     ///
     /// On Apple Silicon unified memory, the GPU buffer's host pointer points to
