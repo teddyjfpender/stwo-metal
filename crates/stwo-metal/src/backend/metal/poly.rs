@@ -96,9 +96,11 @@ fn twiddle_tail_cache() -> &'static TwiddleTailCache {
 }
 
 fn coeff_buffer_key(poly: &CircleCoefficients<MetalBackend>) -> usize {
-    // Coefficients are immutable throughout the proving hot path, so the shared-buffer address is
-    // a stable cache key for reusing flattened staging across repeated point queries.
-    unsafe { poly.coeffs.buffer.host_ptr() as usize }
+    // Coefficients are immutable throughout the proving hot path, so the buffer's
+    // opaque identity (FFI pointer address) is a stable cache key for reusing
+    // flattened staging across repeated point queries.  This works for both
+    // shared and private buffers (host_ptr returns NULL for private).
+    poly.coeffs.buffer.identity()
 }
 
 fn cached_flat_coeffs_buffer(
@@ -120,7 +122,7 @@ fn cached_flat_coeffs_buffer(
         return Ok(buffer);
     }
 
-    let mut flat_coeffs_buffer = U32Buffer::uninitialized(polys.len() * coeffs_len)?;
+    let mut flat_coeffs_buffer = U32Buffer::uninitialized_private(polys.len() * coeffs_len)?;
     for (index, poly) in polys.iter().enumerate() {
         flat_coeffs_buffer.copy_from_offset(&poly.coeffs.buffer, index * coeffs_len)?;
     }
@@ -154,7 +156,7 @@ fn batch_eval_same_size_native(
         .into_iter()
         .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
         .collect_vec();
-    let factors_buffer = U32Buffer::from_slice(&factor_limbs)
+    let factors_buffer = U32Buffer::from_slice_private(&factor_limbs)
         .expect("Metal batched point-evaluation factor upload should initialize");
     let flat_coeffs_buffer = if polys.len() == 1 {
         None
@@ -461,7 +463,7 @@ impl PolyOps for MetalBackend {
                     .into_iter()
                     .flat_map(|value| value.to_m31_array().map(|limb| limb.0))
                     .collect_vec();
-                let factors_buffer = U32Buffer::from_slice(&factor_limbs)
+                let factors_buffer = U32Buffer::from_slice_private(&factor_limbs)
                     .expect("Metal multi-group eval factor upload should succeed");
 
                 if group_polys.len() == 1 {
@@ -763,11 +765,24 @@ impl PolyOps for MetalBackend {
         // Phase 2: Wait for all GPU command buffers and wrap results.
         // Same-queue command buffers complete in submission order, so after
         // the first wait returns, most subsequent waits are instant.
+        //
+        // Coefficient buffers (when stored) are promoted to private storage
+        // for polynomials large enough to take the GPU batch_eval_at_point
+        // path (log_size > 9). Small polynomials fall back to CPU evaluation
+        // via host_slice() so must remain shared.
+        //
+        // Evaluation buffers are NOT promoted because decommit reads sparse
+        // query positions from CPU (batch_at / read_indices), and private
+        // readback of the full buffer for each column would be expensive.
         pending
             .into_iter()
-            .map(|(poly_coeffs, buffer, domain, handle)| {
+            .map(|(mut poly_coeffs, buffer, domain, handle)| {
                 if let Some(h) = handle {
                     h.wait().expect("Metal RFFT async wait should succeed");
+                }
+                // Promote coefficient buffer for GPU-eligible sizes.
+                if store_polynomials_coefficients && poly_coeffs.log_size() > 9 {
+                    poly_coeffs.coeffs.promote_to_private();
                 }
                 let evals = CircleEvaluation::new(domain, buffer);
                 Poly::new(

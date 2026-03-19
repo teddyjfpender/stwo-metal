@@ -162,6 +162,28 @@ pub fn generate_add_opcode_small_trace(
     Ok(raw.to_metal_evaluations())
 }
 
+/// Generate the add_opcode_small trace (39 columns) on GPU,
+/// returning both evaluations and the raw flat GPU buffer for interaction trace.
+pub fn generate_add_opcode_small_trace_with_raw(
+    inputs: &[u32],
+    address_to_id: &[u32],
+    big_values: &[u32],
+    small_values: &[u32],
+    n_rows: usize,
+) -> Result<OpcodeTraceWithRaw, OpcodeTraceError> {
+    let raw = dispatch_opcode_kernel(
+        inputs, address_to_id, big_values, small_values, n_rows, 39,
+        U32Buffer::witness_add_opcode_small_trace,
+    )?;
+    let evals = raw.to_metal_evaluations();
+    Ok(OpcodeTraceWithRaw {
+        evals,
+        raw_buffer: raw.values,
+        n_rows,
+        column_length: raw.column_length,
+    })
+}
+
 /// Generate the assert_eq_opcode_double_deref trace (19 columns) on GPU,
 /// returning both evaluations and the raw flat GPU buffer for interaction trace.
 pub fn generate_assert_eq_double_deref_trace_with_raw(

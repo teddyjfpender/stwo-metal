@@ -79,6 +79,52 @@ impl BaseFieldVec {
         }
     }
 
+    /// Creates a `BaseFieldVec` backed by a private (GPU-only) Metal buffer
+    /// whose contents are uploaded from host memory via a staging blit.
+    ///
+    /// Private buffers receive driver-level optimizations that shared buffers
+    /// cannot. They should be used for trace columns that are only read by
+    /// GPU compute/blit passes and never by the CPU after initial upload.
+    pub fn from_vec_private(host_array: Vec<BaseField>) -> Self {
+        let raw: Vec<u32> = host_array.into_iter().map(|value| value.0).collect();
+        let size = raw.len();
+        let buffer =
+            U32Buffer::from_slice_private(&raw).expect("Metal BaseFieldVec private upload should succeed");
+        Self {
+            buffer,
+            size,
+            host_cache: OnceLock::new(),
+        }
+    }
+
+    /// Allocates a private (GPU-only) uninitialized buffer.
+    pub fn new_uninitialized_private(size: usize) -> Self {
+        let buffer = U32Buffer::uninitialized_private(size)
+            .expect("Metal BaseFieldVec private allocation should succeed");
+        Self {
+            buffer,
+            size,
+            host_cache: OnceLock::new(),
+        }
+    }
+
+    /// Returns `true` if this buffer uses `MTLResourceStorageModePrivate`.
+    pub fn is_private(&self) -> bool {
+        self.buffer.is_private()
+    }
+
+    /// Promotes the underlying buffer to private (GPU-only) storage.
+    /// Invalidates any cached host data. No-op if already private.
+    pub fn promote_to_private(&mut self) {
+        if self.buffer.is_private() {
+            return;
+        }
+        let _ = self.host_cache.take();
+        self.buffer
+            .promote_to_private()
+            .expect("Metal BaseFieldVec promote-to-private should succeed");
+    }
+
     pub fn new_zeroes(size: usize) -> Self {
         let buffer =
             U32Buffer::zeroed(size).expect("Metal BaseFieldVec zero allocation should initialize");

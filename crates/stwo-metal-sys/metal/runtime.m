@@ -20,6 +20,7 @@
 @interface StwoMetalBufferBox : NSObject
 @property(nonatomic, strong) id<MTLBuffer> buffer;
 @property(nonatomic, assign) NSUInteger len;
+@property(nonatomic, assign) BOOL isPrivate;
 @end
 
 @implementation StwoMetalBufferBox
@@ -594,6 +595,119 @@ void *stwo_metal_u32_buffer_alloc_uninitialized(
     }
 }
 
+void *stwo_metal_u32_buffer_alloc_uninitialized_private(
+    void *runtime_ptr,
+    size_t len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        NSUInteger bytes = len * sizeof(uint32_t);
+        id<MTLBuffer> buffer = [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModePrivate];
+        if (buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate private Metal buffer.");
+            return NULL;
+        }
+
+        StwoMetalBufferBox *box = [StwoMetalBufferBox new];
+        box.buffer = buffer;
+        box.len = len;
+        box.isPrivate = YES;
+        return (__bridge_retained void *)box;
+    }
+}
+
+void *stwo_metal_u32_buffer_from_host_private(
+    void *runtime_ptr,
+    const uint32_t *host_ptr,
+    size_t len,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        NSUInteger bytes = len * sizeof(uint32_t);
+
+        // Allocate a shared staging buffer for the upload.
+        id<MTLBuffer> staging = [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        if (staging == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate staging buffer for private upload.");
+            return NULL;
+        }
+
+        if (bytes > 0) {
+            memcpy(staging.contents, host_ptr, bytes);
+        }
+
+        // Allocate the private destination buffer.
+        id<MTLBuffer> private_buffer = [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModePrivate];
+        if (private_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate private Metal buffer.");
+            return NULL;
+        }
+
+        // Blit from staging to private.
+        id<MTLCommandBuffer> cmd = [runtime.queue commandBuffer];
+        if (cmd == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create command buffer for private upload.");
+            return NULL;
+        }
+        id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
+        [blit copyFromBuffer:staging sourceOffset:0 toBuffer:private_buffer destinationOffset:0 size:bytes];
+        [blit endEncoding];
+        [cmd commit];
+        [cmd waitUntilCompleted];
+
+        StwoMetalBufferBox *box = [StwoMetalBufferBox new];
+        box.buffer = private_buffer;
+        box.len = len;
+        box.isPrivate = YES;
+        return (__bridge_retained void *)box;
+    }
+}
+
+bool stwo_metal_u32_buffer_is_private(void *buffer_ptr) {
+    @autoreleasepool {
+        StwoMetalBufferBox *buffer = stwo_metal_buffer_box(buffer_ptr);
+        return buffer.isPrivate;
+    }
+}
+
+bool stwo_metal_u32_buffer_promote_to_private(
+    void *runtime_ptr,
+    void *buffer_ptr,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalBufferBox *box = stwo_metal_buffer_box(buffer_ptr);
+        if (box.isPrivate) {
+            return true; // Already private — no-op.
+        }
+        NSUInteger bytes = box.len * sizeof(uint32_t);
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        id<MTLBuffer> private_buffer = [runtime.device newBufferWithLength:bytes
+                                                                  options:MTLResourceStorageModePrivate];
+        if (private_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len,
+                @"Failed to allocate private buffer for promotion.");
+            return false;
+        }
+        id<MTLCommandBuffer> cmd = [runtime.queue commandBuffer];
+        id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
+        [blit copyFromBuffer:box.buffer sourceOffset:0
+                    toBuffer:private_buffer destinationOffset:0
+                        size:bytes];
+        [blit endEncoding];
+        [cmd commit];
+        [cmd waitUntilCompleted];
+        box.buffer = private_buffer;
+        box.isPrivate = YES;
+        return true;
+    }
+}
+
 void stwo_metal_u32_buffer_destroy(void *buffer) {
     if (buffer == NULL) {
         return;
@@ -612,14 +726,31 @@ bool stwo_metal_u32_buffer_read(
     size_t error_message_len
 ) {
     @autoreleasepool {
-        (void)runtime_ptr;
         StwoMetalBufferBox *buffer = stwo_metal_buffer_box(buffer_ptr);
         if (len > buffer.len) {
             stwo_metal_write_error(error_message, error_message_len, @"Requested read exceeds Metal buffer length.");
             return false;
         }
 
-        if (len > 0) {
+        if (len == 0) return true;
+
+        if (buffer.isPrivate) {
+            // Private buffer: blit to a shared staging buffer, then memcpy.
+            StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+            NSUInteger bytes = len * sizeof(uint32_t);
+            id<MTLBuffer> staging = [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+            if (staging == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate staging buffer for private readback.");
+                return false;
+            }
+            id<MTLCommandBuffer> cmd = [runtime.queue commandBuffer];
+            id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
+            [blit copyFromBuffer:buffer.buffer sourceOffset:0 toBuffer:staging destinationOffset:0 size:bytes];
+            [blit endEncoding];
+            [cmd commit];
+            [cmd waitUntilCompleted];
+            memcpy(host_ptr, staging.contents, bytes);
+        } else {
             memcpy(host_ptr, buffer.buffer.contents, len * sizeof(uint32_t));
         }
         return true;
@@ -629,6 +760,9 @@ bool stwo_metal_u32_buffer_read(
 const uint32_t *stwo_metal_u32_buffer_host_ptr(void *buffer_ptr) {
     @autoreleasepool {
         StwoMetalBufferBox *buffer = stwo_metal_buffer_box(buffer_ptr);
+        if (buffer.isPrivate) {
+            return NULL;
+        }
         return (const uint32_t *)buffer.buffer.contents;
     }
 }
@@ -636,6 +770,7 @@ const uint32_t *stwo_metal_u32_buffer_host_ptr(void *buffer_ptr) {
 uint32_t stwo_metal_u32_buffer_get(void *buffer_ptr, size_t index) {
     @autoreleasepool {
         StwoMetalBufferBox *buffer = stwo_metal_buffer_box(buffer_ptr);
+        NSCAssert(!buffer.isPrivate, @"Cannot get element from private Metal buffer — use GPU readback instead.");
         return ((uint32_t *)buffer.buffer.contents)[index];
     }
 }
@@ -643,11 +778,13 @@ uint32_t stwo_metal_u32_buffer_get(void *buffer_ptr, size_t index) {
 void stwo_metal_u32_buffer_set(void *buffer_ptr, size_t index, uint32_t value) {
     @autoreleasepool {
         StwoMetalBufferBox *buffer = stwo_metal_buffer_box(buffer_ptr);
+        NSCAssert(!buffer.isPrivate, @"Cannot set element on private Metal buffer — use GPU upload instead.");
         ((uint32_t *)buffer.buffer.contents)[index] = value;
     }
 }
 
 bool stwo_metal_u32_buffer_copy(
+    void *runtime_ptr,
     void *src_ptr,
     void *dst_ptr,
     size_t len,
@@ -663,16 +800,30 @@ bool stwo_metal_u32_buffer_copy(
             return false;
         }
 
-        memmove(
-            ((uint32_t *)dst.buffer.contents) + dst_offset,
-            ((uint32_t *)src.buffer.contents),
-            len * sizeof(uint32_t)
-        );
+        NSUInteger bytes = len * sizeof(uint32_t);
+        if (src.isPrivate || dst.isPrivate) {
+            StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+            id<MTLCommandBuffer> cmd = [runtime.queue commandBuffer];
+            id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
+            [blit copyFromBuffer:src.buffer sourceOffset:0
+                        toBuffer:dst.buffer destinationOffset:dst_offset * sizeof(uint32_t)
+                            size:bytes];
+            [blit endEncoding];
+            [cmd commit];
+            [cmd waitUntilCompleted];
+        } else {
+            memmove(
+                ((uint32_t *)dst.buffer.contents) + dst_offset,
+                ((uint32_t *)src.buffer.contents),
+                bytes
+            );
+        }
         return true;
     }
 }
 
 bool stwo_metal_u32_buffer_copy_range(
+    void *runtime_ptr,
     void *src_ptr,
     void *dst_ptr,
     size_t src_offset,
@@ -689,11 +840,24 @@ bool stwo_metal_u32_buffer_copy_range(
             return false;
         }
 
-        memmove(
-            ((uint32_t *)dst.buffer.contents) + dst_offset,
-            ((uint32_t *)src.buffer.contents) + src_offset,
-            len * sizeof(uint32_t)
-        );
+        NSUInteger bytes = len * sizeof(uint32_t);
+        if (src.isPrivate || dst.isPrivate) {
+            StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+            id<MTLCommandBuffer> cmd = [runtime.queue commandBuffer];
+            id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
+            [blit copyFromBuffer:src.buffer sourceOffset:src_offset * sizeof(uint32_t)
+                        toBuffer:dst.buffer destinationOffset:dst_offset * sizeof(uint32_t)
+                            size:bytes];
+            [blit endEncoding];
+            [cmd commit];
+            [cmd waitUntilCompleted];
+        } else {
+            memmove(
+                ((uint32_t *)dst.buffer.contents) + dst_offset,
+                ((uint32_t *)src.buffer.contents) + src_offset,
+                bytes
+            );
+        }
         return true;
     }
 }
@@ -708,14 +872,35 @@ bool stwo_metal_u32_buffer_read_indices(
     size_t error_message_len
 ) {
     @autoreleasepool {
-        (void)runtime_ptr;
         StwoMetalBufferBox *buffer = stwo_metal_buffer_box(buffer_ptr);
         if (indices_len > 0 && (indices == NULL || host_ptr == NULL)) {
             stwo_metal_write_error(error_message, error_message_len, @"Indexed Metal buffer read requires non-null indices and destination pointers.");
             return false;
         }
 
-        const uint32_t *values = (const uint32_t *)buffer.buffer.contents;
+        const uint32_t *values;
+        id<MTLBuffer> staging = nil;
+
+        if (buffer.isPrivate) {
+            // Blit entire buffer to shared staging, then index from there.
+            StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+            NSUInteger bytes = buffer.len * sizeof(uint32_t);
+            staging = [runtime.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+            if (staging == nil) {
+                stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate staging buffer for private indexed read.");
+                return false;
+            }
+            id<MTLCommandBuffer> cmd = [runtime.queue commandBuffer];
+            id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
+            [blit copyFromBuffer:buffer.buffer sourceOffset:0 toBuffer:staging destinationOffset:0 size:bytes];
+            [blit endEncoding];
+            [cmd commit];
+            [cmd waitUntilCompleted];
+            values = (const uint32_t *)staging.contents;
+        } else {
+            values = (const uint32_t *)buffer.buffer.contents;
+        }
+
         for (size_t i = 0; i < indices_len; ++i) {
             uint32_t index = indices[i];
             if ((NSUInteger)index >= buffer.len) {

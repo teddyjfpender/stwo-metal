@@ -118,6 +118,61 @@ impl U32Buffer {
         Ok(Self { raw, len })
     }
 
+    /// Allocates a private (GPU-only) buffer with the given contents uploaded
+    /// from host memory via a staging blit. Private buffers receive driver
+    /// optimizations unavailable to shared buffers, but their contents cannot
+    /// be read directly by the CPU; readback requires a GPU blit.
+    pub fn from_slice_private(values: &[u32]) -> Result<Self, MetalError> {
+        let runtime = shared_runtime()?;
+        let raw = unsafe {
+            ffi::buffer_from_host_private(
+                runtime.raw.as_ptr(),
+                values.as_ptr(),
+                values.len(),
+                error_buffer_mut_ptr,
+            )
+        }?;
+        Ok(Self {
+            raw,
+            len: values.len(),
+        })
+    }
+
+    /// Allocates an uninitialized private (GPU-only) buffer.
+    pub fn uninitialized_private(len: usize) -> Result<Self, MetalError> {
+        let runtime = shared_runtime()?;
+        let raw = unsafe {
+            ffi::buffer_alloc_uninitialized_private(
+                runtime.raw.as_ptr(),
+                len,
+                error_buffer_mut_ptr,
+            )
+        }?;
+        Ok(Self { raw, len })
+    }
+
+    /// Returns true if this buffer uses `MTLResourceStorageModePrivate`.
+    pub fn is_private(&self) -> bool {
+        unsafe { ffi::buffer_is_private(self.raw.as_ptr()) }
+    }
+
+    /// Promotes a shared buffer to private storage in-place by blitting
+    /// its contents to a new private buffer and replacing the underlying
+    /// Metal buffer object. No-op if already private.
+    pub fn promote_to_private(&mut self) -> Result<(), MetalError> {
+        if self.is_private() {
+            return Ok(());
+        }
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::buffer_promote_to_private(
+                runtime.raw.as_ptr(),
+                self.raw.as_ptr(),
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
@@ -147,8 +202,10 @@ impl U32Buffer {
             self.len,
             other.len
         );
+        let runtime = shared_runtime()?;
         unsafe {
             ffi::buffer_copy(
+                runtime.raw.as_ptr(),
                 other.raw.as_ptr(),
                 self.raw.as_ptr(),
                 other.len,
@@ -166,8 +223,10 @@ impl U32Buffer {
             other.len,
             offset
         );
+        let runtime = shared_runtime()?;
         unsafe {
             ffi::buffer_copy(
+                runtime.raw.as_ptr(),
                 other.raw.as_ptr(),
                 self.raw.as_ptr(),
                 other.len,
@@ -198,8 +257,10 @@ impl U32Buffer {
             len,
             dst_offset
         );
+        let runtime = shared_runtime()?;
         unsafe {
             ffi::buffer_copy_range(
+                runtime.raw.as_ptr(),
                 other.raw.as_ptr(),
                 self.raw.as_ptr(),
                 src_offset,
@@ -4323,6 +4384,26 @@ pub mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> *mut c_void;
+        fn stwo_metal_u32_buffer_alloc_uninitialized_private(
+            runtime: *mut c_void,
+            len: usize,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> *mut c_void;
+        fn stwo_metal_u32_buffer_from_host_private(
+            runtime: *mut c_void,
+            host_ptr: *const u32,
+            len: usize,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> *mut c_void;
+        fn stwo_metal_u32_buffer_is_private(buffer: *mut c_void) -> bool;
+        fn stwo_metal_u32_buffer_promote_to_private(
+            runtime: *mut c_void,
+            buffer: *mut c_void,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_u32_buffer_destroy(buffer: *mut c_void);
         fn stwo_metal_u32_buffer_read(
             runtime: *mut c_void,
@@ -4336,6 +4417,7 @@ pub mod ffi {
         fn stwo_metal_u32_buffer_get(buffer: *mut c_void, index: usize) -> u32;
         fn stwo_metal_u32_buffer_set(buffer: *mut c_void, index: usize, value: u32);
         fn stwo_metal_u32_buffer_copy(
+            runtime: *mut c_void,
             src: *mut c_void,
             dst: *mut c_void,
             len: usize,
@@ -4344,6 +4426,7 @@ pub mod ffi {
             error_message_len: usize,
         ) -> bool;
         fn stwo_metal_u32_buffer_copy_range(
+            runtime: *mut c_void,
             src: *mut c_void,
             dst: *mut c_void,
             src_offset: usize,
@@ -5845,6 +5928,7 @@ pub mod ffi {
     }
 
     pub unsafe fn buffer_copy(
+        runtime: *mut c_void,
         src: *mut c_void,
         dst: *mut c_void,
         len: usize,
@@ -5853,6 +5937,7 @@ pub mod ffi {
     ) -> Result<(), MetalError> {
         let mut error = [0i8; ERROR_BUFFER_LEN];
         if stwo_metal_u32_buffer_copy(
+            runtime,
             src,
             dst,
             len,
@@ -5867,6 +5952,7 @@ pub mod ffi {
     }
 
     pub unsafe fn buffer_copy_range(
+        runtime: *mut c_void,
         src: *mut c_void,
         dst: *mut c_void,
         src_offset: usize,
@@ -5876,11 +5962,66 @@ pub mod ffi {
     ) -> Result<(), MetalError> {
         let mut error = [0i8; ERROR_BUFFER_LEN];
         if stwo_metal_u32_buffer_copy_range(
+            runtime,
             src,
             dst,
             src_offset,
             len,
             dst_offset,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn buffer_from_host_private(
+        runtime: *mut c_void,
+        host_ptr: *const u32,
+        len: usize,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<NonNull<c_void>, MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let raw = stwo_metal_u32_buffer_from_host_private(
+            runtime,
+            host_ptr,
+            len,
+            error_ptr(&mut error),
+            error.len(),
+        );
+        NonNull::new(raw).ok_or_else(|| MetalError::new(decode_error_buffer(&error)))
+    }
+
+    pub unsafe fn buffer_alloc_uninitialized_private(
+        runtime: *mut c_void,
+        len: usize,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<NonNull<c_void>, MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let raw = stwo_metal_u32_buffer_alloc_uninitialized_private(
+            runtime,
+            len,
+            error_ptr(&mut error),
+            error.len(),
+        );
+        NonNull::new(raw).ok_or_else(|| MetalError::new(decode_error_buffer(&error)))
+    }
+
+    pub unsafe fn buffer_is_private(buffer: *mut c_void) -> bool {
+        stwo_metal_u32_buffer_is_private(buffer)
+    }
+
+    pub unsafe fn buffer_promote_to_private(
+        runtime: *mut c_void,
+        buffer: *mut c_void,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_u32_buffer_promote_to_private(
+            runtime,
+            buffer,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -9267,6 +9408,41 @@ pub mod ffi {
         ))
     }
 
+    pub unsafe fn buffer_from_host_private(
+        _runtime: *mut c_void,
+        _host_ptr: *const u32,
+        _len: usize,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<NonNull<c_void>, MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn buffer_alloc_uninitialized_private(
+        _runtime: *mut c_void,
+        _len: usize,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<NonNull<c_void>, MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn buffer_is_private(_buffer: *mut c_void) -> bool {
+        false
+    }
+
+    pub unsafe fn buffer_promote_to_private(
+        _runtime: *mut c_void,
+        _buffer: *mut c_void,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
     pub unsafe fn buffer_destroy(_buffer: *mut c_void) {}
 
     pub unsafe fn buffer_read(
@@ -9294,6 +9470,7 @@ pub mod ffi {
     }
 
     pub unsafe fn buffer_copy(
+        _runtime: *mut c_void,
         _src: *mut c_void,
         _dst: *mut c_void,
         _len: usize,
@@ -9306,6 +9483,7 @@ pub mod ffi {
     }
 
     pub unsafe fn buffer_copy_range(
+        _runtime: *mut c_void,
         _src: *mut c_void,
         _dst: *mut c_void,
         _src_offset: usize,

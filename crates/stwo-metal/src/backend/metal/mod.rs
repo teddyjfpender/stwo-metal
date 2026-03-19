@@ -161,7 +161,8 @@ pub use witness_range_check::{
     generate_range_check_trace, MetalRangeCheckTrace, RangeCheckTraceError,
 };
 pub use witness_opcodes::{
-    generate_add_opcode_small_trace, generate_assert_eq_double_deref_trace,
+    generate_add_opcode_small_trace, generate_add_opcode_small_trace_with_raw,
+    generate_assert_eq_double_deref_trace,
     generate_call_opcode_rel_imm_trace, generate_jnz_opcode_taken_trace,
     generate_jump_opcode_rel_imm_trace, generate_ret_opcode_trace, OpcodeTraceError,
 };

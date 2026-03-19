@@ -274,7 +274,8 @@ pub use crate::backend::metal::witness_memory_id_to_big::{
 };
 #[cfg(feature = "prover")]
 pub use crate::backend::metal::witness_opcodes::{
-    generate_add_opcode_small_trace, generate_assert_eq_double_deref_trace,
+    generate_add_opcode_small_trace, generate_add_opcode_small_trace_with_raw,
+    generate_assert_eq_double_deref_trace,
     generate_assert_eq_double_deref_trace_with_raw,
     generate_call_opcode_rel_imm_trace, generate_call_opcode_rel_imm_trace_with_raw,
     generate_jnz_opcode_taken_trace, generate_jnz_opcode_taken_trace_with_raw,

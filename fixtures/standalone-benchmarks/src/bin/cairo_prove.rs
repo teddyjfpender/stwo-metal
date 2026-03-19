@@ -3208,7 +3208,7 @@ mod cairo_prove_main {
         {
             use stwo_cairo_prover::witness::cairo_claim_generator::GpuOpcodeTraces;
             use stwo_metal::{
-                generate_add_opcode_small_trace,
+                generate_add_opcode_small_trace_with_raw,
                 generate_assert_eq_double_deref_trace_with_raw,
                 generate_jnz_opcode_taken_trace_with_raw,
                 generate_jump_opcode_rel_imm_trace_with_raw,
@@ -3334,12 +3334,15 @@ mod cairo_prove_main {
                 let mut traces = GpuOpcodeTraces::default();
 
                 if let Some(inp) = opcode_inputs.add_opcode_small {
-                    match generate_add_opcode_small_trace(
+                    match generate_add_opcode_small_trace_with_raw(
                         &inp.data, &addr_to_id, &big_vals, &small_vals, inp.n_rows,
                     ) {
-                        Ok(evals) => {
+                        Ok(trace_with_raw) => {
+                            let OpcodeTraceWithRaw { evals, raw_buffer, n_rows, column_length } = trace_with_raw;
                             traces.add_opcode_small =
                                 Some(Box::new(evals) as Box<dyn std::any::Any + Send>);
+                            traces.add_opcode_small_raw =
+                                Some(Box::new((raw_buffer, n_rows, column_length)) as Box<dyn std::any::Any + Send>);
                         }
                         Err(e) => eprintln!("  [gpu-opcode] add_opcode_small error: {e}"),
                     }
@@ -3868,6 +3871,7 @@ mod cairo_prove_main {
                 OpcodeInteractionGenerators,
             };
             use stwo_metal::backend::metal::interaction_trace_opcodes::{
+                gpu_fused_interaction_trace_add_opcode_small,
                 gpu_fused_interaction_trace_ret_opcode,
                 gpu_fused_interaction_trace_jump_opcode_rel_imm,
                 gpu_fused_interaction_trace_assert_eq_double_deref,
@@ -3926,6 +3930,10 @@ mod cairo_prove_main {
                     }
 
                     dispatch_opcode_interaction!(
+                        add_opcode_small_raw, add_opcode_small, add_opcode_small,
+                        gpu_fused_interaction_trace_add_opcode_small, "add_opcode_small"
+                    );
+                    dispatch_opcode_interaction!(
                         ret_opcode_raw, ret_opcode, ret_opcode,
                         gpu_fused_interaction_trace_ret_opcode, "ret_opcode"
                     );
@@ -3949,7 +3957,7 @@ mod cairo_prove_main {
 
                     let gpu_opcode_inter_ms = t_gpu_opcode_inter.elapsed().as_secs_f64() * 1000.0;
                     eprintln!(
-                        "  GPU opcode interaction trace dispatch: {:.1} ms (5 opcodes)",
+                        "  GPU opcode interaction trace dispatch: {:.1} ms (6 opcodes)",
                         gpu_opcode_inter_ms,
                     );
 
