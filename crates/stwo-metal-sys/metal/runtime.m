@@ -1638,9 +1638,9 @@ bool stwo_metal_batch_eval_at_point_base_field_u32(
         uint32_t blocks_per_poly = coeffs_log_len > 9u ? (coeffs_size >> 9u) : 1u;
         NSUInteger temp_len = (NSUInteger)(blocks_per_poly * n_polys * 4u);
         id<MTLBuffer> temp_a = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
-                                                           options:MTLResourceStorageModeShared];
+                                                           options:MTLResourceStorageModePrivate];
         id<MTLBuffer> temp_b = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
-                                                           options:MTLResourceStorageModeShared];
+                                                           options:MTLResourceStorageModePrivate];
         if (temp_a == nil || temp_b == nil) {
             stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal point-evaluation temporary buffers.");
             return false;
@@ -1860,9 +1860,9 @@ bool stwo_metal_batch_eval_at_point_multi_group_u32(
             // Allocate per-group temporaries for the reduction tree.
             NSUInteger temp_len = (NSUInteger)(blocks_per_poly * n_polys * 4u);
             id<MTLBuffer> temp_a = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
-                                                               options:MTLResourceStorageModeShared];
+                                                               options:MTLResourceStorageModePrivate];
             id<MTLBuffer> temp_b = [runtime.device newBufferWithLength:(temp_len * sizeof(uint32_t))
-                                                               options:MTLResourceStorageModeShared];
+                                                               options:MTLResourceStorageModePrivate];
             if (temp_a == nil || temp_b == nil) {
                 stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate Metal point-evaluation temporary buffers.");
                 return false;
@@ -5301,7 +5301,7 @@ bool stwo_metal_accumulate_and_unpack_partial_numerators_batched_u32x4(
         // Allocate intermediate accumulate output buffer (packed QM31).
         NSUInteger accum_len = (NSUInteger)row_count * (NSUInteger)n_batches * 4u;
         id<MTLBuffer> accum_buffer = [runtime.device newBufferWithLength:(accum_len * sizeof(uint32_t))
-                                                                options:MTLResourceStorageModeShared];
+                                                                options:MTLResourceStorageModePrivate];
         if (accum_buffer == nil) {
             stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate intermediate accumulate buffer.");
             return false;
@@ -5432,7 +5432,7 @@ bool stwo_metal_accumulate_and_unpack_partial_numerators_indirect_batched_u32x4(
         // Allocate intermediate accumulate output buffer (packed QM31).
         NSUInteger accum_len = (NSUInteger)row_count * (NSUInteger)n_batches * 4u;
         id<MTLBuffer> accum_buffer = [runtime.device newBufferWithLength:(accum_len * sizeof(uint32_t))
-                                                                options:MTLResourceStorageModeShared];
+                                                                options:MTLResourceStorageModePrivate];
         if (accum_buffer == nil) {
             stwo_metal_write_error(error_message, error_message_len, @"Failed to allocate intermediate accumulate buffer for indirect numerators.");
             return false;
@@ -6939,7 +6939,7 @@ bool stwo_metal_eval_compiled_fused_blit_async(
         // Allocate the flat trace buffer on GPU (uninitialized — blit will fill it).
         size_t total_elements = (size_t)n_columns * (size_t)row_count;
         id<MTLBuffer> trace_buffer = [runtime.device newBufferWithLength:total_elements * sizeof(uint32_t)
-                                                                options:MTLResourceStorageModeShared];
+                                                                options:MTLResourceStorageModePrivate];
         if (trace_buffer == nil) {
             stwo_metal_write_error(error_message, error_message_len,
                 @"Failed to allocate flat trace buffer for fused blit+compute.");
@@ -7154,7 +7154,7 @@ bool stwo_metal_encode_compiled_fused_blit_v1(
         // Allocate flat trace buffer on GPU.
         size_t total_elements = (size_t)n_columns * (size_t)row_count;
         id<MTLBuffer> trace_buffer = [runtime.device newBufferWithLength:total_elements * sizeof(uint32_t)
-                                                                options:MTLResourceStorageModeShared];
+                                                                options:MTLResourceStorageModePrivate];
         if (trace_buffer == nil) {
             stwo_metal_write_error(error_message, error_message_len,
                 @"Failed to allocate flat trace buffer for batch fused blit+compute.");
