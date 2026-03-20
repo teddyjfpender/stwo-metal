@@ -308,6 +308,15 @@ fn metal_compile_command(source: &str, air_path: &Path, mode: MetalMode) -> Comm
             .arg("-fmetal-math-fp32-functions=precise");
     }
 
+    // Performance flags — safe for integer-only arithmetic (M31/QM31).
+    // -funroll-loops: unroll small loops (butterfly operations, Blake2s rounds)
+    // -finline-functions: inline helpers (m31_add, m31_mul, qm31 ops)
+    // -fvectorize: enable loop vectorization passes
+    command
+        .arg("-funroll-loops")
+        .arg("-finline-functions")
+        .arg("-fvectorize");
+
     command
         .arg(format!("metal/{source}.metal"))
         .arg("-o")
