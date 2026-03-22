@@ -948,19 +948,35 @@ mod cairo_prove_main {
             eprintln!("  Cache build: {:.1} ms (amortized across {} iters)", cache_ms, n_iters);
 
             let cool_ms = gpu_cool_pause_ms();
+            // Pipelined execution: prepare N+1's CPU state while N's GPU runs.
+            let mut pending_prep: Option<std::thread::JoinHandle<PreparedProofInput>> = None;
             for i in 0..n_iters {
-                // GPU thermal management: cool between iterations.
-                // The previous iteration's prove_values + Merkle phases leave
-                // the GPU hot. A brief idle window before the next iteration
-                // lets the GPU clock recover for more consistent performance.
                 if cool_ms > 0 && i > 0 {
-                    let inter_iter_cool = cool_ms * 5; // longer pause between iterations
+                    let inter_iter_cool = cool_ms * 5;
                     std::thread::sleep(std::time::Duration::from_millis(inter_iter_cool));
                 }
-                let input_clone = input.clone();
-                let preprocessed_trace = preprocessed_trace.clone();
+                // Use pre-prepared input from background thread if available.
+                let prepared = pending_prep.take().map(|h| h.join().unwrap());
+
+                // Start preparing NEXT iteration's input on background thread.
+                // This overlaps CPU claim gen (~200ms) with current GPU phases.
+                if i + 1 < n_iters {
+                    let next_input = input.clone();
+                    let next_preproc = preprocessed_trace.clone();
+                    pending_prep = Some(std::thread::spawn(move || {
+                        prepare_proof_input(next_input, next_preproc)
+                    }));
+                }
+
                 let t = Instant::now();
-                run_metal_prove_only(input_clone, preprocessed_trace, Some(&cached));
+                if let Some(prep) = prepared {
+                    run_metal_full_pipeline_prepared(
+                        prep, false, None, Some(&cached),
+                    );
+                } else {
+                    let input_clone = input.clone();
+                    run_metal_prove_only(input_clone, preprocessed_trace.clone(), Some(&cached));
+                }
                 let ms = t.elapsed().as_secs_f64() * 1000.0;
                 metal_times_ms.push(ms);
                 eprintln!("  Metal iter {}/{}: {:.1} ms", i + 1, n_iters, ms);
@@ -1017,6 +1033,64 @@ mod cairo_prove_main {
     }
 
     /// Run Metal prove pipeline only (no verification, no comparison).
+    /// Pre-computed CPU state for proof input, separable from GPU phases.
+    /// Creating this on a background thread overlaps CPU work with the
+    /// previous proof's GPU phases (~200ms CPU saved per iteration).
+    #[cfg(feature = "metal-runtime")]
+    struct PreparedProofInput {
+        claim_gen: stwo_cairo_prover::witness::cairo_claim_generator::CairoClaimGenerator,
+        gpu_big_values: Vec<[u32; 8]>,
+        gpu_small_values: Vec<u128>,
+        gpu_addr_to_id_raw: Vec<u32>,
+        opcode_addr_to_id: Vec<u32>,
+        opcode_big_values: Vec<u32>,
+        opcode_small_values: Vec<u32>,
+        input_big_values_len: usize,
+        input_small_values_len: usize,
+    }
+
+    /// Prepare proof input on a background thread (CPU-only, no GPU).
+    #[cfg(feature = "metal-runtime")]
+    fn prepare_proof_input(
+        input: ProverInput,
+        preprocessed_trace: Arc<PreProcessedTrace>,
+    ) -> PreparedProofInput {
+        use stwo_cairo_prover::witness::cairo::create_cairo_claim_generator;
+
+        let gpu_big_values = input.memory.f252_values.clone();
+        let gpu_small_values = input.memory.small_values.clone();
+        let input_big_values_len = gpu_big_values.len();
+        let input_small_values_len = gpu_small_values.len();
+        let gpu_addr_to_id_raw: Vec<u32> = (1..input.memory.address_to_id.len())
+            .map(|addr| input.memory.address_to_id[addr].0)
+            .collect();
+        let opcode_addr_to_id = gpu_addr_to_id_raw.clone();
+        let opcode_big_values: Vec<u32> = gpu_big_values
+            .iter()
+            .flat_map(|v| v.iter().copied())
+            .collect();
+        let opcode_small_values: Vec<u32> = gpu_small_values
+            .iter()
+            .flat_map(|v| {
+                let limbs = stwo_cairo_adapter::memory::u128_to_4_limbs(*v);
+                limbs.into_iter()
+            })
+            .collect();
+        let claim_gen = create_cairo_claim_generator(input, preprocessed_trace);
+
+        PreparedProofInput {
+            claim_gen,
+            gpu_big_values,
+            gpu_small_values,
+            gpu_addr_to_id_raw,
+            opcode_addr_to_id,
+            opcode_big_values,
+            opcode_small_values,
+            input_big_values_len,
+            input_small_values_len,
+        }
+    }
+
     /// Returns the total pipeline time.
     #[cfg(feature = "metal-runtime")]
     fn run_metal_prove_only(
@@ -2784,6 +2858,25 @@ mod cairo_prove_main {
         }
     }
 
+    /// Run the full Metal pipeline with pre-prepared input (pipelined mode).
+    #[cfg(feature = "metal-runtime")]
+    fn run_metal_full_pipeline_prepared(
+        prepared: PreparedProofInput,
+        verify: bool,
+        input_for_simd_comparison: Option<ProverInput>,
+        cached_artifacts: Option<&CachedMetalArtifacts>,
+    ) {
+        let preprocessed_trace = Arc::new(PreProcessedTrace::canonical());
+        run_metal_full_pipeline_impl(
+            None,
+            preprocessed_trace,
+            Some(prepared),
+            verify,
+            input_for_simd_comparison,
+            cached_artifacts,
+        );
+    }
+
     #[cfg(feature = "metal-runtime")]
     fn run_metal_full_pipeline(
         input: ProverInput,
@@ -2792,6 +2885,27 @@ mod cairo_prove_main {
         input_for_simd_comparison: Option<ProverInput>,
         cached_artifacts: Option<&CachedMetalArtifacts>,
     ) {
+        run_metal_full_pipeline_impl(
+            Some(input),
+            preprocessed_trace,
+            None,
+            verify,
+            input_for_simd_comparison,
+            cached_artifacts,
+        );
+    }
+
+    #[cfg(feature = "metal-runtime")]
+    fn run_metal_full_pipeline_impl(
+        input: Option<ProverInput>,
+        preprocessed_trace: Arc<PreProcessedTrace>,
+        mut prepared_input: Option<PreparedProofInput>,
+        verify: bool,
+        input_for_simd_comparison: Option<ProverInput>,
+        cached_artifacts: Option<&CachedMetalArtifacts>,
+    ) {
+        // In prepared mode, input is None (consumed by prepare_proof_input).
+        // The extraction block below handles both cases.
         use cairo_air::cairo_components::CairoComponents;
         use cairo_air::relations::CommonLookupElements;
         use stwo::core::channel::Channel;
@@ -2969,42 +3083,69 @@ mod cairo_prove_main {
             None => owned_twiddles.as_ref().unwrap(),
         };
 
-        // Extract memory data for GPU witness pre-computation before `input`
-        // is consumed.  The GPU kernel performs the F252 splitting (28 limb
-        // columns for big values, 8 for small) in parallel with the CPU claim
-        // generator and opcode trace work inside `write_trace()`.
-        let gpu_big_values = input.memory.f252_values.clone();
-        let gpu_small_values = input.memory.small_values.clone();
-        // Save lengths for PackedM31 pre-extraction (input is consumed below).
-        let input_big_values_len = gpu_big_values.len();
-        let input_small_values_len = gpu_small_values.len();
-
-        // Extract address-to-id mapping for GPU witness generation.
-        // Skip address 0 (reserved), use addresses 1..len as raw u32 IDs.
-        let gpu_addr_to_id_raw: Vec<u32> = (1..input.memory.address_to_id.len())
-            .map(|addr| input.memory.address_to_id[addr].0)
-            .collect();
-
-        // Clone memory data for GPU opcode dispatch (separate from memory witness).
-        let opcode_addr_to_id = gpu_addr_to_id_raw.clone();
-        let opcode_big_values: Vec<u32> = gpu_big_values
-            .iter()
-            .flat_map(|v| v.iter().copied())
-            .collect();
-        let opcode_small_values: Vec<u32> = gpu_small_values
-            .iter()
-            .flat_map(|v| {
-                let limbs = stwo_cairo_adapter::memory::u128_to_4_limbs(*v);
-                limbs.into_iter()
-            })
-            .collect();
-
-        // Spawn claim generator on background thread (CPU-only, overlaps with
-        // commit below).  `input` is not used again after this point.
-        let preprocessed_trace_for_claim = preprocessed_trace.clone();
-        let claim_gen_handle = std::thread::spawn(move || {
-            create_cairo_claim_generator(input, preprocessed_trace_for_claim)
-        });
+        // Extract memory data and create claim generator.
+        // When a PreparedProofInput is available (pipelined mode), this was
+        // already done on a background thread during the previous proof's GPU phases.
+        let (
+            gpu_big_values,
+            gpu_small_values,
+            gpu_addr_to_id_raw,
+            opcode_addr_to_id,
+            opcode_big_values,
+            opcode_small_values,
+            input_big_values_len,
+            input_small_values_len,
+            claim_gen_handle,
+        ) = if let Some(prep) = prepared_input.take() {
+            let handle = std::thread::spawn(move || prep.claim_gen);
+            (
+                prep.gpu_big_values,
+                prep.gpu_small_values,
+                prep.gpu_addr_to_id_raw,
+                prep.opcode_addr_to_id,
+                prep.opcode_big_values,
+                prep.opcode_small_values,
+                prep.input_big_values_len,
+                prep.input_small_values_len,
+                handle,
+            )
+        } else {
+            let input = input.expect("non-prepared mode requires ProverInput");
+            let gpu_big_values = input.memory.f252_values.clone();
+            let gpu_small_values = input.memory.small_values.clone();
+            let input_big_values_len = gpu_big_values.len();
+            let input_small_values_len = gpu_small_values.len();
+            let gpu_addr_to_id_raw: Vec<u32> = (1..input.memory.address_to_id.len())
+                .map(|addr| input.memory.address_to_id[addr].0)
+                .collect();
+            let opcode_addr_to_id = gpu_addr_to_id_raw.clone();
+            let opcode_big_values: Vec<u32> = gpu_big_values
+                .iter()
+                .flat_map(|v| v.iter().copied())
+                .collect();
+            let opcode_small_values: Vec<u32> = gpu_small_values
+                .iter()
+                .flat_map(|v| {
+                    let limbs = stwo_cairo_adapter::memory::u128_to_4_limbs(*v);
+                    limbs.into_iter()
+                })
+                .collect();
+            let preprocessed_trace_for_claim = preprocessed_trace.clone();
+            let handle = std::thread::spawn(move || {
+                create_cairo_claim_generator(input, preprocessed_trace_for_claim)
+            });
+            (
+                gpu_big_values,
+                gpu_small_values,
+                gpu_addr_to_id_raw,
+                opcode_addr_to_id,
+                opcode_big_values,
+                opcode_small_values,
+                input_big_values_len,
+                input_small_values_len,
+                handle,
+            )
+        };
 
         // Dispatch GPU witness kernel in parallel: compute F252 splits on Metal
         // while CPU does claim generation + opcode traces.
