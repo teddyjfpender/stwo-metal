@@ -3635,6 +3635,180 @@ mod cairo_prove_main {
         {
             cairo_claim_generator.has_gpu_opcode_interaction = true;
             eprintln!("  GPU opcode interaction: ENABLED (skipping LookupData allocation)");
+
+            // Set up the GPU verify_instruction extraction callback.
+            // This reads trace columns from GPU raw buffers to produce
+            // verify_instruction tuples, eliminating ~600ms of deduce_output calls.
+            {
+                use stwo_cairo_prover::witness::cairo_claim_generator::{
+                    GpuExtractedVerifyInstruction, GpuOpcodeTraces,
+                };
+                use std::any::Any;
+                use stwo_metal_sys::metal::U32Buffer as GpuU32Buffer;
+                use stwo::core::fields::m31::M31;
+                type ViInputType = (M31, [M31; 3], [M31; 2], M31);
+
+                cairo_claim_generator.gpu_verify_instruction_extract_fn = Some(Box::new(
+                    |traces: &GpuOpcodeTraces| -> GpuExtractedVerifyInstruction {
+                        /// Get a slice view of a single column from a GPU buffer via host_ptr.
+                        /// Buffer layout: column-major, column i starts at i * column_length.
+                        /// Returns ALL column_length elements (including padding rows).
+                        /// SAFETY: The GPU buffer must use shared memory (Apple Silicon).
+                        unsafe fn column_slice<'a>(host: *const u32, col_idx: usize, column_length: usize) -> &'a [u32] {
+                            let start = col_idx * column_length;
+                            std::slice::from_raw_parts(host.add(start), column_length)
+                        }
+
+                        /// Extract (U32Buffer, n_rows, column_length) from a raw field.
+                        fn unpack_raw(raw: &dyn Any) -> (&GpuU32Buffer, usize, usize) {
+                            let tuple = raw.downcast_ref::<(GpuU32Buffer, usize, usize)>()
+                                .expect("raw buffer downcast failed");
+                            (&tuple.0, tuple.1, tuple.2)
+                        }
+
+                        /// Aggregate tuples into a HashMap with counts.
+                        fn aggregate(tuples: impl Iterator<Item = ViInputType>) -> std::collections::HashMap<ViInputType, u32> {
+                            let mut map = std::collections::HashMap::new();
+                            for t in tuples {
+                                *map.entry(t).or_insert(0u32) += 1;
+                            }
+                            map
+                        }
+
+                        let mut result = GpuExtractedVerifyInstruction {
+                            add_opcode_small: None,
+                            assert_eq_opcode_double_deref: None,
+                            jnz_opcode_taken: None,
+                            jump_opcode_rel_imm: None,
+                            call_opcode_rel_imm: None,
+                            ret_opcode: None,
+                        };
+
+                        // --- ret_opcode (fixed tuple: only pc varies) ---
+                        if let Some(ref raw_box) = traces.ret_opcode_raw {
+                            let (buf, _n_rows, col_len) = unpack_raw(raw_box.as_ref());
+                            let host = unsafe { buf.host_ptr() };
+                            let pcs = unsafe { column_slice(host, 0, col_len) };
+                            result.ret_opcode = Some(aggregate(pcs.iter().map(|&pc| {
+                                (M31(pc), [M31(32766), M31(32767), M31(32767)], [M31(88), M31(130)], M31(0))
+                            })));
+                        }
+
+                        // --- call_opcode_rel_imm (fixed tuple: only pc varies) ---
+                        if let Some(ref raw_box) = traces.call_opcode_rel_imm_raw {
+                            let (buf, _n_rows, col_len) = unpack_raw(raw_box.as_ref());
+                            let host = unsafe { buf.host_ptr() };
+                            let pcs = unsafe { column_slice(host, 0, col_len) };
+                            result.call_opcode_rel_imm = Some(aggregate(pcs.iter().map(|&pc| {
+                                (M31(pc), [M31(32768), M31(32769), M31(32769)], [M31(32), M31(68)], M31(0))
+                            })));
+                        }
+
+                        // --- jump_opcode_rel_imm (semi-fixed: pc from col[0], ap_update_add_1 from col[3]) ---
+                        if let Some(ref raw_box) = traces.jump_opcode_rel_imm_raw {
+                            let (buf, _n_rows, col_len) = unpack_raw(raw_box.as_ref());
+                            let host = unsafe { buf.host_ptr() };
+                            let pcs = unsafe { column_slice(host, 0, col_len) };
+                            let ap_update = unsafe { column_slice(host, 3, col_len) };
+                            result.jump_opcode_rel_imm = Some(aggregate(
+                                pcs.iter().zip(ap_update.iter()).map(|(&pc, &ap_upd)| {
+                                    (
+                                        M31(pc),
+                                        [M31(32767), M31(32767), M31(32769)],
+                                        [M31(56), M31(4 + ap_upd * 32)],
+                                        M31(0),
+                                    )
+                                })
+                            ));
+                        }
+
+                        // --- jnz_opcode_taken (pc from col[0], offset0 from col[3], dst_base_fp from col[4], ap_update_add_1 from col[5]) ---
+                        if let Some(ref raw_box) = traces.jnz_opcode_taken_raw {
+                            let (buf, _n_rows, col_len) = unpack_raw(raw_box.as_ref());
+                            let host = unsafe { buf.host_ptr() };
+                            let pcs = unsafe { column_slice(host, 0, col_len) };
+                            let offset0s = unsafe { column_slice(host, 3, col_len) };
+                            let dst_base_fps = unsafe { column_slice(host, 4, col_len) };
+                            let ap_updates = unsafe { column_slice(host, 5, col_len) };
+                            result.jnz_opcode_taken = Some(aggregate(
+                                (0..col_len).map(|i| {
+                                    (
+                                        M31(pcs[i]),
+                                        [M31(offset0s[i]), M31(32767), M31(32769)],
+                                        [M31(dst_base_fps[i] * 8 + 16 + 32), M31(8 + ap_updates[i] * 32)],
+                                        M31(0),
+                                    )
+                                })
+                            ));
+                        }
+
+                        // --- assert_eq_opcode_double_deref ---
+                        // pc=col[0], offset0=col[3], offset1=col[4], offset2=col[5],
+                        // dst_base_fp=col[6], op0_base_fp=col[7], ap_update_add_1=col[8]
+                        if let Some(ref raw_box) = traces.assert_eq_opcode_double_deref_raw {
+                            let (buf, _n_rows, col_len) = unpack_raw(raw_box.as_ref());
+                            let host = unsafe { buf.host_ptr() };
+                            let pcs = unsafe { column_slice(host, 0, col_len) };
+                            let off0 = unsafe { column_slice(host, 3, col_len) };
+                            let off1 = unsafe { column_slice(host, 4, col_len) };
+                            let off2 = unsafe { column_slice(host, 5, col_len) };
+                            let dst_fp = unsafe { column_slice(host, 6, col_len) };
+                            let op0_fp = unsafe { column_slice(host, 7, col_len) };
+                            let ap_upd = unsafe { column_slice(host, 8, col_len) };
+                            result.assert_eq_opcode_double_deref = Some(aggregate(
+                                (0..col_len).map(|i| {
+                                    (
+                                        M31(pcs[i]),
+                                        [M31(off0[i]), M31(off1[i]), M31(off2[i])],
+                                        [M31(dst_fp[i] * 8 + op0_fp[i] * 16), M31(ap_upd[i] * 32 + 256)],
+                                        M31(0),
+                                    )
+                                })
+                            ));
+                        }
+
+                        // --- add_opcode_small ---
+                        // pc=col[0], offset0=col[3], offset1=col[4], offset2=col[5],
+                        // dst_base_fp=col[6], op0_base_fp=col[7], op1_imm=col[8],
+                        // op1_base_fp=col[9], ap_update_add_1=col[10]
+                        // op1_base_ap = 1 - op1_imm - op1_base_fp (derived)
+                        // felt5 = dst_base_fp*8 + op0_base_fp*16 + op1_imm*32 + op1_base_fp*64 + op1_base_ap*128 + 256
+                        // felt6 = ap_update_add_1*32 + 256
+                        if let Some(ref raw_box) = traces.add_opcode_small_raw {
+                            let (buf, _n_rows, col_len) = unpack_raw(raw_box.as_ref());
+                            let host = unsafe { buf.host_ptr() };
+                            let pcs = unsafe { column_slice(host, 0, col_len) };
+                            let off0 = unsafe { column_slice(host, 3, col_len) };
+                            let off1 = unsafe { column_slice(host, 4, col_len) };
+                            let off2 = unsafe { column_slice(host, 5, col_len) };
+                            let dst_fp = unsafe { column_slice(host, 6, col_len) };
+                            let op0_fp = unsafe { column_slice(host, 7, col_len) };
+                            let op1_imm = unsafe { column_slice(host, 8, col_len) };
+                            let op1_base_fp_col = unsafe { column_slice(host, 9, col_len) };
+                            let ap_upd = unsafe { column_slice(host, 10, col_len) };
+                            result.add_opcode_small = Some(aggregate(
+                                (0..col_len).map(|i| {
+                                    // All flag values are 0 or 1 in valid traces, so u32
+                                    // arithmetic is safe (no overflow, no modular wrapping).
+                                    let op1_base_ap = 1u32 - op1_imm[i] - op1_base_fp_col[i];
+                                    let felt5 = dst_fp[i] * 8 + op0_fp[i] * 16
+                                        + op1_imm[i] * 32 + op1_base_fp_col[i] * 64
+                                        + op1_base_ap * 128 + 256;
+                                    let felt6 = ap_upd[i] * 32 + 256;
+                                    (
+                                        M31(pcs[i]),
+                                        [M31(off0[i]), M31(off1[i]), M31(off2[i])],
+                                        [M31(felt5), M31(felt6)],
+                                        M31(0),
+                                    )
+                                })
+                            ));
+                        }
+
+                        result
+                    }
+                ));
+            }
         }
         let (claim, mut interaction_generator) =
             cairo_claim_generator.write_trace(&mut hybrid_tb);
