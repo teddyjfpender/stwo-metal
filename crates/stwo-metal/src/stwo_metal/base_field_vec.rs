@@ -42,7 +42,7 @@ impl BaseFieldVec {
         })
     }
 
-    pub(crate) fn from_buffer(buffer: U32Buffer) -> Self {
+    pub fn from_buffer(buffer: U32Buffer) -> Self {
         let size = buffer.len();
         Self {
             buffer,

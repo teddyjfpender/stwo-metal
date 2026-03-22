@@ -628,11 +628,9 @@ mod cairo_prove_main {
                 }
             }
 
-            // Default path: convert SimdBackend → MetalBackend via shared GPU upload.
-            // Uses from_packed_m31_slice() (shared memory, direct memcpy) instead of
-            // _private (staging blit + GPU copy). On Apple Silicon unified memory,
-            // shared buffers avoid the staging overhead (~0.5ms per column) with
-            // negligible impact on subsequent GPU compute performance.
+            // Per-column shared buffer upload (optimal for Apple Silicon).
+            // Metal's newBufferWithBytes allocates + copies in one step on
+            // unified memory — no separate staging needed.
             let metal_columns: Vec<stwo::prover::poly::circle::CircleEvaluation<
                 stwo_metal::MetalBackend,
                 stwo::core::fields::m31::BaseField,
