@@ -1206,7 +1206,7 @@ mod cairo_prove_main {
         let twiddles_ms = t1.elapsed().as_secs_f64() * 1000.0;
 
         let t2 = Instant::now();
-        let base_column_pool = BaseColumnPool::new();
+        let base_column_pool = std::sync::Arc::new(BaseColumnPool::new());
         let ifft_start = Instant::now();
         let preprocessed_trace_polys =
             SimdBackend::interpolate_columns(gen_trace(preprocessed_trace.clone()), &twiddles);
@@ -1237,7 +1237,7 @@ mod cairo_prove_main {
             CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::with_memory_pool(
                 pcs_config,
                 &twiddles,
-                &base_column_pool,
+                base_column_pool.clone(),
             );
         // Store polynomial coefficients to enable batch_eval_at_point in prove_values,
         // avoiding the expensive barycentric weight precomputation (~250ms).
@@ -2817,7 +2817,7 @@ mod cairo_prove_main {
         };
 
         // 3. RFFT + Merkle → CommitmentTreeProver.
-        let base_column_pool = BaseColumnPool::new();
+        let base_column_pool = std::sync::Arc::new(BaseColumnPool::new());
         let preprocessed_evaluated = MetalBackend::evaluate_polynomials(
             preprocessed_polys,
             pcs_config.fri_config.log_blowup_factor,
@@ -3040,7 +3040,7 @@ mod cairo_prove_main {
             }
 
             // Build commitment tree: RFFT then Merkle.
-            let base_column_pool_tmp = BaseColumnPool::new();
+            let base_column_pool_tmp = std::sync::Arc::new(BaseColumnPool::new());
             let preprocessed_evaluated = MetalBackend::evaluate_polynomials(
                 preprocessed_polys,
                 pcs_config.fri_config.log_blowup_factor,
@@ -3224,7 +3224,7 @@ mod cairo_prove_main {
         });
 
         // 3. MetalBackend commitment scheme.
-        let base_column_pool = BaseColumnPool::new();
+        let base_column_pool = std::sync::Arc::new(BaseColumnPool::new());
         let channel = &mut stwo::core::channel::Blake2sChannel::default();
         let channel_salt: u32 = 0;
         channel.mix_felts(&[SecureField::from(channel_salt)]);
@@ -3234,7 +3234,7 @@ mod cairo_prove_main {
             CommitmentSchemeProver::<MetalBackend, Blake2sMerkleChannel>::with_memory_pool(
                 pcs_config,
                 metal_twiddles,
-                &base_column_pool,
+                base_column_pool.clone(),
             );
         commitment_scheme.store_polynomials_coefficients = true;
 

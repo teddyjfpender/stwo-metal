@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Instant;
 
 use hashbrown::{HashMap, HashSet};
@@ -332,7 +333,8 @@ pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChanne
     twiddles: &'a TwiddleTree<B>,
     pub store_polynomials_coefficients: bool,
     /// Pre-allocated base field column pool for polynomial evaluation during commit.
-    pub base_column_pool: MaybeOwned<'a, BaseColumnPool<B>>,
+    /// Arc enables cross-thread ownership for proof pipelining.
+    pub base_column_pool: Arc<BaseColumnPool<B>>,
 }
 impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a, B, MC> {
     /// Creates a new empty commitment scheme prover with the given configuration and twiddles. The
@@ -343,21 +345,21 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             config,
             twiddles,
             store_polynomials_coefficients: false,
-            base_column_pool: MaybeOwned::Owned(BaseColumnPool::new()),
+            base_column_pool: Arc::new(BaseColumnPool::new()),
         }
     }
 
     pub fn with_memory_pool(
         config: PcsConfig,
         twiddles: &'a TwiddleTree<B>,
-        base_column_pool: &'a BaseColumnPool<B>,
+        base_column_pool: Arc<BaseColumnPool<B>>,
     ) -> Self {
         CommitmentSchemeProver {
             trees: TreeVec::default(),
             config,
             twiddles,
             store_polynomials_coefficients: false,
-            base_column_pool: MaybeOwned::Borrowed(base_column_pool),
+            base_column_pool,
         }
     }
 
