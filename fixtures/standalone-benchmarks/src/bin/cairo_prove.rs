@@ -4250,16 +4250,14 @@ mod cairo_prove_main {
         let composition_ms = composition_start.elapsed().as_secs_f64() * 1000.0;
 
         // 9. Commit composition polynomial on MetalBackend.
+        //
+        // SimdBackend stores coefficients in transposed format for log_size > 16,
+        // so we must evaluate on the polynomial's natural domain using SimdBackend
+        // (which handles transposition correctly), then convert evaluations to
+        // MetalBackend. Uses shared buffers (direct memcpy, no staging blit).
         let t_comp_commit = Instant::now();
         let mut tree_builder = commitment_scheme.tree_builder();
         let (left_half, right_half) = composition_poly.split_at_mid();
-        // SimdBackend stores coefficients in transposed format for log_size > 16
-        // (CACHED_FFT_LOG_SIZE). Evaluate on the polynomial's natural domain using
-        // SimdBackend's RFFT (which handles transposed input correctly), then convert
-        // evaluations to MetalBackend. extend_evals does MetalBackend IFFT to recover
-        // standard-order coefficients, then commit does RFFT on the blowup domain.
-        let left_coord_polys = left_half.into_coordinate_polys();
-        let right_coord_polys = right_half.into_coordinate_polys();
         {
             use stwo::core::poly::circle::CanonicCoset;
             let simd_to_metal_evals = |polys: [stwo::prover::poly::circle::CircleCoefficients<SimdBackend>; stwo::core::fields::qm31::SECURE_EXTENSION_DEGREE]|
@@ -4268,14 +4266,14 @@ mod cairo_prove_main {
                 polys.into_iter().map(|p| {
                     let domain = CanonicCoset::new(p.log_size()).circle_domain();
                     let simd_eval = p.evaluate(domain);
-                    let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice_private(
+                    let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice(
                         &simd_eval.values.data,
                     );
                     stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
                 }).collect()
             };
-            tree_builder.extend_evals(simd_to_metal_evals(left_coord_polys));
-            tree_builder.extend_evals(simd_to_metal_evals(right_coord_polys));
+            tree_builder.extend_evals(simd_to_metal_evals(left_half.into_coordinate_polys()));
+            tree_builder.extend_evals(simd_to_metal_evals(right_half.into_coordinate_polys()));
         }
         tree_builder.commit(channel);
 
