@@ -948,35 +948,15 @@ mod cairo_prove_main {
             eprintln!("  Cache build: {:.1} ms (amortized across {} iters)", cache_ms, n_iters);
 
             let cool_ms = gpu_cool_pause_ms();
-            // Pipelined execution: prepare N+1's CPU state while N's GPU runs.
-            let mut pending_prep: Option<std::thread::JoinHandle<PreparedProofInput>> = None;
             for i in 0..n_iters {
                 if cool_ms > 0 && i > 0 {
                     let inter_iter_cool = cool_ms * 5;
                     std::thread::sleep(std::time::Duration::from_millis(inter_iter_cool));
                 }
-                // Use pre-prepared input from background thread if available.
-                let prepared = pending_prep.take().map(|h| h.join().unwrap());
-
-                // Start preparing NEXT iteration's input on background thread.
-                // This overlaps CPU claim gen (~200ms) with current GPU phases.
-                if i + 1 < n_iters {
-                    let next_input = input.clone();
-                    let next_preproc = preprocessed_trace.clone();
-                    pending_prep = Some(std::thread::spawn(move || {
-                        prepare_proof_input(next_input, next_preproc)
-                    }));
-                }
-
+                let input_clone = input.clone();
+                let preprocessed_trace = preprocessed_trace.clone();
                 let t = Instant::now();
-                if let Some(prep) = prepared {
-                    run_metal_full_pipeline_prepared(
-                        prep, false, None, Some(&cached),
-                    );
-                } else {
-                    let input_clone = input.clone();
-                    run_metal_prove_only(input_clone, preprocessed_trace.clone(), Some(&cached));
-                }
+                run_metal_prove_only(input_clone, preprocessed_trace, Some(&cached));
                 let ms = t.elapsed().as_secs_f64() * 1000.0;
                 metal_times_ms.push(ms);
                 eprintln!("  Metal iter {}/{}: {:.1} ms", i + 1, n_iters, ms);
@@ -1051,6 +1031,7 @@ mod cairo_prove_main {
 
     /// Prepare proof input on a background thread (CPU-only, no GPU).
     #[cfg(feature = "metal-runtime")]
+    #[allow(dead_code)]
     fn prepare_proof_input(
         input: ProverInput,
         preprocessed_trace: Arc<PreProcessedTrace>,
@@ -2860,6 +2841,7 @@ mod cairo_prove_main {
 
     /// Run the full Metal pipeline with pre-prepared input (pipelined mode).
     #[cfg(feature = "metal-runtime")]
+    #[allow(dead_code)]
     fn run_metal_full_pipeline_prepared(
         prepared: PreparedProofInput,
         verify: bool,
