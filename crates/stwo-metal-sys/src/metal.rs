@@ -1146,6 +1146,60 @@ impl U32Buffer {
         }
     }
 
+    /// Compute M31 sum of 4 coordinate columns via batched GPU parallel reduction.
+    /// All 4 reductions in a single command buffer. Returns [sum0, sum1, sum2, sum3].
+    pub fn reduce_sum_m31_4col(cols: [&Self; 4]) -> Result<[u32; 4], MetalError> {
+        let n_elements: u32 = cols[0]
+            .len
+            .try_into()
+            .expect("reduce_sum_m31_4col element count should fit in u32");
+        let runtime = shared_runtime()?;
+        let output = Self::uninitialized(4)?;
+        unsafe {
+            ffi::reduce_sum_m31_4col(
+                runtime.raw.as_ptr(),
+                [
+                    cols[0].raw.as_ptr(),
+                    cols[1].raw.as_ptr(),
+                    cols[2].raw.as_ptr(),
+                    cols[3].raw.as_ptr(),
+                ],
+                output.raw.as_ptr(),
+                n_elements,
+                error_buffer_mut_ptr,
+            )?;
+        }
+        let raw = output.to_vec()?;
+        Ok([raw[0], raw[1], raw[2], raw[3]])
+    }
+
+    /// In-place prefix sum with constant subtraction for 4 coordinate columns.
+    /// All 4 prefix sums in a single command buffer.
+    pub fn prefix_sum_subtract_m31_4col(
+        cols: [&mut Self; 4],
+        cumsum_shifts: [u32; 4],
+    ) -> Result<(), MetalError> {
+        let n_elements: u32 = cols[0]
+            .len
+            .try_into()
+            .expect("prefix_sum_subtract_m31_4col element count should fit in u32");
+        let runtime = shared_runtime()?;
+        unsafe {
+            ffi::prefix_sum_subtract_m31_4col(
+                runtime.raw.as_ptr(),
+                [
+                    cols[0].raw.as_ptr(),
+                    cols[1].raw.as_ptr(),
+                    cols[2].raw.as_ptr(),
+                    cols[3].raw.as_ptr(),
+                ],
+                &cumsum_shifts,
+                n_elements,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
     pub fn permute_coset_to_circle_domain_bit_reversed(&self) -> Result<Self, MetalError> {
         assert!(
             self.len.is_power_of_two(),
@@ -1486,6 +1540,56 @@ impl U32Buffer {
             )?;
         }
         Ok([dst_0, dst_1, dst_2, dst_3])
+    }
+
+    /// Async variant: submits the fold step without blocking.
+    /// Returns (destination buffers, command buffer handle).
+    pub fn fri_fold_line_step_from_coords_u32x4_async(
+        src_columns: [&Self; 4],
+        inverse_x_factors: &Self,
+        alpha_limbs: [u32; 4],
+    ) -> Result<([Self; 4], CommandBufferHandle), MetalError> {
+        let [src_0, src_1, src_2, src_3] = src_columns;
+        let element_len = src_0.len;
+        assert_eq!(src_1.len, element_len);
+        assert_eq!(src_2.len, element_len);
+        assert_eq!(src_3.len, element_len);
+        assert!(
+            element_len.is_multiple_of(2),
+            "fri line-fold step requires an even number of secure-field elements"
+        );
+        let output_len = element_len / 2;
+        assert_eq!(
+            inverse_x_factors.len, output_len,
+            "fri line-fold step requires one inverse-x factor per output element"
+        );
+        let runtime = shared_runtime()?;
+        let dst_0 = Self::uninitialized(output_len)?;
+        let dst_1 = Self::uninitialized(output_len)?;
+        let dst_2 = Self::uninitialized(output_len)?;
+        let dst_3 = Self::uninitialized(output_len)?;
+        let handle_ptr = unsafe {
+            ffi::fri_fold_line_step_coords_u32x4_async(
+                runtime.raw.as_ptr(),
+                src_0.raw.as_ptr(),
+                src_1.raw.as_ptr(),
+                src_2.raw.as_ptr(),
+                src_3.raw.as_ptr(),
+                dst_0.raw.as_ptr(),
+                dst_1.raw.as_ptr(),
+                dst_2.raw.as_ptr(),
+                dst_3.raw.as_ptr(),
+                inverse_x_factors.raw.as_ptr(),
+                element_len.ilog2(),
+                alpha_limbs,
+                error_buffer_mut_ptr,
+            )
+        }?;
+        let handle = CommandBufferHandle {
+            raw: NonNull::new(handle_ptr)
+                .expect("async fri fold returned null despite success"),
+        };
+        Ok(([dst_0, dst_1, dst_2, dst_3], handle))
     }
 
     pub fn fri_fold_line_step_u32x4(
@@ -4697,6 +4801,28 @@ pub mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_reduce_sum_m31_4col(
+            runtime: *mut c_void,
+            col0: *mut c_void,
+            col1: *mut c_void,
+            col2: *mut c_void,
+            col3: *mut c_void,
+            output: *mut c_void,
+            n_elements: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
+        fn stwo_metal_prefix_sum_subtract_m31_4col(
+            runtime: *mut c_void,
+            col0: *mut c_void,
+            col1: *mut c_void,
+            col2: *mut c_void,
+            col3: *mut c_void,
+            cumsum_shifts: *const u32,
+            n_elements: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_permute_coset_to_circle_domain_bit_reversed_u32(
             runtime: *mut c_void,
             src: *mut c_void,
@@ -4823,6 +4949,22 @@ pub mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_fri_fold_line_step_coords_u32x4_async(
+            runtime: *mut c_void,
+            src_0: *mut c_void,
+            src_1: *mut c_void,
+            src_2: *mut c_void,
+            src_3: *mut c_void,
+            dst_0: *mut c_void,
+            dst_1: *mut c_void,
+            dst_2: *mut c_void,
+            dst_3: *mut c_void,
+            inverse_x_factors: *mut c_void,
+            src_log_len: u32,
+            alpha_limbs: *const u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> *mut c_void;
         fn stwo_metal_fri_fold_line_step_u32x4(
             runtime: *mut c_void,
             src: *mut c_void,
@@ -6891,6 +7033,50 @@ pub mod ffi {
         }
     }
 
+    pub unsafe fn reduce_sum_m31_4col(
+        runtime: *mut c_void,
+        cols: [*mut c_void; 4],
+        output: *mut c_void,
+        n_elements: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_reduce_sum_m31_4col(
+            runtime,
+            cols[0], cols[1], cols[2], cols[3],
+            output,
+            n_elements,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn prefix_sum_subtract_m31_4col(
+        runtime: *mut c_void,
+        cols: [*mut c_void; 4],
+        cumsum_shifts: &[u32; 4],
+        n_elements: u32,
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        if stwo_metal_prefix_sum_subtract_m31_4col(
+            runtime,
+            cols[0], cols[1], cols[2], cols[3],
+            cumsum_shifts.as_ptr(),
+            n_elements,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
     pub unsafe fn fri_fold_circle_into_line_first_layer_u32x4(
         runtime: *mut c_void,
         src: *mut c_void,
@@ -7028,6 +7214,39 @@ pub mod ffi {
             error.len(),
         ) {
             Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn fri_fold_line_step_coords_u32x4_async(
+        runtime: *mut c_void,
+        src_0: *mut c_void,
+        src_1: *mut c_void,
+        src_2: *mut c_void,
+        src_3: *mut c_void,
+        dst_0: *mut c_void,
+        dst_1: *mut c_void,
+        dst_2: *mut c_void,
+        dst_3: *mut c_void,
+        inverse_x_factors: *mut c_void,
+        src_log_len: u32,
+        alpha_limbs: [u32; 4],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let ptr = stwo_metal_fri_fold_line_step_coords_u32x4_async(
+            runtime,
+            src_0, src_1, src_2, src_3,
+            dst_0, dst_1, dst_2, dst_3,
+            inverse_x_factors,
+            src_log_len,
+            alpha_limbs.as_ptr(),
+            error_ptr(&mut error),
+            error.len(),
+        );
+        if !ptr.is_null() {
+            Ok(ptr)
         } else {
             Err(MetalError::new(decode_error_buffer(&error)))
         }
@@ -10008,6 +10227,30 @@ pub mod ffi {
         ))
     }
 
+    pub unsafe fn reduce_sum_m31_4col(
+        _runtime: *mut c_void,
+        _cols: [*mut c_void; 4],
+        _output: *mut c_void,
+        _n_elements: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn prefix_sum_subtract_m31_4col(
+        _runtime: *mut c_void,
+        _cols: [*mut c_void; 4],
+        _cumsum_shifts: &[u32; 4],
+        _n_elements: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
     pub unsafe fn fri_fold_circle_into_line_first_layer_u32x4(
         _runtime: *mut c_void,
         _src: *mut c_void,
@@ -10078,6 +10321,26 @@ pub mod ffi {
         _alpha_limbs: [u32; 4],
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn fri_fold_line_step_coords_u32x4_async(
+        _runtime: *mut c_void,
+        _src_0: *mut c_void,
+        _src_1: *mut c_void,
+        _src_2: *mut c_void,
+        _src_3: *mut c_void,
+        _dst_0: *mut c_void,
+        _dst_1: *mut c_void,
+        _dst_2: *mut c_void,
+        _dst_3: *mut c_void,
+        _inverse_x_factors: *mut c_void,
+        _src_log_len: u32,
+        _alpha_limbs: [u32; 4],
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<*mut c_void, MetalError> {
         Err(MetalError::new(
             "Metal support was not linked into stwo-metal-sys.",
         ))

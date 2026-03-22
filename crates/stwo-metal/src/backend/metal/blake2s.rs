@@ -33,7 +33,7 @@ fn build_leaves_native_fast(
     // Only use for many columns (>16) where eliminating inter-chunk state
     // buffer I/O is a significant win.  For ≤16 columns, the wide chunk
     // kernel is a single chunk with no state buffer overhead.
-    if columns.is_empty() || lifting_log_size < 12 || columns.len() <= 16 {
+    if columns.is_empty() || lifting_log_size < 4 || columns.len() <= 16 {
         return None;
     }
     let column_buffers: Vec<&U32Buffer> =
@@ -73,7 +73,7 @@ fn build_leaves_native_wide(
 fn build_next_layer_native_standard(
     prev_layer: &MetalBlake2sHashVec,
 ) -> Option<MetalBlake2sHashVec> {
-    if prev_layer.is_empty() || !prev_layer.len().is_power_of_two() || prev_layer.len() < (1 << 12)
+    if prev_layer.is_empty() || !prev_layer.len().is_power_of_two() || prev_layer.len() < 4
     {
         return None;
     }
@@ -86,7 +86,7 @@ fn build_leaves_native_standard_packed(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
 ) -> Option<U32Buffer> {
-    if columns.is_empty() || lifting_log_size < 12 || columns.len() > 8 {
+    if columns.is_empty() || lifting_log_size < 4 || columns.len() > 8 {
         return None;
     }
 
@@ -119,7 +119,7 @@ fn build_leaves_native_fast_packed(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
 ) -> Option<U32Buffer> {
-    if columns.is_empty() || lifting_log_size < 12 || columns.len() <= 16 {
+    if columns.is_empty() || lifting_log_size < 4 || columns.len() <= 16 {
         return None;
     }
     let column_buffers: Vec<&U32Buffer> =
@@ -160,7 +160,7 @@ fn build_merkle_tree_fused(
     columns: &[&MetalBaseFieldVec],
     lifting_log_size: u32,
 ) -> Option<Vec<MetalBlake2sHashVec>> {
-    if columns.is_empty() || lifting_log_size < 12 || columns.len() <= 16 {
+    if columns.is_empty() || lifting_log_size < 4 || columns.len() <= 16 {
         return None;
     }
     let column_buffers: Vec<&U32Buffer> =

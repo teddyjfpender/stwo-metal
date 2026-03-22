@@ -148,7 +148,6 @@ impl GenericInteractionTraceBuilder {
         let n_logup_cols = self.descriptors.len();
         assert!(n_logup_cols > 0, "must have at least one logup column");
         let log_size = n_rows.ilog2();
-        let packed_len = n_rows / N_LANES;
 
         // Determine max alpha powers needed.
         let max_combine_size = self.descriptors.iter().map(|d| {
@@ -233,6 +232,7 @@ impl GenericInteractionTraceBuilder {
         {
             let last_logup = n_logup_cols - 1;
             let base_m31_col = last_logup * 4;
+            let packed_len = n_rows / N_LANES;
 
             let mut coord_columns: [stwo::prover::backend::simd::column::BaseColumn;
                 SECURE_EXTENSION_DEGREE] = std::array::from_fn(|coord| {

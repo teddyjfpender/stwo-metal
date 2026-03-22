@@ -810,7 +810,9 @@ bool stwo_metal_u32_buffer_copy(
                             size:bytes];
             [blit endEncoding];
             [cmd commit];
-            [cmd waitUntilCompleted];
+            // Do NOT wait — same-queue ordering guarantees subsequent GPU
+            // operations (e.g. RFFT) see the completed copy. This eliminates
+            // ~50μs overhead per copy × 600+ polynomials in evaluate_polynomials.
         } else {
             memmove(
                 ((uint32_t *)dst.buffer.contents) + dst_offset,
@@ -850,7 +852,7 @@ bool stwo_metal_u32_buffer_copy_range(
                             size:bytes];
             [blit endEncoding];
             [cmd commit];
-            [cmd waitUntilCompleted];
+            // Do NOT wait — same-queue ordering guarantees correctness.
         } else {
             memmove(
                 ((uint32_t *)dst.buffer.contents) + dst_offset,
@@ -3167,6 +3169,118 @@ bool stwo_metal_inclusive_prefix_sum_bit_rev_circle_domain_u32(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Interaction trace prefix sum: reduce + subtract + sequential scan
+// ---------------------------------------------------------------------------
+
+/// Batched reduce + prefix-sum for 4 QM31 coordinate columns.
+/// Phase 1: parallel reduction of each coordinate (4 threadgroups in 1 CB).
+/// Phase 2 is done on CPU (compute cumsum_shift from the 4 sums).
+/// Phase 3: subtract cumsum_shift + sequential prefix sum (4 threads in 1 CB).
+bool stwo_metal_reduce_sum_m31_4col(
+    void *runtime_ptr,
+    void *col0_ptr, void *col1_ptr, void *col2_ptr, void *col3_ptr,
+    void *output_ptr,
+    uint32_t n_elements,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *cols[4] = {
+            stwo_metal_buffer_box(col0_ptr),
+            stwo_metal_buffer_box(col1_ptr),
+            stwo_metal_buffer_box(col2_ptr),
+            stwo_metal_buffer_box(col3_ptr),
+        };
+        StwoMetalBufferBox *output = stwo_metal_buffer_box(output_ptr);
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, @"reduce_sum_m31", error_message, error_message_len);
+        if (pipeline == nil) return false;
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        NSUInteger tg_size = MIN((NSUInteger)256, pipeline.maxTotalThreadsPerThreadgroup);
+        // Encode 4 reductions into one command buffer (one encoder per column).
+        for (int i = 0; i < 4; i++) {
+            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+            [encoder setComputePipelineState:pipeline];
+            [encoder setBuffer:cols[i].buffer offset:0 atIndex:0];
+            [encoder setBuffer:output.buffer offset:(i * sizeof(uint32_t)) atIndex:1];
+            [encoder setBytes:&n_elements length:sizeof(n_elements) atIndex:2];
+            MTLSize grid = MTLSizeMake(tg_size, 1, 1);
+            MTLSize threads = MTLSizeMake(tg_size, 1, 1);
+            [encoder dispatchThreads:grid threadsPerThreadgroup:threads];
+            [encoder endEncoding];
+        }
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal reduce_sum_m31_4col failed.");
+            return false;
+        }
+        return true;
+    }
+}
+
+bool stwo_metal_prefix_sum_subtract_m31_4col(
+    void *runtime_ptr,
+    void *col0_ptr, void *col1_ptr, void *col2_ptr, void *col3_ptr,
+    const uint32_t *cumsum_shifts,
+    uint32_t n_elements,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *cols[4] = {
+            stwo_metal_buffer_box(col0_ptr),
+            stwo_metal_buffer_box(col1_ptr),
+            stwo_metal_buffer_box(col2_ptr),
+            stwo_metal_buffer_box(col3_ptr),
+        };
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, @"prefix_sum_subtract_m31", error_message, error_message_len);
+        if (pipeline == nil) return false;
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return false;
+        }
+
+        // Encode 4 prefix sums into one command buffer.
+        // Each uses 1 thread; the 4 dispatches run on different columns
+        // and Metal may overlap them on different execution units.
+        for (int i = 0; i < 4; i++) {
+            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+            [encoder setComputePipelineState:pipeline];
+            [encoder setBuffer:cols[i].buffer offset:0 atIndex:0];
+            [encoder setBytes:&cumsum_shifts[i] length:sizeof(uint32_t) atIndex:1];
+            [encoder setBytes:&n_elements length:sizeof(n_elements) atIndex:2];
+            MTLSize grid = MTLSizeMake(1, 1, 1);
+            MTLSize threads = MTLSizeMake(1, 1, 1);
+            [encoder dispatchThreads:grid threadsPerThreadgroup:threads];
+            [encoder endEncoding];
+        }
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Metal prefix_sum_subtract_m31_4col failed.");
+            return false;
+        }
+        return true;
+    }
+}
+
 bool stwo_metal_permute_coset_to_circle_domain_bit_reversed_u32(
     void *runtime_ptr,
     void *src_ptr,
@@ -3871,6 +3985,63 @@ bool stwo_metal_fri_fold_line_step_coords_u32x4(
         }
 
         return true;
+    }
+}
+
+/// Async variant: commits the command buffer but does NOT wait.
+/// Returns the command buffer as an opaque handle for deferred waiting.
+void* stwo_metal_fri_fold_line_step_coords_u32x4_async(
+    void *runtime_ptr,
+    void *src_0_ptr, void *src_1_ptr, void *src_2_ptr, void *src_3_ptr,
+    void *dst_0_ptr, void *dst_1_ptr, void *dst_2_ptr, void *dst_3_ptr,
+    void *inverse_x_ptr,
+    uint32_t src_log_len,
+    const uint32_t *alpha_limbs,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+        StwoMetalBufferBox *src_0 = stwo_metal_buffer_box(src_0_ptr);
+        StwoMetalBufferBox *src_1 = stwo_metal_buffer_box(src_1_ptr);
+        StwoMetalBufferBox *src_2 = stwo_metal_buffer_box(src_2_ptr);
+        StwoMetalBufferBox *src_3 = stwo_metal_buffer_box(src_3_ptr);
+        StwoMetalBufferBox *dst_0 = stwo_metal_buffer_box(dst_0_ptr);
+        StwoMetalBufferBox *dst_1 = stwo_metal_buffer_box(dst_1_ptr);
+        StwoMetalBufferBox *dst_2 = stwo_metal_buffer_box(dst_2_ptr);
+        StwoMetalBufferBox *dst_3 = stwo_metal_buffer_box(dst_3_ptr);
+        StwoMetalBufferBox *inverse_x = stwo_metal_buffer_box(inverse_x_ptr);
+        NSUInteger src_len = ((NSUInteger)1) << src_log_len;
+        NSUInteger dst_len = src_len >> 1;
+
+        id<MTLComputePipelineState> pipeline = stwo_metal_pipeline(runtime, @"fri_fold_line_step_coords_u32x4", error_message, error_message_len);
+        if (pipeline == nil) return NULL;
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer.");
+            return NULL;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:src_0.buffer offset:0 atIndex:0];
+        [encoder setBuffer:src_1.buffer offset:0 atIndex:1];
+        [encoder setBuffer:src_2.buffer offset:0 atIndex:2];
+        [encoder setBuffer:src_3.buffer offset:0 atIndex:3];
+        [encoder setBuffer:dst_0.buffer offset:0 atIndex:4];
+        [encoder setBuffer:dst_1.buffer offset:0 atIndex:5];
+        [encoder setBuffer:dst_2.buffer offset:0 atIndex:6];
+        [encoder setBuffer:dst_3.buffer offset:0 atIndex:7];
+        [encoder setBuffer:inverse_x.buffer offset:0 atIndex:8];
+        [encoder setBytes:alpha_limbs length:sizeof(uint32_t) * 4 atIndex:9];
+        MTLSize grid_size = MTLSizeMake(dst_len, 1, 1);
+        MTLSize threadgroup_size = MTLSizeMake(stwo_metal_threads_per_group(pipeline), 1, 1);
+        [encoder dispatchThreads:grid_size threadsPerThreadgroup:threadgroup_size];
+        [encoder endEncoding];
+
+        [command_buffer commit];
+        return (__bridge_retained void *)command_buffer;
     }
 }
 

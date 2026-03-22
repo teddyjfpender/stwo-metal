@@ -299,31 +299,47 @@ impl FriOps for MetalBackend {
         fold_step: u32,
     ) -> LineEvaluation<Self> {
         let mut domain = eval.domain();
-        // First fold step references the original eval columns directly,
-        // avoiding a 4-column clone that would allocate + copy GPU memory.
+        // Submit all fold steps async, wait only on the last.
+        // Same-queue command buffers execute in order, so each step reads
+        // the completed output of the previous step.
+        let mut handles = Vec::with_capacity(fold_step as usize);
+
+        // First fold step references the original eval columns directly.
         let inverse_x_factors = cached_line_inverse_x_factors(domain);
-        let mut current = SecureFieldVec::fold_line_step_base_coords_with_factor_buffer(
-            [
-                &eval.values.columns[0],
-                &eval.values.columns[1],
-                &eval.values.columns[2],
-                &eval.values.columns[3],
-            ],
-            inverse_x_factors.as_ref(),
-            alpha,
-        );
+        let (mut current, handle) =
+            SecureFieldVec::fold_line_step_base_coords_with_factor_buffer_async(
+                [
+                    &eval.values.columns[0],
+                    &eval.values.columns[1],
+                    &eval.values.columns[2],
+                    &eval.values.columns[3],
+                ],
+                inverse_x_factors.as_ref(),
+                alpha,
+            );
+        handles.push(handle);
         domain = domain.double();
         let mut current_alpha = alpha * alpha;
+
         for _ in 1..fold_step {
             let inverse_x_factors = cached_line_inverse_x_factors(domain);
-            current = SecureFieldVec::fold_line_step_base_coords_with_factor_buffer(
-                [&current[0], &current[1], &current[2], &current[3]],
-                inverse_x_factors.as_ref(),
-                current_alpha,
-            );
+            let (next, handle) =
+                SecureFieldVec::fold_line_step_base_coords_with_factor_buffer_async(
+                    [&current[0], &current[1], &current[2], &current[3]],
+                    inverse_x_factors.as_ref(),
+                    current_alpha,
+                );
+            handles.push(handle);
+            current = next;
             domain = domain.double();
             current_alpha = current_alpha * current_alpha;
         }
+
+        // Wait only on the last handle; all prior are guaranteed complete.
+        if let Some(last) = handles.pop() {
+            last.wait().expect("Metal FRI fold chain should succeed");
+        }
+        drop(handles);
 
         metal_line_evaluation_from_base_coords(domain, current)
     }

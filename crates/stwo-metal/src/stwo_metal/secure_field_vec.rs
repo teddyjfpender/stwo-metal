@@ -326,6 +326,32 @@ impl SecureFieldVec {
         ]
     }
 
+    /// Async variant: submits fold step without blocking. Returns (columns, handle).
+    pub fn fold_line_step_base_coords_with_factor_buffer_async(
+        src_columns: [&BaseFieldVec; 4],
+        inverse_x_factors: &U32Buffer,
+        alpha: SecureField,
+    ) -> ([BaseFieldVec; 4], stwo_metal_sys::metal::CommandBufferHandle) {
+        let alpha_limbs = alpha.to_m31_array().map(|limb| limb.0);
+        let [src_0, src_1, src_2, src_3] = src_columns;
+        let ([dst_0, dst_1, dst_2, dst_3], handle) =
+            U32Buffer::fri_fold_line_step_from_coords_u32x4_async(
+                [&src_0.buffer, &src_1.buffer, &src_2.buffer, &src_3.buffer],
+                inverse_x_factors,
+                alpha_limbs,
+            )
+            .expect("Metal FRI line-fold step async should succeed");
+        (
+            [
+                BaseFieldVec::from_buffer(dst_0),
+                BaseFieldVec::from_buffer(dst_1),
+                BaseFieldVec::from_buffer(dst_2),
+                BaseFieldVec::from_buffer(dst_3),
+            ],
+            handle,
+        )
+    }
+
     pub fn fix_first_variable(&self, assignment: SecureField) -> Self {
         assert!(
             self.size >= 2,
