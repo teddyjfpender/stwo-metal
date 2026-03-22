@@ -587,6 +587,36 @@ impl U32Buffer {
         }
     }
 
+    /// Batched IFFT: encode all columns' IFFT dispatches into ONE command buffer.
+    /// Each column is IFFT'd independently. One wait at the end ensures all complete.
+    pub fn ifft_interpolate_batch_in_place(
+        buffers: &mut [Self],
+        inverse_twiddles: &[&Self],
+        scale_factors: &[u32],
+    ) -> Result<(), MetalError> {
+        assert_eq!(buffers.len(), inverse_twiddles.len());
+        assert_eq!(buffers.len(), scale_factors.len());
+        if buffers.is_empty() {
+            return Ok(());
+        }
+        let runtime = shared_runtime()?;
+        let values_ptrs: Vec<*mut std::ffi::c_void> =
+            buffers.iter().map(|b| b.raw.as_ptr()).collect();
+        let twiddle_ptrs: Vec<*mut std::ffi::c_void> =
+            inverse_twiddles.iter().map(|t| t.raw.as_ptr()).collect();
+        let log_lens: Vec<u32> = buffers.iter().map(|b| b.len.ilog2()).collect();
+        unsafe {
+            ffi::ifft_interpolate_batch_u32(
+                runtime.raw.as_ptr(),
+                &values_ptrs,
+                &twiddle_ptrs,
+                &log_lens,
+                scale_factors,
+                error_buffer_mut_ptr,
+            )
+        }
+    }
+
     pub fn ifft_line_interpolate_in_place(
         &mut self,
         inverse_line_twiddles: &Self,
@@ -4630,6 +4660,16 @@ pub mod ffi {
             error_message: *mut i8,
             error_message_len: usize,
         ) -> bool;
+        fn stwo_metal_ifft_interpolate_batch_u32(
+            runtime: *mut c_void,
+            values_ptrs: *const *mut c_void,
+            inverse_twiddles_ptrs: *const *mut c_void,
+            values_log_lens: *const u32,
+            scale_factors: *const u32,
+            n_columns: u32,
+            error_message: *mut i8,
+            error_message_len: usize,
+        ) -> bool;
         fn stwo_metal_ifft_line_interpolate_u32(
             runtime: *mut c_void,
             values: *mut c_void,
@@ -6408,6 +6448,32 @@ pub mod ffi {
             inverse_twiddles,
             values_log_len,
             scale_factor,
+            error_ptr(&mut error),
+            error.len(),
+        ) {
+            Ok(())
+        } else {
+            Err(MetalError::new(decode_error_buffer(&error)))
+        }
+    }
+
+    pub unsafe fn ifft_interpolate_batch_u32(
+        runtime: *mut c_void,
+        values_ptrs: &[*mut c_void],
+        inverse_twiddles_ptrs: &[*mut c_void],
+        values_log_lens: &[u32],
+        scale_factors: &[u32],
+        error_ptr: fn(&mut [i8; ERROR_BUFFER_LEN]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        let mut error = [0i8; ERROR_BUFFER_LEN];
+        let n = values_ptrs.len() as u32;
+        if stwo_metal_ifft_interpolate_batch_u32(
+            runtime,
+            values_ptrs.as_ptr(),
+            inverse_twiddles_ptrs.as_ptr(),
+            values_log_lens.as_ptr(),
+            scale_factors.as_ptr(),
+            n,
             error_ptr(&mut error),
             error.len(),
         ) {
@@ -9898,6 +9964,19 @@ pub mod ffi {
         _inverse_twiddles: *mut c_void,
         _values_log_len: u32,
         _scale_factor: u32,
+        _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
+    ) -> Result<(), MetalError> {
+        Err(MetalError::new(
+            "Metal support was not linked into stwo-metal-sys.",
+        ))
+    }
+
+    pub unsafe fn ifft_interpolate_batch_u32(
+        _runtime: *mut c_void,
+        _values_ptrs: &[*mut c_void],
+        _inverse_twiddles_ptrs: &[*mut c_void],
+        _values_log_lens: &[u32],
+        _scale_factors: &[u32],
         _error_ptr: fn(&mut [i8; 512]) -> *mut i8,
     ) -> Result<(), MetalError> {
         Err(MetalError::new(

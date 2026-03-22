@@ -1679,6 +1679,94 @@ bool stwo_metal_ifft_interpolate_u32(
     }
 }
 
+/// Batched IFFT: encode all columns' IFFT dispatches into ONE command buffer.
+/// Eliminates per-column CB creation overhead (~200 CBs → 1 CB).
+bool stwo_metal_ifft_interpolate_batch_u32(
+    void *runtime_ptr,
+    void **values_ptrs,
+    void **inverse_twiddles_ptrs,
+    const uint32_t *values_log_lens,
+    const uint32_t *scale_factors,
+    uint32_t n_columns,
+    char *error_message,
+    size_t error_message_len
+) {
+    @autoreleasepool {
+        if (n_columns == 0) return true;
+
+        StwoMetalRuntimeBox *runtime = stwo_metal_runtime_box(runtime_ptr);
+
+        id<MTLComputePipelineState> circle_pipeline =
+            stwo_metal_pipeline(runtime, @"ifft_circle_part_u32", error_message, error_message_len);
+        if (circle_pipeline == nil) return false;
+        id<MTLComputePipelineState> line_pipeline =
+            stwo_metal_pipeline(runtime, @"ifft_line_part_u32", error_message, error_message_len);
+        if (line_pipeline == nil) return false;
+        id<MTLComputePipelineState> rescale_pipeline =
+            stwo_metal_pipeline(runtime, @"rescale_m31_values_u32", error_message, error_message_len);
+        if (rescale_pipeline == nil) return false;
+
+        id<MTLCommandBuffer> command_buffer = [runtime.queue commandBuffer];
+        if (command_buffer == nil) {
+            stwo_metal_write_error(error_message, error_message_len, @"Failed to create Metal command buffer for batched IFFT.");
+            return false;
+        }
+
+        for (uint32_t col = 0; col < n_columns; ++col) {
+            StwoMetalBufferBox *values = stwo_metal_buffer_box(values_ptrs[col]);
+            StwoMetalBufferBox *inverse_twiddles = stwo_metal_buffer_box(inverse_twiddles_ptrs[col]);
+            uint32_t values_log_len = values_log_lens[col];
+            uint32_t scale_factor = scale_factors[col];
+            uint32_t values_len = ((uint32_t)1) << values_log_len;
+            uint32_t pair_count = values_len >> 1;
+
+            // Circle part.
+            id<MTLComputeCommandEncoder> enc = [command_buffer computeCommandEncoder];
+            [enc setComputePipelineState:circle_pipeline];
+            [enc setBuffer:values.buffer offset:0 atIndex:0];
+            [enc setBuffer:inverse_twiddles.buffer offset:0 atIndex:1];
+            [enc setBytes:&values_len length:sizeof(values_len) atIndex:2];
+            [enc dispatchThreads:MTLSizeMake(pair_count, 1, 1) threadsPerThreadgroup:MTLSizeMake(stwo_metal_threads_per_group(circle_pipeline), 1, 1)];
+            [enc endEncoding];
+
+            // Line parts.
+            uint32_t layer_domain_offset = 0u;
+            uint32_t layer_domain_size = pair_count;
+            for (uint32_t layer = 1u; layer < values_log_len; ++layer) {
+                id<MTLComputeCommandEncoder> le = [command_buffer computeCommandEncoder];
+                [le setComputePipelineState:line_pipeline];
+                [le setBuffer:values.buffer offset:0 atIndex:0];
+                [le setBuffer:inverse_twiddles.buffer offset:0 atIndex:1];
+                [le setBytes:&values_log_len length:sizeof(values_log_len) atIndex:2];
+                [le setBytes:&layer length:sizeof(layer) atIndex:3];
+                [le setBytes:&layer_domain_offset length:sizeof(layer_domain_offset) atIndex:4];
+                [le dispatchThreads:MTLSizeMake(pair_count, 1, 1) threadsPerThreadgroup:MTLSizeMake(stwo_metal_threads_per_group(line_pipeline), 1, 1)];
+                [le endEncoding];
+                layer_domain_size >>= 1u;
+                layer_domain_offset += layer_domain_size;
+            }
+
+            // Rescale.
+            id<MTLComputeCommandEncoder> re = [command_buffer computeCommandEncoder];
+            [re setComputePipelineState:rescale_pipeline];
+            [re setBuffer:values.buffer offset:0 atIndex:0];
+            [re setBytes:&values_len length:sizeof(values_len) atIndex:1];
+            [re setBytes:&scale_factor length:sizeof(scale_factor) atIndex:2];
+            [re dispatchThreads:MTLSizeMake(values_len, 1, 1) threadsPerThreadgroup:MTLSizeMake(stwo_metal_threads_per_group(rescale_pipeline), 1, 1)];
+            [re endEncoding];
+        }
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        if (command_buffer.status == MTLCommandBufferStatusError) {
+            stwo_metal_write_error(error_message, error_message_len, command_buffer.error.localizedDescription ?: @"Batched IFFT kernel execution failed.");
+            return false;
+        }
+        return true;
+    }
+}
+
 bool stwo_metal_ifft_line_interpolate_u32(
     void *runtime_ptr,
     void *values_ptr,
