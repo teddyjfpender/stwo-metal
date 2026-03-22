@@ -356,7 +356,7 @@ mod cairo_prove_main {
                 .into_iter()
                 .map(|eval| {
                     let domain = eval.domain;
-                    let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice_private(
+                    let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice(
                         &eval.values.data,
                     );
                     stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
@@ -628,10 +628,11 @@ mod cairo_prove_main {
                 }
             }
 
-            // Default path: convert SimdBackend → MetalBackend via private GPU upload.
-            // Uses from_packed_m31_slice_private() to bulk-upload PackedM31 data
-            // directly to private GPU memory in a single memcpy per column,
-            // instead of the naive to_cpu().into_iter().collect() element-by-element path.
+            // Default path: convert SimdBackend → MetalBackend via shared GPU upload.
+            // Uses from_packed_m31_slice() (shared memory, direct memcpy) instead of
+            // _private (staging blit + GPU copy). On Apple Silicon unified memory,
+            // shared buffers avoid the staging overhead (~0.5ms per column) with
+            // negligible impact on subsequent GPU compute performance.
             let metal_columns: Vec<stwo::prover::poly::circle::CircleEvaluation<
                 stwo_metal::MetalBackend,
                 stwo::core::fields::m31::BaseField,
@@ -640,7 +641,7 @@ mod cairo_prove_main {
                 .into_iter()
                 .map(|eval| {
                     let domain = eval.domain;
-                    let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice_private(
+                    let metal_values = stwo_metal::MetalBaseFieldVec::from_packed_m31_slice(
                         &eval.values.data,
                     );
                     stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
