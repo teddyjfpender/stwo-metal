@@ -3810,6 +3810,29 @@ mod cairo_prove_main {
                 ));
             }
         }
+        // GPU range_check bypass: upload multiplicities directly to GPU,
+        // skipping CPU SIMD conversion + SimdBackend→MetalBackend conversion.
+        cairo_claim_generator.gpu_range_check_mult_upload_fn = Some(Box::new(
+            |mults_slices: &[&[u32]], log_size: u32, _n_mults: usize| {
+                use stwo::core::poly::circle::CanonicCoset;
+                type MetalCircleEval = stwo::prover::poly::circle::CircleEvaluation<
+                    stwo_metal::MetalBackend,
+                    stwo::core::fields::m31::BaseField,
+                    stwo::prover::poly::BitReversedOrder,
+                >;
+                let domain = CanonicCoset::new(log_size).circle_domain();
+                let evals: Vec<MetalCircleEval> = mults_slices
+                    .iter()
+                    .map(|slice| {
+                        let metal_values =
+                            stwo_metal::MetalBaseFieldVec::from_u32_slice_private(slice);
+                        stwo::prover::poly::circle::CircleEvaluation::new(domain, metal_values)
+                    })
+                    .collect();
+                Box::new(evals) as Box<dyn std::any::Any>
+            },
+        ));
+
         let (claim, mut interaction_generator) =
             cairo_claim_generator.write_trace(&mut hybrid_tb);
         let base_gen_ms = t_base.elapsed().as_secs_f64() * 1000.0;

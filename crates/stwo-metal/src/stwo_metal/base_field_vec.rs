@@ -97,6 +97,20 @@ impl BaseFieldVec {
         }
     }
 
+    /// Creates a `BaseFieldVec` from a raw `&[u32]` slice by uploading
+    /// directly to a private (GPU-only) Metal buffer. Skips BaseField
+    /// conversion overhead — caller must ensure values are valid M31 elements.
+    pub fn from_u32_slice_private(raw: &[u32]) -> Self {
+        let size = raw.len();
+        let buffer = U32Buffer::from_slice_private(raw)
+            .expect("Metal BaseFieldVec private upload from u32 slice should succeed");
+        Self {
+            buffer,
+            size,
+            host_cache: OnceLock::new(),
+        }
+    }
+
     /// Allocates a private (GPU-only) uninitialized buffer.
     pub fn new_uninitialized_private(size: usize) -> Self {
         let buffer = U32Buffer::uninitialized_private(size)
