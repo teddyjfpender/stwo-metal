@@ -1,4 +1,5 @@
 .vscode/*
+.claude/worktrees/
 *.egg-info
 /data
 /logs
