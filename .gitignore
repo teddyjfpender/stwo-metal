@@ -10,6 +10,17 @@ flamegraph.svg
 perf.data
 perf.data.old
 
+# CUDA files — this is a Metal-only project
+*.cu
+*.cuh
+crates/stwo-metal-sys/cuda/
+crates/stwo-metal/src/backend/cuda/
+crates/stwo-metal/src/stwo_cuda/
+crates/stwo-metal-sys/src/no_cuda_link_stubs.rs
+crates/stwo-metal/tests/cuda_*.rs
+scripts/*cuda*
+scripts/*CUDA*
+
 # Generated benchmark data (large prover inputs + results).
 fixtures/standalone-benchmarks/test_data/cairo_fib_*/
 fixtures/standalone-benchmarks/bench_results_*.jsonl
