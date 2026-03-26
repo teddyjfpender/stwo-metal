@@ -1,53 +1,85 @@
 # stwo-metal
 
-`stwo-metal` is an isolated staging workspace for porting the `stwo-cuda`
-companion backend toward Apple Silicon and Metal.
+A Metal GPU-accelerated backend for the [stwo](https://github.com/starkware-libs/stwo) STARK prover, targeting Apple Silicon. Proves Cairo programs on-device using Metal compute shaders for IFFT/RFFT, Blake2s Merkle hashing, constraint evaluation, FRI folding, and more.
 
-This repository started as a direct copy of `stwo-cuda`. The first cleanup pass
-has been completed with these invariants:
+## Benchmark Results
 
-- the nested git history was removed so this tree is no longer coupled to the
-  copied repository
-- the Cargo workspace and package surface now use `stwo-metal` and
-  `stwo-metal-sys`
-- the implementation is intentionally still CUDA-backed internally; this cleanup
-  does not claim that a Metal backend exists yet
+**Hardware:** Apple Silicon (M-series)
+**Workload:** Cairo `fib(n)` end-to-end prove + verify, Blake2s Merkle channel
+**Best run:** 1,838 ms at fib(524K) = **1.71 MHz**
 
-## Current truth
+### Metal vs CPU (SIMD) Throughput
 
-- Public crate surface:
-  - [`crates/stwo-metal`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/crates/stwo-metal)
-  - [`crates/stwo-metal-sys`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/crates/stwo-metal-sys)
-- Upstream dependency snapshot:
-  - [`vendor/stwo-upstream-dev-62b228e`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/vendor/stwo-upstream-dev-62b228e)
-- Active process docs:
-  - [`docs/README.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/README.md)
-  - [`docs/controller.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/controller.md)
-  - [`docs/program-plan.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/program-plan.md)
+| fib(n) | Cycles | Metal (ms) | Metal (MHz) | SIMD (ms) | SIMD (MHz) | Speedup |
+|---------|-----------|------------|-------------|-----------|------------|---------|
+| 32,768 | 196,630 | 902 | 0.22 | 3,385 | 0.06 | 3.75x |
+| 131,072 | 786,454 | 1,107 | 0.71 | 3,938 | 0.20 | 3.56x |
+| 262,144 | 1,572,886 | 1,357 | 1.16 | 4,529 | 0.35 | 3.34x |
+| 524,288 | 3,145,750 | 1,838 | 1.71 | 5,575 | 0.56 | 3.03x |
 
-What still carries CUDA semantics on purpose:
+> **Speedup** = SIMD time / Metal time. Metal is 3-3.75x faster across all sizes.
 
-- internal Rust module names such as `CudaBackend`
-- the native build crate layout under
-  [`crates/stwo-metal-sys/cuda`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/crates/stwo-metal-sys/cuda)
-- the native link target and build-script cfg gate `stwo_cuda_link`
-- most historical docs, scripts, and CI files copied from `stwo-cuda`
+### Throughput Scaling
 
-Those remaining CUDA names are now explicit migration debt, not part of the new
-repository identity.
+```
+Metal MHz:  0.22 ──> 0.71 ──> 1.16 ──> 1.71   (scales with trace size)
+SIMD  MHz:  0.06 ──> 0.20 ──> 0.35 ──> 0.56   (CPU-bound plateau)
+```
 
-## How to use this repo right now
+### What's GPU-Accelerated
 
-- Treat it as a planning and refactoring baseline for the Metal port.
-- Prefer host-safe validation only unless a slice explicitly works on the
-  inherited CUDA backend.
-- Use [`docs/controller.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/controller.md)
-  and [`docs/program-plan.md`](/Users/theodorepender/Coding/gpu-acc/stwo-metal/docs/program-plan.md)
-  as the source of truth for execution and sequencing.
+| Operation | Status |
+|-----------|--------|
+| IFFT / RFFT (polynomial transforms) | Metal compute |
+| Blake2s Merkle tree (leaves + layers) | Metal compute |
+| Constraint evaluation (31 components) | Metal compute (JIT) |
+| FRI fold (circle-to-line + line steps) | Metal compute |
+| Proof-of-work grind | Metal compute |
+| Opcode witness generation (6 kernels) | Metal compute |
+| Twiddle / bit-reversal precomputation | Metal compute |
 
-## Non-goals of this cleanup
+### Phase Breakdown (fib(524K), 1,838 ms best warm run)
 
-- no backend algorithm changes
-- no CUDA-to-Metal translation yet
-- no claim that inherited benchmark scripts or CUDA validation lanes are valid
-  for Apple Silicon
+```
+Base trace gen + upload       732ms  (40%)
+Base Merkle commit            138ms   (7%)
+Interaction trace gen         257ms  (14%)
+Interaction Merkle commit     103ms   (6%)
+Composition (GPU)             250ms  (14%)
+Composition commit             61ms   (3%)
+prove_values (FRI + decommit) 220ms  (12%)
+Other                          77ms   (4%)
+```
+
+## Building and Running
+
+```bash
+cd fixtures/standalone-benchmarks
+
+# Build
+STWO_METAL_MODE=metal-prod cargo build \
+  --features metal-runtime,cairo-prove \
+  --bin cairo_prove --release
+
+# Verify proof correctness
+GPU_WITNESS=1 GPU_OPCODE_INTER=1 \
+  target/release/cairo_prove --metal --verify \
+  test_data/cairo_fib_32768/prover_input.json
+
+# Benchmark (12 iterations, first 2-3 are warmup)
+GPU_WITNESS=1 GPU_OPCODE_INTER=1 \
+  target/release/cairo_prove --metal --bench 12 \
+  test_data/cairo_fib_524288/prover_input.json
+```
+
+## Repository Structure
+
+- **`crates/stwo-metal`** -- Metal backend implementation (poly, FRI, Blake2s, witness, quotient)
+- **`crates/stwo-metal-sys`** -- Metal shader compilation and FFI bindings (`runtime.m`, `.metal` shaders)
+- **`vendor/stwo-upstream-dev-62b228e`** -- Vendored stwo fork with `Arc<BaseColumnPool>` for cross-thread proof state
+- **`vendor/stwo-cairo`** -- Vendored stwo-cairo with GPU witness hooks
+- **`fixtures/standalone-benchmarks`** -- Benchmark harness and test data
+
+## License
+
+See individual crate licenses.
