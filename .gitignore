@@ -21,6 +21,9 @@ crates/stwo-metal/tests/cuda_*.rs
 scripts/*cuda*
 scripts/*CUDA*
 
+# Large binary files
+*.bin
+
 # Generated benchmark data (large prover inputs + results).
 fixtures/standalone-benchmarks/test_data/cairo_fib_*/
 fixtures/standalone-benchmarks/bench_results_*.jsonl
